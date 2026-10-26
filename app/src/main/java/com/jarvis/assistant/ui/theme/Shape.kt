@@ -74,10 +74,15 @@ val TileShape = ChamferedShape(12.dp, 2.dp, 12.dp, 2.dp)
 /** Small chip / button shape. */
 val ChipShape = ChamferedShape(6.dp, 6.dp, 6.dp, 6.dp)
 
+/**
+ * Material 3's [Shapes] only accepts [androidx.compose.foundation.shape.CornerBasedShape]s, so
+ * this scale is rounded on purpose. Every JARVIS surface that should be chamfered asks for
+ * [PanelShape] / [TileShape] / [ChipShape] explicitly instead of going through the theme.
+ */
 val JarvisShapes = Shapes(
     extraSmall = RoundedCornerShape(2.dp),
-    small = ChipShape,
-    medium = PanelShape,
-    large = PanelShape,
-    extraLarge = PanelShape,
+    small = RoundedCornerShape(6.dp),
+    medium = RoundedCornerShape(10.dp),
+    large = RoundedCornerShape(14.dp),
+    extraLarge = RoundedCornerShape(20.dp),
 )

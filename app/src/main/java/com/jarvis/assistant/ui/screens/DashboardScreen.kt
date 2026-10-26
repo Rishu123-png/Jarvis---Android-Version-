@@ -336,7 +336,7 @@ private fun ReactorBlock(
                 Spacer(Modifier.width(7.dp))
                 Text(
                     text = statusNote,
-                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 2f),
+                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 2.sp),
                     color = IceBlue.copy(alpha = 0.9f),
                 )
             }
