@@ -4,6 +4,27 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+/**
+ * Signing.
+ *
+ * CI machines generate a *fresh* debug keystore every build, which means two debug APKs built
+ * on different machines have different signatures — and Android refuses to update one with the
+ * other ("package conflicts with an existing package"). To avoid that, a single release
+ * keystore is used for every build type when one is available.
+ *
+ * The keystore is looked up from the environment, so it never lives in the repository:
+ *   Codemagic  -> CM_KEYSTORE_PATH / CM_KEYSTORE_PASSWORD / CM_KEY_ALIAS / CM_KEY_PASSWORD
+ *   Local/other-> JARVIS_KEYSTORE_PATH / JARVIS_KEYSTORE_PASSWORD / JARVIS_KEY_ALIAS / JARVIS_KEY_PASSWORD
+ *
+ * With no keystore configured the build still works: everything falls back to debug signing.
+ */
+val releaseKeystorePath: String? = (
+    System.getenv("CM_KEYSTORE_PATH")
+        ?: System.getenv("JARVIS_KEYSTORE_PATH")
+    )?.takeIf { it.isNotBlank() && file(it).exists() }
+
+val hasReleaseKeystore = releaseKeystorePath != null
+
 android {
     namespace = "com.jarvis.assistant"
     compileSdk = 34
@@ -12,17 +33,33 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0-phase1"
+        versionCode = 2
+        versionName = "1.1.0-phase2"
 
         vectorDrawables { useSupportLibrary = true }
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = System.getenv("CM_KEYSTORE_PASSWORD")
+                    ?: System.getenv("JARVIS_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("CM_KEY_ALIAS")
+                    ?: System.getenv("JARVIS_KEY_ALIAS")
+                keyPassword = System.getenv("CM_KEY_PASSWORD")
+                    ?: System.getenv("JARVIS_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
+            // No applicationIdSuffix on purpose: exactly one JARVIS package on the phone, so a
+            // new build always updates the installed one instead of creating a second icon.
             versionNameSuffix = "-debug"
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName(if (hasReleaseKeystore) "release" else "debug")
         }
         release {
             isMinifyEnabled = false
@@ -31,6 +68,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Degrades to debug signing rather than failing when no keystore is present.
+            signingConfig = signingConfigs.getByName(if (hasReleaseKeystore) "release" else "debug")
         }
     }
 
@@ -45,6 +84,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {

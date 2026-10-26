@@ -1,0 +1,129 @@
+# Codemagic CI/CD configuration for J.A.R.V.I.S.
+#
+# Two workflows:
+#   * android-debug   — zero setup. Builds an installable debug APK immediately.
+#   * android-release — stable signature. Same key on every build, so a new APK installs
+#                       straight over the previous one with no "package conflicts" error.
+#
+# Codemagic docs: https://docs.codemagic.io/yaml/building-a-react-native-app/
+
+workflows:
+  # ---------------------------------------------------------------------------------------
+  # DEBUG — works with no keystore, no secrets, no setup. Start here.
+  # ---------------------------------------------------------------------------------------
+  android-debug:
+    name: JARVIS · debug APK
+    instance_type: linux_x2
+    max_build_duration: 60
+    environment:
+      java: 17
+    cache:
+      cache_paths:
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+    scripts:
+      - name: Accept SDK licences
+        script: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+      - name: Ensure SDK components
+        # Never fatal: newer Codemagic images already ship these.
+        script: |
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+      - name: Build debug APK
+        script: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace assembleDebug 2>&1 | tee build-debug.log
+      - name: Report signature
+        script: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk 2>/dev/null | head -1)
+          echo "APK: $APK"
+          [ -n "$APK" ] && (apksigner verify --print-certs "$APK" 2>&1 | head -8 || true)
+    artifacts:
+      - app/build/outputs/apk/debug/*.apk
+      - build-debug.log
+    # Uncomment and set your address to get the APK emailed to you.
+    # publishing:
+    #   email:
+    #     recipients:
+    #       - you@example.com
+    #     notify:
+    #       success: true
+    #       failure: true
+
+  # ---------------------------------------------------------------------------------------
+  # RELEASE — stable key. Create a keystore in Codemagic
+  # (Team settings -> Code signing identities -> Android keystore) and it is injected as
+  # the keystore_credentials group. If no keystore is configured the build still succeeds
+  # and falls back to debug signing, with a loud warning in the log.
+  # ---------------------------------------------------------------------------------------
+  android-release:
+    name: JARVIS · release APK
+    instance_type: linux_x2
+    max_build_duration: 60
+    environment:
+      java: 17
+      groups:
+        - keystore_credentials # CM_KEYSTORE_PATH, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
+    cache:
+      cache_paths:
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+    scripts:
+      - name: Accept SDK licences
+        script: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+      - name: Ensure SDK components
+        script: |
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+      - name: Materialise keystore
+        script: |
+          set -e
+          rm -f "$CM_BUILD_DIR/keystore.jks"
+
+          # Codemagic normally exposes CM_KEYSTORE_PATH (already a file on disk).
+          if [ -n "$CM_KEYSTORE_PATH" ] && [ -f "$CM_KEYSTORE_PATH" ]; then
+            cp "$CM_KEYSTORE_PATH" "$CM_BUILD_DIR/keystore.jks"
+            echo "Keystore copied from CM_KEYSTORE_PATH"
+          elif [ -n "$CM_KEYSTORE" ]; then
+            printf '%s' "$CM_KEYSTORE" | base64 --decode > "$CM_BUILD_DIR/keystore.jks"
+            echo "Keystore decoded from CM_KEYSTORE"
+          elif [ -n "$JARVIS_KEYSTORE" ]; then
+            printf '%s' "$JARVIS_KEYSTORE" | base64 --decode > "$CM_BUILD_DIR/keystore.jks"
+            echo "Keystore decoded from JARVIS_KEYSTORE"
+          else
+            echo "::warning::No keystore found. The release APK will be debug-signed."
+            echo "::warning::Installs may then conflict with later builds signed by another machine."
+          fi
+
+          if [ -f "$CM_BUILD_DIR/keystore.jks" ]; then
+            export CM_KEYSTORE_PATH="$CM_BUILD_DIR/keystore.jks"
+            echo "CM_KEYSTORE_PATH=$CM_KEYSTORE_PATH" >> "$CM_ENV"
+            echo "Keystore ready ($(wc -c < "$CM_KEYSTORE_PATH") bytes)"
+          fi
+      - name: Build release APK
+        script: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace assembleRelease 2>&1 | tee build-release.log
+      - name: Verify signature
+        script: |
+          APK=$(ls app/build/outputs/apk/release/*.apk 2>/dev/null | head -1)
+          echo "APK: $APK"
+          if [ -n "$APK" ]; then
+            apksigner verify --print-certs "$APK" 2>&1 | head -10 || true
+            echo "---- package ----"
+            aapt2 dump badging "$APK" 2>/dev/null | head -6 || aapt dump badging "$APK" 2>/dev/null | head -6 || true
+          else
+            echo "::error::No release APK was produced"
+            exit 1
+          fi
+    artifacts:
+      - app/build/outputs/apk/release/*.apk
+      - build-release.log
+    # publishing:
+    #   email:
+    #     recipients:
+    #       - you@example.com
+    #     notify:
+    #       success: true
+    #       failure: true

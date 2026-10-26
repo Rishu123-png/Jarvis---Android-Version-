@@ -1,122 +1,59 @@
 package com.jarvis.assistant.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.CameraAlt
-import androidx.compose.material.icons.outlined.Email
-import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Mic
-import androidx.compose.material.icons.outlined.Phone
-import androidx.compose.material.icons.outlined.Photo
-import androidx.compose.material.icons.outlined.Public
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.ui.components.HudDivider
 import com.jarvis.assistant.ui.components.HudPanel
 import com.jarvis.assistant.ui.components.ReadoutRow
-import com.jarvis.assistant.ui.components.SectionHeader
 import com.jarvis.assistant.ui.theme.AlertRed
 import com.jarvis.assistant.ui.theme.ElectricCyan
-import com.jarvis.assistant.ui.theme.HudType
 import com.jarvis.assistant.ui.theme.IceBlue
-import com.jarvis.assistant.ui.theme.PanelNavy
+import com.jarvis.assistant.ui.theme.HudType
 import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.TextMuted
-import com.jarvis.assistant.ui.theme.TextPrimary
 import com.jarvis.assistant.ui.theme.TextSecondary
-import com.jarvis.assistant.ui.theme.TileShape
 
 // ---------------------------------------------------------------------------------------------
-// APPS (phase 2)
+// APPS (phase 2) — superseded by AppDrawerScreen, kept as the empty/failure explanation surface.
 // ---------------------------------------------------------------------------------------------
 
-private data class AppSlot(val name: String, val icon: ImageVector)
-
-private val appSlots = listOf(
-    AppSlot("PHONE", Icons.Outlined.Phone),
-    AppSlot("MESSAGES", Icons.Outlined.Email),
-    AppSlot("CAMERA", Icons.Outlined.CameraAlt),
-    AppSlot("GALLERY", Icons.Outlined.Photo),
-    AppSlot("MAPS", Icons.Outlined.Map),
-    AppSlot("BROWSER", Icons.Outlined.Public),
-    AppSlot("CLOCK", Icons.Outlined.Alarm),
-    AppSlot("SETTINGS", Icons.Outlined.Settings),
-)
-
+/**
+ * Shown only if the drawer has nothing to display. This exists because an empty drawer is the
+ * most common launcher bug, and a bare blank screen tells the user nothing.
+ */
 @Composable
 fun AppsScreen() {
-    HudPanel(label = "LAUNCHER PREVIEW", accent = ElectricCyan) {
+    HudPanel(label = "LAUNCHER · NO APPS INDEXED", accent = ElectricCyan) {
         Text(
-            text = "Phase 1 shows the intended grid with placeholder slots. Phase 2 replaces " +
-                "these with shortcuts built from the installed-app packages, and Jarvis becomes " +
-                "selectable as the Android Home app.",
+            text = "PackageManager returned no launchable activities. The drawer now reads real " +
+                "installed apps, so an empty list means the query itself failed.",
             style = HudType.terminal.copy(fontSize = 10.sp),
             color = TextSecondary,
         )
-    }
-
-    SectionHeader(title = "SLOTS", trailing = "8 STAGED")
-
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        appSlots.chunked(4).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                row.forEach { slot ->
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(0.92f)
-                            .background(PanelNavy.copy(alpha = 0.7f), TileShape)
-                            .border(1.dp, ElectricCyan.copy(alpha = 0.10f), TileShape)
-                            .padding(8.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Icon(
-                            imageVector = slot.icon,
-                            contentDescription = slot.name,
-                            tint = TextMuted.copy(alpha = 0.75f),
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = slot.name,
-                            style = HudType.label.copy(fontSize = 7.sp, letterSpacing = 0.6.sp),
-                            color = TextMuted,
-                            maxLines = 1,
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    HudPanel(label = "WHY EMPTY", accent = TextMuted) {
+        Spacer(Modifier.height(10.dp))
+        ReadoutRow(label = "QUERY", value = "MAIN / LAUNCHER")
+        ReadoutRow(label = "MANIFEST", value = "<queries> REQUIRED", valueColor = StatusGreen)
+        ReadoutRow(label = "FILTER", value = "SELF EXCLUDED")
+        HudDivider(modifier = Modifier.padding(vertical = 8.dp), accent = ElectricCyan)
         Text(
-            text = "Slots are intentionally inert until the launcher module can query " +
-                "PackageManager and launch real activities. Showing fake app icons would " +
-                "misrepresent what the device is doing.",
+            text = "On Android 11+ a package visibility declaration is mandatory. Without the " +
+                "<queries> element in AndroidManifest.xml, queryIntentActivities returns an " +
+                "empty list with no error at all.",
             style = HudType.terminal.copy(fontSize = 10.sp),
             color = TextMuted,
         )
