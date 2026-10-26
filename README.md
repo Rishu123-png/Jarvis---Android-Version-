@@ -94,10 +94,18 @@ accessibility service, no network calls, no API keys, no analytics. The only man
 
 1. Add the repository in Codemagic and select **codemagic.yaml** as the configuration source.
 2. Run **JARVIS · debug APK**, then download `app-debug.apk` from the build's artifacts.
+
+> **Free plan note.** Codemagic's free tier only includes macOS machines, so both workflows use
+> `instance_type: mac_mini_m2`. Using `linux_x2` on a free account fails *before the build starts*
+> with "The selected instance type is not available with the current billing plan". Android builds
+> work perfectly on the Mac machine; switch to `linux_x2` only if you enable billing. macOS builds
+> can queue for a while on the free plan, so start the build and come back to it.
 3. Optional but recommended: add a keystore under *Team settings → Code signing identities → Android
    keystore* (the group `keystore_credentials`), then use **JARVIS · release APK** from then on.
 
 Both workflows tolerate a missing SDK package or keystore: they warn and continue rather than failing.
+CI validates `codemagic.yaml` on every push — YAML syntax, every script step through `sh -n`, and a
+check that no workflow requests a billing-gated instance type.
 
 **Install notes**
 

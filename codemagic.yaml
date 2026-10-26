@@ -5,15 +5,23 @@
 #   * android-release — stable signature. Same key on every build, so a new APK installs
 #                       straight over the previous one with no "package conflicts" error.
 #
-# Codemagic docs: https://docs.codemagic.io/yaml/building-a-react-native-app/
+# IMPORTANT — instance type:
+#   Codemagic's FREE plan only includes macOS machines. `linux_x2` (and mac_mini_m4, linux_x4,
+#   windows_x2) are gated behind billing, and using them on a free account fails before the build
+#   starts with "The selected instance type is not available with the current billing plan".
+#   mac_mini_m2 builds Android perfectly well, so that is what these workflows use.
+#   If you enable billing, switch both to `instance_type: linux_x2` for cheaper/faster Android runs.
+#
+# Shell scripts here stay POSIX-portable (openssl instead of `base64 --decode`, tool paths resolved
+# through globs) so they behave identically on the macOS and Linux images.
 
 workflows:
   # ---------------------------------------------------------------------------------------
-  # DEBUG — works with no keystore, no secrets, no setup. Start here.
+  # DEBUG — works with no keystore, no secrets, no paid machine. Start here.
   # ---------------------------------------------------------------------------------------
   android-debug:
     name: JARVIS · debug APK
-    instance_type: linux_x2
+    instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
       java: 17
@@ -22,31 +30,28 @@ workflows:
         - ~/.gradle/caches
         - ~/.gradle/wrapper
     scripts:
-      - name: Resolve sdkmanager
-        # Codemagic images keep cmdline-tools in different places; locate it, but never fail.
+      - name: Resolve Android SDK tools
+        # Never fatal: images differ in where cmdline-tools and build-tools live.
         script: |
-          if ! command -v sdkmanager > /dev/null 2>&1; then
-            for dir in "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin "$ANDROID_HOME"/cmdline-tools/*/bin \
-                       "$ANDROID_SDK_ROOT"/tools/bin "$ANDROID_HOME"/tools/bin; do
-              if [ -x "$dir/sdkmanager" ]; then
-                export PATH="$dir:$PATH"
-                echo "PATH=$PATH" >> "$CM_ENV"
-                break
-              fi
-            done
-          fi
-          command -v sdkmanager || echo "::warning::sdkmanager not found; using the preinstalled SDK"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "SDK=$SDK"
+          PATH="$PATH:$SDK/cmdline-tools/latest/bin:$SDK/tools/bin:$SDK/platform-tools"
+          # Add every build-tools revision (apksigner, aapt2).
+          for bt in "$SDK"/build-tools/*; do
+            [ -d "$bt" ] && PATH="$PATH:$bt"
+          done
+          export PATH
+          echo "PATH=$PATH" >> "$CM_ENV"
+          command -v sdkmanager || echo "::warning::sdkmanager not found; relying on the preinstalled SDK"
       - name: Accept SDK licences
         script: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          ( yes | sdkmanager --licenses > /dev/null 2>&1 ) || true
           echo "licences handled"
       - name: Ensure SDK components
-        # Never fatal: newer Codemagic images already ship these.
+        # Never fatal: Codemagic images already ship platform 34 and build-tools 34.
         script: |
           sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "SDK components ready"
       - name: Build debug APK
         script: |
           set -o pipefail
@@ -55,7 +60,14 @@ workflows:
         script: |
           APK=$(ls app/build/outputs/apk/debug/*.apk 2>/dev/null | head -1)
           echo "APK: $APK"
-          [ -n "$APK" ] && (apksigner verify --print-certs "$APK" 2>&1 | head -8 || true)
+          if [ -n "$APK" ]; then
+            (apksigner verify --print-certs "$APK" || true) | head -8
+            APKSIGNER=$(command -v apksigner || true)
+            [ -n "$APKSIGNER" ] && echo "signed with apksigner at $APKSIGNER"
+          else
+            echo "::error::No debug APK was produced"
+            exit 1
+          fi
     artifacts:
       - app/build/outputs/apk/debug/*.apk
       - build-debug.log
@@ -70,13 +82,13 @@ workflows:
 
   # ---------------------------------------------------------------------------------------
   # RELEASE — stable key. Create a keystore in Codemagic
-  # (Team settings -> Code signing identities -> Android keystore) and it is injected as
-  # the keystore_credentials group. If no keystore is configured the build still succeeds
-  # and falls back to debug signing, with a loud warning in the log.
+  # (Team settings -> Code signing identities -> Android keystore); it is injected as the
+  # keystore_credentials group. With no keystore the build still succeeds and falls back to
+  # debug signing, with a loud warning in the log.
   # ---------------------------------------------------------------------------------------
   android-release:
     name: JARVIS · release APK
-    instance_type: linux_x2
+    instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
       java: 17
@@ -87,29 +99,25 @@ workflows:
         - ~/.gradle/caches
         - ~/.gradle/wrapper
     scripts:
-      - name: Resolve sdkmanager
-        # Codemagic images keep cmdline-tools in different places; locate it, but never fail.
+      - name: Resolve Android SDK tools
         script: |
-          if ! command -v sdkmanager > /dev/null 2>&1; then
-            for dir in "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin "$ANDROID_HOME"/cmdline-tools/*/bin \
-                       "$ANDROID_SDK_ROOT"/tools/bin "$ANDROID_HOME"/tools/bin; do
-              if [ -x "$dir/sdkmanager" ]; then
-                export PATH="$dir:$PATH"
-                echo "PATH=$PATH" >> "$CM_ENV"
-                break
-              fi
-            done
-          fi
-          command -v sdkmanager || echo "::warning::sdkmanager not found; using the preinstalled SDK"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "SDK=$SDK"
+          PATH="$PATH:$SDK/cmdline-tools/latest/bin:$SDK/tools/bin:$SDK/platform-tools"
+          for bt in "$SDK"/build-tools/*; do
+            [ -d "$bt" ] && PATH="$PATH:$bt"
+          done
+          export PATH
+          echo "PATH=$PATH" >> "$CM_ENV"
+          command -v sdkmanager || echo "::warning::sdkmanager not found; relying on the preinstalled SDK"
       - name: Accept SDK licences
         script: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          ( yes | sdkmanager --licenses > /dev/null 2>&1 ) || true
           echo "licences handled"
       - name: Ensure SDK components
         script: |
           sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+          echo "SDK components ready"
       - name: Materialise keystore
         script: |
           set -e
@@ -119,21 +127,24 @@ workflows:
           if [ -n "$CM_KEYSTORE_PATH" ] && [ -f "$CM_KEYSTORE_PATH" ]; then
             cp "$CM_KEYSTORE_PATH" "$CM_BUILD_DIR/keystore.jks"
             echo "Keystore copied from CM_KEYSTORE_PATH"
-          elif [ -n "$CM_KEYSTORE" ]; then
-            printf '%s' "$CM_KEYSTORE" | base64 --decode > "$CM_BUILD_DIR/keystore.jks"
-            echo "Keystore decoded from CM_KEYSTORE"
-          elif [ -n "$JARVIS_KEYSTORE" ]; then
-            printf '%s' "$JARVIS_KEYSTORE" | base64 --decode > "$CM_BUILD_DIR/keystore.jks"
-            echo "Keystore decoded from JARVIS_KEYSTORE"
           else
-            echo "::warning::No keystore found. The release APK will be debug-signed."
-            echo "::warning::Installs may then conflict with later builds signed by another machine."
+            # Base64 decode that works on both GNU and BSD (macOS) — never `base64 --decode`.
+            if [ -n "$CM_KEYSTORE" ]; then
+              printf '%s' "$CM_KEYSTORE" | openssl base64 -d -A > "$CM_BUILD_DIR/keystore.jks"
+              echo "Keystore decoded from CM_KEYSTORE"
+            elif [ -n "$JARVIS_KEYSTORE" ]; then
+              printf '%s' "$JARVIS_KEYSTORE" | openssl base64 -d -A > "$CM_BUILD_DIR/keystore.jks"
+              echo "Keystore decoded from JARVIS_KEYSTORE"
+            fi
           fi
 
-          if [ -f "$CM_BUILD_DIR/keystore.jks" ]; then
-            export CM_KEYSTORE_PATH="$CM_BUILD_DIR/keystore.jks"
-            echo "CM_KEYSTORE_PATH=$CM_KEYSTORE_PATH" >> "$CM_ENV"
-            echo "Keystore ready ($(wc -c < "$CM_KEYSTORE_PATH") bytes)"
+          if [ -s "$CM_BUILD_DIR/keystore.jks" ]; then
+            echo "CM_KEYSTORE_PATH=$CM_BUILD_DIR/keystore.jks" >> "$CM_ENV"
+            echo "Keystore ready ($(wc -c < "$CM_BUILD_DIR/keystore.jks" | tr -d ' ') bytes)"
+          else
+            rm -f "$CM_BUILD_DIR/keystore.jks"
+            echo "::warning::No keystore found. The release APK will be debug-signed."
+            echo "::warning::Add one in Team settings -> Code signing identities -> Android keystore."
           fi
       - name: Build release APK
         script: |
@@ -144,9 +155,9 @@ workflows:
           APK=$(ls app/build/outputs/apk/release/*.apk 2>/dev/null | head -1)
           echo "APK: $APK"
           if [ -n "$APK" ]; then
-            apksigner verify --print-certs "$APK" 2>&1 | head -10 || true
+            (apksigner verify --print-certs "$APK" || true) | head -10
             echo "---- package ----"
-            aapt2 dump badging "$APK" 2>/dev/null | head -6 || aapt dump badging "$APK" 2>/dev/null | head -6 || true
+            (aapt2 dump badging "$APK" 2>/dev/null || aapt dump badging "$APK" 2>/dev/null || true) | head -6
           else
             echo "::error::No release APK was produced"
             exit 1
