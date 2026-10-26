@@ -19,11 +19,11 @@ earlier build.
 | Phase | Scope | Status |
 | --- | --- | --- |
 | **1** | HUD, arc reactor, clock, battery, tiles, theme, dashboard | Merged |
-| **2** | Default launcher: home screen, app drawer, installed apps, launching | **Built — this branch** |
-| 3 | Device information and controls (notifications, quick actions) | Partly started (battery / network / memory are live) |
+| 2 | Default launcher: home screen, app drawer, installed apps, launching | Merged |
+| 3 | Device information and controls (notifications, quick actions) | Merged |
 | 4 | Voice assistant: mic, speech recognition, spoken replies | Not started |
 | 5 | AI intelligence: backend, planning, tool use | Not started |
-| 6 | Mobile automation with confirmation gates | Not started |
+| **6** | **Mobile automation with confirmation gates** | **Built — this branch (built ahead of 4 and 5)** |
 
 Phase 2 makes JARVIS a real Home app: it can be selected as the Android launcher, its drawer lists
 every launchable app on the device and opens them, and the dashboard carries a quick-access dock.
@@ -57,6 +57,46 @@ Voice, AI and automation remain labelled as staged — no fake features.
 **Explicitly not in this build:** no launcher replacement, no notification access, no microphone, no
 accessibility service, no network calls, no API keys, no analytics. The only manifest permission is
 `ACCESS_NETWORK_STATE`, which is a normal (non-prompting) permission.
+
+---
+
+## Phase 6 — automation
+
+Built ahead of phases 4 and 5 by request. The runtime is independent of voice and AI, so those
+phases will plug into the same executor rather than replacing it.
+
+### What it does
+
+Routines are ordered lists of steps, stored on device as JSON. A routine runs top to bottom, one at
+a time, with a 20-step ceiling. A failing step is logged and the run continues, so one unavailable
+action does not strand the rest.
+
+**Available steps:** open app · open link · dial number (dialer only, never calls) · compose SMS
+(never sends) · set timer · torch on/off · set media volume · play/pause · clear alerts · open a
+system panel · wait · system gesture (back/home/recents/shade/quick settings/lock) · press a labelled
+control on screen.
+
+### The safety model
+
+| Tier | Requires | Grants |
+| --- | --- | --- |
+| Nothing | — | app launching, glances, timers, torch, volume, panels |
+| Notification access | system switch | media transport, clearing alerts |
+| Accessibility service | system switch | navigation gestures |
+| Screen pressing | separate in-app opt-in | pressing one labelled control |
+
+Every **sensitive** step (gestures, screen presses) suspends the routine on a `CompletableDeferred`
+until you approve it. Decline halts the run. STOP cancels immediately and leaves nothing running.
+
+The accessibility service's `onAccessibilityEvent` is intentionally empty: JARVIS never reads screen
+content in the background. `pressByText` is exact-match only, bounded to the active window, and
+refuses to guess.
+
+### What automation deliberately cannot do
+
+It will not place a call, send a message, or move money. Those steps open the relevant screen so the
+final action stays yours. It also cannot control every app or system screen — a regular Android app
+cannot, and the UI says so instead of implying otherwise.
 
 ---
 
@@ -204,6 +244,16 @@ the visual language, `ui/screens/` only composes them. Phases 2–6 add packages
 than rewriting them.
 
 ---
+
+## Phase 6 review checklist
+
+- [ ] Presets run with no special access (torch, volume, timer, clear alerts)
+- [ ] A routine with a gesture step asks for approval before acting, and Decline halts it
+- [ ] STOP halts a running routine and the log shows HALTED
+- [ ] Accessibility toggle reflects the real system state after you change it in settings
+- [ ] Screen pressing stays blocked until you allow it separately
+- [ ] Editor: add a step, set its value, reorder it, delete it, save, run
+- [ ] A failing step (e.g. open an app you uninstalled) is logged and the run continues
 
 ## Phase 2 review checklist
 
