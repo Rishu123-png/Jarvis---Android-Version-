@@ -27,16 +27,29 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK platform and build tools
+      # Installed directly rather than via a marketplace action so the toolchain is explicit
+      # and nothing depends on a third-party action's node runtime.
+      - name: Install Android SDK
         run: |
+          set -o pipefail
+          SDK_ROOT="$HOME/android-sdk"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          curl -sSLo /tmp/cmdline-tools.zip \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q /tmp/cmdline-tools.zip -d "$SDK_ROOT/cmdline-tools"
+          mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          export ANDROID_HOME="$SDK_ROOT"
+          export ANDROID_SDK_ROOT="$SDK_ROOT"
+          export PATH="$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -5
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
 
       - name: Build debug APK
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --console=plain assembleDebug 2>&1 | tee build.log
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -52,3 +65,15 @@ jobs:
         with:
           files: app/build/outputs/apk/debug/*.apk
           generate_release_notes: true
+
+      # Surfaces the compiler output on the commit so failures are readable without
+      # downloading log bundles.
+      - name: Report build log on failure
+        if: failure()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BODY=$(tail -c 45000 build.log 2>/dev/null || echo "build.log was not produced")
+          gh api -X POST "repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+            -f body="$(printf '### JARVIS build log (tail)\n\n```\n%s\n```\n' "$BODY")" || true
