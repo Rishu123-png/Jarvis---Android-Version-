@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: assembleDebug
+    name: assembleDebug + assembleRelease
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -40,18 +40,38 @@ jobs:
           mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
           export ANDROID_HOME="$SDK_ROOT"
           export ANDROID_SDK_ROOT="$SDK_ROOT"
-          export PATH="$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+          export PATH="$SDK_ROOT/cmdline-tools/latest/bin:$SDK_ROOT/build-tools/34.0.0:$PATH"
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
           sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -5
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
 
-      - name: Build debug APK
+      # Both build types are compiled: debug proves the app assembles, release proves the
+      # signing fallback works so Codemagic's release workflow cannot fail on a missing keystore.
+      - name: Build debug + release APKs
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --console=plain assembleDebug 2>&1 | tee build.log
+          ./gradlew --no-daemon --console=plain assembleDebug assembleRelease 2>&1 | tee build.log
 
-      - name: Upload APK artifact
+      - name: Verify APK signatures and manifest (launcher intent filters)
+        run: |
+          OUT="$GITHUB_STEP_SUMMARY"
+          echo "## APK verification" >> "$OUT"
+          BT="$ANDROID_SDK_ROOT/build-tools/34.0.0"
+          for apk in app/build/outputs/apk/debug/*.apk app/build/outputs/apk/release/*.apk; do
+            [ -f "$apk" ] || continue
+            echo "== $apk"
+            echo "### $apk" >> "$OUT"
+            echo '```' >> "$OUT"
+            "$BT/apksigner" verify --print-certs "$apk" 2>&1 | head -6 | tee -a "$OUT"
+            "$BT/aapt2" dump badging "$apk" 2>&1 \
+              | grep -E "^package:|launchable-activity|HOME|LAUNCHER" | head -8 | tee -a "$OUT"
+            "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$apk" 2>/dev/null \
+              | grep -iE "android.intent.category.(HOME|LAUNCHER|DEFAULT)" | head -6 | tee -a "$OUT"
+            echo '```' >> "$OUT"
+          done
+
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-debug-apk
@@ -59,11 +79,21 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Attach APK to release
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach APKs to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/debug/*.apk
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
           generate_release_notes: true
 
       # Surfaces the compiler output on the commit so failures are readable without

@@ -46,11 +46,11 @@ object HudModules {
         HudModule(
             id = APPS,
             title = "APPS",
-            caption = "Launcher grid",
+            caption = "Installed apps",
             icon = Icons.Outlined.Apps,
             accent = ElectricCyan,
             phase = 2,
-            isLive = false,
+            isLive = true,
         ),
         HudModule(
             id = NETWORK,

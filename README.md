@@ -18,16 +18,16 @@ earlier build.
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| **1** | HUD, arc reactor, clock, battery, tiles, theme, dashboard | **Built — this branch** |
-| 2 | Default launcher: home screen, app drawer, installed apps, launching | Next |
+| **1** | HUD, arc reactor, clock, battery, tiles, theme, dashboard | Merged |
+| **2** | Default launcher: home screen, app drawer, installed apps, launching | **Built — this branch** |
 | 3 | Device information and controls (notifications, quick actions) | Partly started (battery / network / memory are live) |
 | 4 | Voice assistant: mic, speech recognition, spoken replies | Not started |
 | 5 | AI intelligence: backend, planning, tool use | Not started |
 | 6 | Mobile automation with confirmation gates | Not started |
 
-Phase 1 is a complete, self-contained app: it launches, animates, reads real device state, and has
-no placeholder code paths pretending to work. Tiles whose capability lands later are labelled with
-their phase and open an honest "staged" panel instead of a fake feature.
+Phase 2 makes JARVIS a real Home app: it can be selected as the Android launcher, its drawer lists
+every launchable app on the device and opens them, and the dashboard carries a quick-access dock.
+Voice, AI and automation remain labelled as staged — no fake features.
 
 ---
 
@@ -60,9 +60,57 @@ accessibility service, no network calls, no API keys, no analytics. The only man
 
 ---
 
+## Phase 2 — launcher
+
+- **Selectable as the Home app.** `MainActivity` declares `HOME` + `DEFAULT` alongside `LAUNCHER`, with
+  `stateNotNeeded`, `launchMode=singleTask` and `excludeFromRecents` — the combination a Home app needs.
+  JARVIS never switches the Home app itself: the user taps *Set JARVIS as home* in Launcher settings and
+  Android shows its own confirmation dialog.
+- **App drawer** — every launchable activity from `PackageManager`, alphabetical section headers, live
+  search over label and package name, and a refresh control. Icons load off the main thread into an LRU
+  cache, seeded synchronously so scrolling never flashes placeholders.
+- **App launching** — explicit `MAIN`/`LAUNCHER` component intent with `FLAG_ACTIVITY_NEW_TASK` (required
+  outside a task), falling back to `getLaunchIntentForPackage`, then a toast if the app cannot be opened.
+- **Dock** — five slots filled from recognised system apps (dialer, messaging, browser, camera,
+  settings), topped up from installed apps so it is never empty on any device.
+- **Launcher settings** — live Home-role status, the system role request, the Home settings screen, and
+  the app info page.
+- **Package visibility** — the manifest declares a `<queries>` block. Without it, `queryIntentActivities`
+  returns an empty list on Android 11+ and the drawer silently appears broken. That is the single most
+  common launcher bug, and it is why the CI now verifies the APK's intent filters.
+
+---
+
 ## Build it
 
-### Option A — GitHub Actions (no local toolchain needed)
+### Option A — Codemagic (recommended for installing on your phone)
+
+`codemagic.yaml` at the repository root defines two workflows:
+
+| Workflow | Setup needed | Use |
+| --- | --- | --- |
+| **JARVIS · debug APK** | none | download and install right away |
+| **JARVIS · release APK** | a keystore in Codemagic | stable signature so updates install over each other |
+
+1. Add the repository in Codemagic and select **codemagic.yaml** as the configuration source.
+2. Run **JARVIS · debug APK**, then download `app-debug.apk` from the build's artifacts.
+3. Optional but recommended: add a keystore under *Team settings → Code signing identities → Android
+   keystore* (the group `keystore_credentials`), then use **JARVIS · release APK** from then on.
+
+Both workflows tolerate a missing SDK package or keystore: they warn and continue rather than failing.
+
+**Install notes**
+
+- One package only: `com.jarvis.assistant`. There is no `.debug` suffix any more, so new builds update
+  the installed app instead of creating a second icon.
+- If you installed an older build that used `com.jarvis.assistant.debug`, uninstall it once.
+- Uninstall the old app first if the signing key changed between builds — Android refuses an update
+  signed by a different key ("package conflicts with an existing package"). A Codemagic keystore keeps
+  the key stable forever.
+- Play Protect warns about any self-signed app. Choose *Install anyway*.
+- Requires Android 10 (API 29) or newer.
+
+### Option B — GitHub Actions (no local toolchain needed)
 
 Every push and pull request runs `.github/workflows/build.yml`, which installs JDK 17 + the Android
 SDK, runs `./gradlew assembleDebug`, and uploads the APK.
@@ -73,19 +121,20 @@ SDK, runs `./gradlew assembleDebug`, and uploads the APK.
 
 Push a tag like `v1.0.0-phase1` and the APK is also attached to a GitHub Release.
 
-### Option B — Android Studio
+### Option C — Android Studio
 
 Open the repository folder, let Gradle sync, press Run. Requires Android Studio with JDK 17 and the
 Android 14 (API 34) SDK.
 
-### Option C — command line
+### Option D — command line
 
 ```bash
 ./gradlew assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew installDebug           # with a device connected over adb
 ```
 
-> The debug build installs as `com.jarvis.assistant.debug` so it can sit next to a release install.
+> Debug and release share the same package and the same signing key when a keystore is configured, so
+> you can always install a newer build straight over an older one.
 
 ---
 
@@ -116,11 +165,13 @@ tiles never read as stock rounded cards.
 app/src/main/java/com/jarvis/assistant/
 ├── MainActivity.kt              single-activity host
 ├── device/
-│   └── SystemStatus.kt          battery / network / memory / uptime / build info
+│   ├── SystemStatus.kt          battery / network / memory / uptime / build info
+│   └── LauncherStatus.kt        home role, role request, app launching
 ├── data/
 │   ├── HudModules.kt            shortcut tile registry (id, accent, phase, live?)
 │   ├── CommandRegistry.kt       offline terminal command table
-│   └── BootSequence.kt          boot log + rotating status notes
+│   ├── BootSequence.kt          boot log + rotating status notes
+│   └── InstalledApps.kt         PackageManager index, icon LRU cache, dock picking
 └── ui/
     ├── JarvisApp.kt             shell + string-route navigation
     ├── theme/                   Color, Type, Shape (ChamferedShape), Theme
@@ -128,12 +179,15 @@ app/src/main/java/com/jarvis/assistant/
     │   ├── ArcReactor.kt        the centrepiece, pure Canvas
     │   ├── HudSurface.kt        panels, brackets, chips, readouts, meters, backdrop
     │   ├── HudText.kt           clock, typewriter, blinking cursor, pulse dot
-    │   └── Tiles.kt             shortcut tiles, telemetry stats, section headers
+    │   ├── Tiles.kt             shortcut tiles, telemetry stats, section headers
+    │   └── AppIcons.kt          icon loading, app grid tiles, dock slots
     └── screens/
         ├── DashboardScreen.kt   the home HUD
         ├── ModuleScaffold.kt    shared module frame
         ├── TelemetryScreens.kt  Power, Network, Diagnostics
-        ├── StagedScreens.kt     Apps, Voice, Automation
+        ├── AppDrawerScreen.kt   installed apps, search, sections
+        ├── LauncherSettingsScreen.kt  home role + build info
+        ├── StagedScreens.kt     Voice, Automation, empty-drawer diagnostics
         └── TerminalScreen.kt    local command shell
 ```
 
@@ -142,6 +196,17 @@ the visual language, `ui/screens/` only composes them. Phases 2–6 add packages
 than rewriting them.
 
 ---
+
+## Phase 2 review checklist
+
+- [ ] Launcher settings shows *not the home app*, and *Set JARVIS as home* opens Android's dialog.
+- [ ] After choosing JARVIS, pressing Home opens the dashboard.
+- [ ] The drawer lists your real apps with their real icons, grouped A–Z.
+- [ ] Search filters as you type; the CLR chip clears it.
+- [ ] Tapping any app opens it.
+- [ ] The dock shows five apps and every one launches.
+- [ ] Back from the drawer returns to the HUD.
+- [ ] Pressing Home while inside another app returns to the HUD (not a blank screen).
 
 ## Phase 1 review checklist
 
@@ -157,7 +222,7 @@ than rewriting them.
 
 ## Security and privacy posture
 
-- No network permission, so the phase 1 build cannot transmit anything.
+- No network permission, so this build cannot transmit anything.
 - No sensitive runtime permission is held: no microphone, no notification access, no accessibility.
 - No analytics, no crash reporting, no third-party SDKs.
 - API keys for later phases belong in `local.properties` or CI secrets — never in the repo

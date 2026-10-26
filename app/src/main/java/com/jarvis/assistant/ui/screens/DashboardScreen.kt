@@ -20,7 +20,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -43,7 +45,9 @@ import com.jarvis.assistant.data.BootSequence
 import com.jarvis.assistant.device.DeviceInfo
 import com.jarvis.assistant.data.HudModule
 import com.jarvis.assistant.data.HudModules
+import com.jarvis.assistant.data.InstalledApp
 import com.jarvis.assistant.device.SystemStatus
+import com.jarvis.assistant.ui.components.AppDock
 import com.jarvis.assistant.ui.components.ArcReactor
 import com.jarvis.assistant.ui.components.BlinkingCursor
 import com.jarvis.assistant.ui.components.ClockSnapshot
@@ -78,6 +82,12 @@ fun DashboardScreen(
     clock: ClockSnapshot,
     status: SystemStatus,
     device: DeviceInfo,
+    dockApps: List<InstalledApp>,
+    appCount: Int,
+    isHomeApp: Boolean,
+    onLaunchApp: (InstalledApp) -> Unit,
+    onOpenDrawer: () -> Unit,
+    onOpenSettings: () -> Unit,
     onOpenModule: (HudModule) -> Unit,
     onOpenTerminal: () -> Unit,
 ) {
@@ -95,7 +105,13 @@ fun DashboardScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item(key = "identity") {
-            IdentityBar(clock = clock, status = status, device = device)
+            IdentityBar(
+                clock = clock,
+                status = status,
+                device = device,
+                isHomeApp = isHomeApp,
+                onOpenSettings = onOpenSettings,
+            )
         }
 
         item(key = "reactor") {
@@ -141,6 +157,15 @@ fun DashboardScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
+        }
+
+        item(key = "dock") {
+            DockBlock(
+                dockApps = dockApps,
+                appCount = appCount,
+                onLaunchApp = onLaunchApp,
+                onOpenDrawer = onOpenDrawer,
+            )
         }
 
         item(key = "modules-header") {
@@ -227,7 +252,13 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun IdentityBar(clock: ClockSnapshot, status: SystemStatus, device: DeviceInfo) {
+private fun IdentityBar(
+    clock: ClockSnapshot,
+    status: SystemStatus,
+    device: DeviceInfo,
+    isHomeApp: Boolean,
+    onOpenSettings: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -259,7 +290,29 @@ private fun IdentityBar(clock: ClockSnapshot, status: SystemStatus, device: Devi
         }
 
         Column(horizontalAlignment = Alignment.End) {
-            HudChip(text = "PHASE 1", accent = ElectricCyan)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HudChip(
+                    text = if (isHomeApp) "HOME" else "PHASE 2",
+                    accent = if (isHomeApp) StatusGreen else ElectricCyan,
+                    filled = isHomeApp,
+                )
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .background(Color(0xFF0A1826), ChipShape)
+                        .border(1.dp, ElectricCyan.copy(alpha = 0.22f), ChipShape)
+                        .clickable(onClick = onOpenSettings),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Settings,
+                        contentDescription = "Launcher settings",
+                        tint = ElectricCyan.copy(alpha = 0.85f),
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
+            }
             Spacer(Modifier.height(5.dp))
             Text(
                 text = "${clock.time}:${clock.seconds}",
@@ -371,6 +424,53 @@ private fun TerminalLink(onClick: () -> Unit) {
             style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.4.sp),
             color = ElectricCyan,
         )
+    }
+}
+
+@Composable
+private fun DockBlock(
+    dockApps: List<InstalledApp>,
+    appCount: Int,
+    onLaunchApp: (InstalledApp) -> Unit,
+    onOpenDrawer: () -> Unit,
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "QUICK ACCESS",
+                style = HudType.sectionTitle,
+                color = ElectricCyan.copy(alpha = 0.9f),
+            )
+            Spacer(Modifier.weight(1f))
+            Row(
+                modifier = Modifier
+                    .background(ElectricCyan.copy(alpha = 0.10f), ChipShape)
+                    .border(1.dp, ElectricCyan.copy(alpha = 0.35f), ChipShape)
+                    .clickable(onClick = onOpenDrawer)
+                    .padding(horizontal = 9.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.GridView,
+                    contentDescription = null,
+                    tint = ElectricCyan,
+                    modifier = Modifier.size(12.dp),
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    text = "ALL APPS · $appCount",
+                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.4.sp),
+                    color = ElectricCyan,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        AppDock(apps = dockApps, onLaunch = onLaunchApp)
     }
 }
 

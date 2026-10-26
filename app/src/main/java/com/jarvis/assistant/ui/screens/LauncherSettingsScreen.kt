@@ -1,0 +1,259 @@
+package com.jarvis.assistant.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.jarvis.assistant.BuildConfig
+import com.jarvis.assistant.device.LauncherStatus
+import com.jarvis.assistant.ui.components.HudChip
+import com.jarvis.assistant.ui.components.HudDivider
+import com.jarvis.assistant.ui.components.HudPanel
+import com.jarvis.assistant.ui.components.PulseDot
+import com.jarvis.assistant.ui.components.ReadoutRow
+import com.jarvis.assistant.ui.theme.AlertRed
+import com.jarvis.assistant.ui.theme.ChipShape
+import com.jarvis.assistant.ui.theme.ElectricCyan
+import com.jarvis.assistant.ui.theme.HudType
+import com.jarvis.assistant.ui.theme.IceBlue
+import com.jarvis.assistant.ui.theme.StatusGreen
+import com.jarvis.assistant.ui.theme.TextMuted
+import com.jarvis.assistant.ui.theme.TextPrimary
+import com.jarvis.assistant.ui.theme.TextSecondary
+
+/**
+ * Launcher settings: shows whether JARVIS currently owns the Home role, and offers the two
+ * supported ways to change it.
+ *
+ * Becoming the Home app is always an explicit, user-initiated action. Nothing here fires on
+ * launch, because a misconfigured Home app can leave a phone without a working home screen.
+ */
+@Composable
+fun LauncherSettingsScreen(
+    appCount: Int,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    var isHome by remember { mutableStateOf(LauncherStatus.isDefaultLauncher(context)) }
+
+    // Re-check whenever the screen comes back to the foreground (e.g. after the system dialog).
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isHome = LauncherStatus.isDefaultLauncher(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    ModuleScaffold(
+        title = "LAUNCHER",
+        subtitle = "home app configuration",
+        accent = if (isHome) StatusGreen else ElectricCyan,
+        phaseLabel = "P2",
+        onBack = onBack,
+    ) {
+        HudPanel(
+            label = "HOME ROLE",
+            accent = if (isHome) StatusGreen else ElectricCyan,
+            trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PulseDot(color = if (isHome) StatusGreen else AlertRed, diameter = 4)
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        text = if (isHome) "ACTIVE" else "INACTIVE",
+                        style = HudType.label.copy(fontSize = 8.sp),
+                        color = if (isHome) StatusGreen else AlertRed,
+                    )
+                }
+            },
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (isHome) Icons.Outlined.CheckCircle else Icons.Outlined.Settings,
+                    contentDescription = null,
+                    tint = if (isHome) StatusGreen else ElectricCyan,
+                    modifier = Modifier.size(28.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (isHome) "JARVIS IS YOUR HOME APP" else "JARVIS IS NOT THE HOME APP",
+                        style = HudType.value.copy(fontSize = 12.sp, letterSpacing = 1.2.sp),
+                        color = TextPrimary,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = if (isHome) {
+                            "Pressing Home opens this dashboard."
+                        } else {
+                            "Pressing Home still opens your current launcher."
+                        },
+                        style = HudType.terminal.copy(fontSize = 10.sp),
+                        color = TextMuted,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            if (!isHome) {
+                ActionButton(
+                    label = "SET JARVIS AS HOME",
+                    icon = Icons.Outlined.CheckCircle,
+                    accent = ElectricCyan,
+                    filled = true,
+                    onClick = {
+                        val roleIntent = LauncherStatus.homeRoleRequestIntent(context)
+                        if (roleIntent != null) {
+                            LauncherStatus.openSystemScreen(context, roleIntent)
+                        } else {
+                            LauncherStatus.openSystemScreen(context, LauncherStatus.homeSettingsIntent())
+                        }
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+
+            ActionButton(
+                label = "OPEN SYSTEM HOME SETTINGS",
+                icon = Icons.Outlined.OpenInNew,
+                accent = IceBlue,
+                filled = false,
+                onClick = {
+                    LauncherStatus.openSystemScreen(context, LauncherStatus.homeSettingsIntent())
+                },
+            )
+
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "Android shows its own confirmation dialog. JARVIS never switches the Home " +
+                    "app on its own, and the choice can be reverted at any time from the same " +
+                    "system settings screen.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted.copy(alpha = 0.9f),
+            )
+        }
+
+        HudPanel(label = "LAUNCHER STATUS") {
+            ReadoutRow(
+                label = "HOME ROLE",
+                value = if (isHome) "HELD BY JARVIS" else "HELD BY ANOTHER APP",
+                valueColor = if (isHome) StatusGreen else TextSecondary,
+            )
+            ReadoutRow(label = "LAUNCHABLE APPS", value = "$appCount INDEXED")
+            ReadoutRow(label = "APP DRAWER", value = "LIVE", valueColor = StatusGreen)
+            ReadoutRow(label = "APP LAUNCHING", value = "LIVE", valueColor = StatusGreen)
+            ReadoutRow(label = "DOCK", value = "AUTO (PHASE 3: EDITABLE)")
+            HudDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text(
+                text = "The dock picks recognised system apps (dialer, messaging, browser, " +
+                    "camera, settings) and fills the remaining slots from your installed apps. " +
+                    "A user-editable dock arrives with local storage in phase 3.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextSecondary,
+            )
+        }
+
+        HudPanel(label = "BUILD", accent = IceBlue) {
+            ReadoutRow(label = "VERSION", value = BuildConfig.VERSION_NAME.uppercase())
+            ReadoutRow(label = "VERSION CODE", value = BuildConfig.VERSION_CODE.toString())
+            ReadoutRow(label = "PACKAGE", value = "com.jarvis.assistant")
+            ReadoutRow(label = "MIN ANDROID", value = "10 (API 29)")
+            ReadoutRow(label = "TARGET", value = "14 (API 34)")
+            Spacer(Modifier.height(10.dp))
+            ActionButton(
+                label = "APP INFO",
+                icon = Icons.Outlined.Info,
+                accent = IceBlue,
+                filled = false,
+                onClick = {
+                    LauncherStatus.openSystemScreen(context, LauncherStatus.appDetailsIntent(context))
+                },
+            )
+        }
+
+        HudPanel(label = "LAUNCHER SCOPE", accent = TextMuted) {
+            Text(
+                text = "JARVIS can become the Home app, list launchable apps and open them. It " +
+                    "cannot replace the lock screen, permission dialogs, system navigation or " +
+                    "protected screens — those stay with Android.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActionButton(
+    label: String,
+    icon: ImageVector,
+    accent: Color,
+    filled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (filled) accent.copy(alpha = 0.16f) else Color.Transparent,
+                ChipShape,
+            )
+            .border(1.dp, accent.copy(alpha = if (filled) 0.65f else 0.32f), ChipShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Start,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(15.dp),
+        )
+        Spacer(Modifier.width(9.dp))
+        Text(
+            text = label,
+            style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.6.sp),
+            color = accent,
+        )
+        Spacer(Modifier.weight(1f))
+        HudChip(text = "SYSTEM", accent = accent.copy(alpha = 0.7f))
+    }
+}
