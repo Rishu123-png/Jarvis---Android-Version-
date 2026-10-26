@@ -6,6 +6,13 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!--
+      Network access is used for exactly one thing: sending a request to the AI provider whose key
+      the operator stored in Settings. There is no JARVIS backend and no analytics. If no key is
+      configured, no request is ever made.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
       Package visibility (Android 11+).
       Without this block, queryIntentActivities() silently returns an empty list on targetSdk 30+
       and the app drawer looks broken. Declaring the intents we query is the supported way to

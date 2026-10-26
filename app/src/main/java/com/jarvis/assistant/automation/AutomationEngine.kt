@@ -150,7 +150,9 @@ object AutomationEngine {
                     }
                 }
 
-                val result = withContext(Dispatchers.Main) {
+                // Device work — including a bounded walk of the accessibility tree — must not run
+                // on the main thread: on a busy screen that walk is long enough to jank the HUD.
+                val result = withContext(Dispatchers.Default) {
                     StepExecutor.execute(appContext, step)
                 }
 

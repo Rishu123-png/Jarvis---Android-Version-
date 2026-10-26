@@ -66,7 +66,7 @@ fun DockPickerScreen(
         title = "DOCK",
         subtitle = "edit quick access",
         accent = ElectricCyan,
-        phaseLabel = "P3",
+        statusLabel = "LIVE",
         onBack = onBack,
     ) {
         HudPanel(

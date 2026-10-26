@@ -247,7 +247,7 @@ fun DashboardScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    text = "PHASE 1 · HUD AND THEME",
+                    text = "J.A.R.V.I.S. · CORE INTERFACE",
                     style = HudType.label,
                     color = TextMuted,
                     textAlign = TextAlign.Center,
@@ -305,7 +305,7 @@ private fun IdentityBar(
         Column(horizontalAlignment = Alignment.End) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 HudChip(
-                    text = if (isHomeApp) "HOME" else "PHASE 2",
+                    text = if (isHomeApp) "HOME" else "LAUNCHER",
                     accent = if (isHomeApp) StatusGreen else ElectricCyan,
                     filled = isHomeApp,
                 )
@@ -556,11 +556,11 @@ private fun VoiceBar() {
                 color = TextPrimary,
             )
             Text(
-                text = "Speech recognition arrives in phase 4",
+                text = "Voice module is not built in this version",
                 style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 0.8.sp),
                 color = TextMuted,
             )
         }
-        HudChip(text = "PHASE 4", accent = TextMuted)
+        HudChip(text = "SOON", accent = TextMuted)
     }
 }

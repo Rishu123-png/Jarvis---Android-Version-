@@ -33,6 +33,7 @@ import com.jarvis.assistant.automation.AccessibilityStatus
 import com.jarvis.assistant.automation.AutomationEngine
 import com.jarvis.assistant.automation.AutomationStore
 import com.jarvis.assistant.automation.Workflow
+import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.DockPrefs
 import com.jarvis.assistant.data.HudModules
@@ -46,6 +47,8 @@ import com.jarvis.assistant.device.rememberDeviceInfo
 import com.jarvis.assistant.device.rememberSystemStatus
 import com.jarvis.assistant.ui.components.HudBackground
 import com.jarvis.assistant.ui.components.rememberClock
+import com.jarvis.assistant.ui.components.rememberIsResumed
+import com.jarvis.assistant.ui.screens.AiSettingsScreen
 import com.jarvis.assistant.ui.screens.AppDrawerScreen
 import com.jarvis.assistant.ui.screens.AutomationEditorScreen
 import com.jarvis.assistant.ui.screens.AutomationScreen
@@ -60,13 +63,15 @@ import com.jarvis.assistant.ui.screens.NotificationsScreen
 import com.jarvis.assistant.ui.screens.PowerScreen
 import com.jarvis.assistant.ui.screens.TerminalScreen
 import com.jarvis.assistant.ui.screens.VoiceScreen
-import com.jarvis.assistant.ui.theme.AlertRed
 import com.jarvis.assistant.ui.theme.Amber
 import com.jarvis.assistant.ui.theme.ElectricCyan
 import com.jarvis.assistant.ui.theme.IceBlue
 import com.jarvis.assistant.ui.theme.StatusGreen
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
 private const val ROUTE_DASHBOARD = "dashboard"
 private const val ROUTE_TERMINAL = "terminal"
@@ -74,13 +79,15 @@ private const val ROUTE_DRAWER = "drawer"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_DOCK = "dock"
 private const val ROUTE_ROUTINE = "routine"
+private const val ROUTE_AI = "ai"
 
 /**
  * Application shell.
  *
  * Owns every piece of device state the HUD renders — installed apps, the persisted dock, the Home
- * role, notification access and the live notification list, plus the phase 3 control state (torch,
- * volume, media). Screens stay stateless so they can be previewed and reasoned about in isolation.
+ * role, notification access and the live notification list, plus the control state (torch,
+ * volume, media) and the operator's AI configuration. Screens stay stateless so they can be
+ * previewed and reasoned about in isolation.
  */
 @Composable
 fun JarvisApp() {
@@ -120,6 +127,12 @@ fun JarvisApp() {
     var screenPressAllowed by remember { mutableStateOf(false) }
     val runState by AutomationEngine.state.collectAsState()
 
+    // ---- intelligence ----
+    var aiConfig by remember { mutableStateOf(AiKeyStore.config(context)) }
+
+    // Prevents overlapping app refreshes when several resume events arrive in quick succession.
+    val refreshGate = remember { AtomicBoolean(false) }
+
     // ---- storage ----
     var storage by remember { mutableStateOf(readStorage(context)) }
 
@@ -152,19 +165,28 @@ fun JarvisApp() {
         workflows = AutomationStore.load(context)
         accessibilityEnabled = AccessibilityStatus.isServiceEnabled(context)
         screenPressAllowed = AccessibilityStatus.isScreenPressAllowed(context)
+        aiConfig = withContext(Dispatchers.IO) { AiKeyStore.config(context) }
     }
 
     // Refresh on every foreground pass: apps change, access can be revoked, media comes and goes.
+    val isResumed = rememberIsResumed()
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 isHomeApp = LauncherStatus.isDefaultLauncher(context)
                 accessibilityEnabled = AccessibilityStatus.isServiceEnabled(context)
                 screenPressAllowed = AccessibilityStatus.isScreenPressAllowed(context)
-                scope.launch {
-                    refreshApps()
-                    refreshControls()
-                    storage = readStorage(context)
+                aiConfig = AiKeyStore.config(context)
+                if (refreshGate.compareAndSet(false, true)) {
+                    scope.launch {
+                        try {
+                            refreshApps()
+                            refreshControls()
+                            storage = readStorage(context)
+                        } finally {
+                            refreshGate.set(false)
+                        }
+                    }
                 }
             }
         }
@@ -173,8 +195,8 @@ fun JarvisApp() {
     }
 
     // Media state is polled while anything is playing; cheap, and avoids holding a MediaController.
-    LaunchedEffect(route, hasNotificationAccess) {
-        if (!hasNotificationAccess) return@LaunchedEffect
+    LaunchedEffect(route, hasNotificationAccess, isResumed) {
+        if (!hasNotificationAccess || !isResumed) return@LaunchedEffect
         while (true) {
             mediaTitle = QuickControls.mediaNowPlaying(context)
             isPlaying = QuickControls.isPlaying(context)
@@ -226,7 +248,21 @@ fun JarvisApp() {
                     onOpenTerminal = { route = ROUTE_TERMINAL },
                 )
 
-                ROUTE_TERMINAL -> TerminalScreen(onBack = { route = ROUTE_DASHBOARD })
+                ROUTE_TERMINAL -> TerminalScreen(
+                    aiConfigured = aiConfig != null,
+                    aiLabel = aiConfig?.label,
+                    onOpenAiSettings = { route = ROUTE_AI },
+                    onBack = { route = ROUTE_DASHBOARD },
+                )
+
+                ROUTE_AI -> AiSettingsScreen(
+                    onBack = {
+                        scope.launch {
+                            aiConfig = withContext(Dispatchers.IO) { AiKeyStore.config(context) }
+                        }
+                        route = ROUTE_SETTINGS
+                    },
+                )
 
                 ROUTE_DRAWER -> AppDrawerScreen(
                     apps = installedApps,
@@ -240,10 +276,13 @@ fun JarvisApp() {
                     appCount = installedApps.size,
                     notificationAccess = hasNotificationAccess,
                     isDockCustom = isDockCustom,
+                    aiConfigured = aiConfig != null,
+                    aiLabel = aiConfig?.label,
                     onEditDock = { dockEditSlot = 0; route = ROUTE_DOCK },
                     onOpenNotificationAccess = {
                         QuickControls.openNotificationAccessSettings(context)
                     },
+                    onOpenIntelligence = { route = ROUTE_AI },
                     onBack = { route = ROUTE_DASHBOARD },
                 )
 
@@ -329,7 +368,7 @@ fun JarvisApp() {
                     title = "NETWORK",
                     subtitle = "link telemetry",
                     accent = IceBlue,
-                    phaseLabel = "P3",
+                    statusLabel = "LIVE",
                     onBack = { route = ROUTE_DASHBOARD },
                 ) { NetworkScreen(status = status) }
 
@@ -337,7 +376,7 @@ fun JarvisApp() {
                     title = "POWER",
                     subtitle = "cell diagnostics",
                     accent = StatusGreen,
-                    phaseLabel = "P3",
+                    statusLabel = "LIVE",
                     onBack = { route = ROUTE_DASHBOARD },
                 ) { PowerScreen(status = status) }
 
@@ -345,7 +384,7 @@ fun JarvisApp() {
                     title = "DIAGNOSTICS",
                     subtitle = "core telemetry",
                     accent = ElectricCyan,
-                    phaseLabel = "P1",
+                    statusLabel = "LIVE",
                     onBack = { route = ROUTE_DASHBOARD },
                 ) {
                     DiagnosticsScreen(
@@ -353,14 +392,15 @@ fun JarvisApp() {
                         device = device,
                         clock = clock,
                         storage = storage,
+                        aiLabel = aiConfig?.label,
                     )
                 }
 
                 HudModules.VOICE -> ModuleScaffold(
                     title = "VOICE",
-                    subtitle = "speech interface · phase 4",
+                    subtitle = "speech interface",
                     accent = Amber,
-                    phaseLabel = "P4",
+                    statusLabel = "OFFLINE",
                     onBack = { route = ROUTE_DASHBOARD },
                 ) { VoiceScreen() }
 

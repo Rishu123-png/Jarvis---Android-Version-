@@ -12,7 +12,7 @@ import com.jarvis.assistant.ui.theme.JarvisTheme
 import com.jarvis.assistant.ui.theme.VoidBlack
 
 /**
- * Single-activity host. Phase 2 will turn this activity into a Home app target with its own
+ * Single-activity host. This activity is the Home app target, with its own
  * intent filters; for now it is a plain launcher activity.
  */
 class MainActivity : ComponentActivity() {

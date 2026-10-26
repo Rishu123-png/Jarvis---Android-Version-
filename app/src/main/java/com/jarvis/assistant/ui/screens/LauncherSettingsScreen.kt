@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -68,8 +68,11 @@ fun LauncherSettingsScreen(
     appCount: Int,
     notificationAccess: Boolean,
     isDockCustom: Boolean,
+    aiConfigured: Boolean,
+    aiLabel: String?,
     onEditDock: () -> Unit,
     onOpenNotificationAccess: () -> Unit,
+    onOpenIntelligence: () -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -92,7 +95,7 @@ fun LauncherSettingsScreen(
         title = "LAUNCHER",
         subtitle = "home app configuration",
         accent = if (isHome) StatusGreen else ElectricCyan,
-        phaseLabel = "P2",
+        statusLabel = "LIVE",
         onBack = onBack,
     ) {
         HudPanel(
@@ -177,6 +180,38 @@ fun LauncherSettingsScreen(
             )
         }
 
+        HudPanel(
+            label = "INTELLIGENCE",
+            accent = if (aiConfigured) StatusGreen else Amber,
+        ) {
+            ReadoutRow(
+                label = "PROVIDER",
+                value = aiLabel?.uppercase() ?: "NOT CONFIGURED",
+                valueColor = if (aiConfigured) StatusGreen else Amber,
+            )
+            ReadoutRow(
+                label = "KEY STORAGE",
+                value = "ENCRYPTED · KEYSTORE",
+                valueColor = StatusGreen,
+            )
+            ReadoutRow(label = "TRAFFIC", value = "DIRECT TO PROVIDER")
+            HudDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text(
+                text = "Bring your own key: any supported provider works. The key is encrypted " +
+                    "with the Android Keystore and sent only to that provider.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextSecondary,
+            )
+            Spacer(Modifier.height(10.dp))
+            ActionButton(
+                label = if (aiConfigured) "MANAGE API KEY" else "ADD API KEY",
+                icon = Icons.Outlined.Key,
+                accent = if (aiConfigured) StatusGreen else ElectricCyan,
+                filled = false,
+                onClick = onOpenIntelligence,
+            )
+        }
+
         HudPanel(label = "LAUNCHER STATUS") {
             ReadoutRow(
                 label = "HOME ROLE",
@@ -186,12 +221,12 @@ fun LauncherSettingsScreen(
             ReadoutRow(label = "LAUNCHABLE APPS", value = "$appCount INDEXED")
             ReadoutRow(label = "APP DRAWER", value = "LIVE", valueColor = StatusGreen)
             ReadoutRow(label = "APP LAUNCHING", value = "LIVE", valueColor = StatusGreen)
-            ReadoutRow(label = "DOCK", value = "AUTO (PHASE 3: EDITABLE)")
+            ReadoutRow(label = "DOCK", value = "AUTO · EDITABLE")
             HudDivider(modifier = Modifier.padding(vertical = 8.dp))
             Text(
                 text = "The dock picks recognised system apps (dialer, messaging, browser, " +
                     "camera, settings) and fills the remaining slots from your installed apps. " +
-                    "A user-editable dock arrives with local storage in phase 3.",
+                    "The dock is editable: long-press any slot on the HUD.",
                 style = HudType.terminal.copy(fontSize = 10.sp),
                 color = TextSecondary,
             )
@@ -206,7 +241,7 @@ fun LauncherSettingsScreen(
             ReadoutRow(label = "TORCH", value = "NO PERMISSION NEEDED", valueColor = StatusGreen)
             ReadoutRow(label = "MEDIA VOLUME", value = "NO PERMISSION NEEDED", valueColor = StatusGreen)
             ReadoutRow(label = "MICROPHONE", value = "NOT REQUESTED", valueColor = StatusGreen)
-            ReadoutRow(label = "ACCESSIBILITY", value = "NOT USED", valueColor = StatusGreen)
+            ReadoutRow(label = "ACCESSIBILITY", value = "OPTIONAL · OFF BY DEFAULT", valueColor = StatusGreen)
             Spacer(Modifier.height(10.dp))
             ActionButton(
                 label = if (notificationAccess) {

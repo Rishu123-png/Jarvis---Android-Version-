@@ -11,7 +11,7 @@ import android.media.session.PlaybackState
 import android.provider.Settings
 
 /**
- * Phase 3 device controls.
+ * Device controls.
  *
  * The rule applied here: only do what Android genuinely allows, and hand the rest to the system UI
  * instead of pretending. Concretely —

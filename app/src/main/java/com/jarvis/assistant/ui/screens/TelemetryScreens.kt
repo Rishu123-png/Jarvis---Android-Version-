@@ -174,16 +174,17 @@ fun NetworkScreen(status: SystemStatus) {
         Text(
             text = "Capabilities queried through ConnectivityManager. " +
                 "Per-app and SSID-level detail requires the location permission and is not " +
-                "requested in phase 1.",
+                "requested by this build.",
             style = HudType.terminal.copy(fontSize = 10.sp),
             color = TextMuted,
         )
     }
 
-    HudPanel(label = "NEXT IN THIS MODULE", accent = IceBlue) {
+    HudPanel(label = "SWITCHING TRANSPORT", accent = IceBlue) {
         Text(
-            text = "PHASE 3 adds notification listening, per-app data awareness and supported " +
-                "quick toggles, each behind its own explicit permission request.",
+            text = "JARVIS can open the system internet panel but cannot flip Wi-Fi or mobile " +
+                "data itself: doing so needs a privileged permission a normal app is not " +
+                "granted, and asking for it would be a fake affordance.",
             style = HudType.terminal.copy(fontSize = 10.sp),
             color = TextSecondary,
         )
@@ -200,6 +201,7 @@ fun DiagnosticsScreen(
     device: DeviceInfo,
     clock: ClockSnapshot,
     storage: StorageStatus,
+    aiLabel: String? = null,
 ) {
     val memory = status.memory
 
@@ -269,12 +271,16 @@ fun DiagnosticsScreen(
         ReadoutRow(label = "RENDER", value = "COMPOSE · GPU CANVAS")
     }
 
-    HudPanel(label = "MODULE MATRIX", accent = StatusGreen) {
-        ReadoutRow(label = "HUD + THEME", value = "PHASE 1 · LIVE", valueColor = StatusGreen)
-        ReadoutRow(label = "LAUNCHER", value = "PHASE 2 · LIVE", valueColor = StatusGreen)
-        ReadoutRow(label = "DEVICE CONTROL", value = "PHASE 3 · LIVE", valueColor = StatusGreen)
-        ReadoutRow(label = "VOICE", value = "PHASE 4 · STAGED", valueColor = TextMuted)
-        ReadoutRow(label = "AI CORE", value = "PHASE 5 · STAGED", valueColor = TextMuted)
-        ReadoutRow(label = "AUTOMATION", value = "PHASE 6 · LIVE", valueColor = StatusGreen)
+    HudPanel(label = "CAPABILITY MATRIX", accent = StatusGreen) {
+        ReadoutRow(label = "HUD + TELEMETRY", value = "LIVE", valueColor = StatusGreen)
+        ReadoutRow(label = "LAUNCHER", value = "LIVE", valueColor = StatusGreen)
+        ReadoutRow(label = "DEVICE CONTROL", value = "LIVE", valueColor = StatusGreen)
+        ReadoutRow(label = "AUTOMATION", value = "LIVE", valueColor = StatusGreen)
+        ReadoutRow(
+            label = "INTELLIGENCE",
+            value = aiLabel?.let { "LINKED · ${it.uppercase(Locale.US)}" } ?: "NO KEY",
+            valueColor = if (aiLabel != null) StatusGreen else TextMuted,
+        )
+        ReadoutRow(label = "VOICE", value = "NOT BUILT", valueColor = TextMuted)
     }
 }

@@ -67,7 +67,7 @@ fun NotificationsScreen(
         title = "NOTIFICATIONS",
         subtitle = "notification listener",
         accent = if (hasAccess) ElectricCyan else Amber,
-        phaseLabel = "P3",
+        statusLabel = "LIVE",
         onBack = onBack,
     ) {
         if (!hasAccess) {

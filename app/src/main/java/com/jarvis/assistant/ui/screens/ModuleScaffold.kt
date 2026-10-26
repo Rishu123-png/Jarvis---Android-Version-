@@ -42,7 +42,7 @@ fun ModuleScaffold(
     title: String,
     subtitle: String,
     accent: Color,
-    phaseLabel: String,
+    statusLabel: String,
     onBack: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -88,7 +88,7 @@ fun ModuleScaffold(
                 )
             }
 
-            HudChip(text = phaseLabel, accent = accent)
+            HudChip(text = statusLabel, accent = accent)
         }
 
         Column(

@@ -21,8 +21,8 @@ import com.jarvis.assistant.ui.theme.Amber
 /**
  * A shortcut tile on the HUD.
  *
- * Phase 1 ships these as navigation entry points into read-only panels. Later phases attach
- * real capability to each [id] — the tile itself should not need to change.
+ * Tiles are navigation entry points. [isLive] marks the ones that are backed by real device APIs;
+ * the rest are marked STAGED on the HUD rather than pretending to work.
  */
 data class HudModule(
     val id: String,
@@ -30,8 +30,6 @@ data class HudModule(
     val caption: String,
     val icon: ImageVector,
     val accent: Color,
-    /** Roadmap phase that will make this tile fully functional. */
-    val phase: Int,
     val isLive: Boolean,
 )
 
@@ -53,7 +51,6 @@ object HudModules {
             caption = "Installed apps",
             icon = Icons.Outlined.Apps,
             accent = ElectricCyan,
-            phase = 2,
             isLive = true,
         ),
         HudModule(
@@ -62,7 +59,6 @@ object HudModules {
             caption = "Link telemetry",
             icon = Icons.Outlined.Wifi,
             accent = IceBlue,
-            phase = 3,
             isLive = true,
         ),
         HudModule(
@@ -71,7 +67,6 @@ object HudModules {
             caption = "Cell diagnostics",
             icon = Icons.Outlined.BatteryFull,
             accent = StatusGreen,
-            phase = 3,
             isLive = true,
         ),
         HudModule(
@@ -80,7 +75,6 @@ object HudModules {
             caption = "Core telemetry",
             icon = Icons.Outlined.Memory,
             accent = ElectricCyan,
-            phase = 1,
             isLive = true,
         ),
         HudModule(
@@ -89,7 +83,6 @@ object HudModules {
             caption = "Notification shade",
             icon = Icons.Outlined.NotificationsActive,
             accent = ElectricCyan,
-            phase = 3,
             isLive = true,
         ),
         HudModule(
@@ -98,7 +91,6 @@ object HudModules {
             caption = "Quick actions",
             icon = Icons.Outlined.Tune,
             accent = IceBlue,
-            phase = 3,
             isLive = true,
         ),
         HudModule(
@@ -107,7 +99,6 @@ object HudModules {
             caption = "Speech I/O",
             icon = Icons.Outlined.Mic,
             accent = Amber,
-            phase = 4,
             isLive = false,
         ),
         HudModule(
@@ -116,7 +107,6 @@ object HudModules {
             caption = "Routine control",
             icon = Icons.Outlined.AutoAwesome,
             accent = AlertRed,
-            phase = 6,
             isLive = true,
         ),
     )
