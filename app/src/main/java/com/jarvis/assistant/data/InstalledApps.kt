@@ -100,7 +100,7 @@ object AppRepository {
 
     /**
      * Common launcher packages, ordered per category. Used only to pick sensible dock slots until
-     * phase 3 can persist a real user-chosen dock.
+     * the persisted dock can hold a real user-chosen app.
      */
     private val dockCandidates: List<List<String>> = listOf(
         listOf(

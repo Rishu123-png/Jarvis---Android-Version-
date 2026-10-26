@@ -75,9 +75,9 @@ fun AutomationScreen(
 ) {
     ModuleScaffold(
         title = "AUTOMATION",
-        subtitle = "routine control · phase 6",
+        subtitle = "routine control",
         accent = AlertRed,
-        phaseLabel = "P6",
+        statusLabel = "LIVE",
         onBack = onBack,
     ) {
         // ---------------- access ----------------

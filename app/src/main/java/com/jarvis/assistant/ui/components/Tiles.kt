@@ -46,7 +46,7 @@ import com.jarvis.assistant.data.HudModule
  * The hexagonal-ish chamfered shortcut tile used for every HUD module.
  *
  * Also the place where the roadmap becomes visible to the user: tiles whose capability lands
- * in a later phase are marked STAGED with their phase number instead of pretending to work.
+ * that are not built yet are marked SOON instead of pretending to work.
  */
 @Composable
 fun HudTile(
@@ -141,7 +141,7 @@ fun HudTile(
                 }
             } else {
                 Text(
-                    text = if (module.isLive) "LIVE" else "P${module.phase}",
+                    text = if (module.isLive) "LIVE" else "SOON",
                     style = HudType.label,
                     color = if (module.isLive) accent else TextMuted,
                 )

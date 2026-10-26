@@ -43,6 +43,9 @@ object NotificationRepository {
 
     private val labelCache = LruCache<String, String>(48)
 
+    /** Hard ceiling on the live list. A chatty app can post hundreds; the HUD only shows a page. */
+    private const val MAX_ALERTS = 120
+
     fun attach(listener: JarvisNotificationListener) {
         listenerRef = WeakReference(listener)
     }
@@ -54,8 +57,12 @@ object NotificationRepository {
     /** Reads the listener's live snapshot. Safe to call when access has been revoked. */
     fun publish(context: Context, active: List<StatusBarNotification>) {
         val mapped = try {
-            active.mapNotNull { sbn -> map(context, sbn) }
+            active.asSequence()
+                .take(MAX_ALERTS)
+                .mapNotNull { sbn -> map(context, sbn) }
                 .sortedByDescending { it.postedAt }
+                .take(MAX_ALERTS)
+                .toList()
         } catch (t: Throwable) {
             emptyList()
         }

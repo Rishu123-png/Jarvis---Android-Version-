@@ -59,7 +59,9 @@ data class ClockSnapshot(
 @Composable
 fun rememberClock(): ClockSnapshot {
     var snapshot by remember { mutableStateOf(ClockSnapshot.from(LocalDateTime.now())) }
-    LaunchedEffect(Unit) {
+    val resumed = rememberIsResumed()
+    LaunchedEffect(resumed) {
+        if (!resumed) return@LaunchedEffect
         while (true) {
             snapshot = ClockSnapshot.from(LocalDateTime.now())
             val millisIntoSecond = System.currentTimeMillis() % 1000L

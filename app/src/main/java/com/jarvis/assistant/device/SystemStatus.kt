@@ -15,15 +15,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import com.jarvis.assistant.ui.components.rememberIsResumed
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 
 /**
  * Read-only device telemetry for the HUD.
  *
- * Phase 1 keeps this deliberately narrow: everything here is available to a normal app
+ * This layer is deliberately narrow: everything here is available to a normal app
  * with no runtime permission (battery, memory, network transport, uptime, build info).
- * Notification access, usage stats and settings control arrive in later phases.
+ * Notification access and settings control live in their own modules.
  */
 
 data class BatteryStatus(
@@ -90,8 +91,8 @@ fun rememberDeviceInfo(): DeviceInfo = remember {
 
 /**
  * Polls the device once every [refreshMillis]. Polling (rather than a broadcast receiver per
- * subsystem) keeps Phase 1 simple and predictable; the battery intent read is a cheap
- * sticky-broadcast lookup, and it is refreshed again in later phases by a real receiver.
+ * subsystem) keeps this simple and predictable; the battery intent read is a cheap
+ * sticky-broadcast lookup rather than a long-lived receiver.
  */
 @Composable
 fun rememberSystemStatus(refreshMillis: Long = 2_000L): SystemStatus {
@@ -108,7 +109,9 @@ fun rememberSystemStatus(refreshMillis: Long = 2_000L): SystemStatus {
         )
     }
 
-    LaunchedEffect(context) {
+    val resumed = rememberIsResumed()
+    LaunchedEffect(context, resumed) {
+        if (!resumed) return@LaunchedEffect
         while (true) {
             status = SystemStatus(
                 battery = readBattery(context),

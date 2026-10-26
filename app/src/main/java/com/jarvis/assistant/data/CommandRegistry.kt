@@ -1,128 +1,356 @@
 package com.jarvis.assistant.data
 
+import android.content.Context
+import com.jarvis.assistant.ai.AiKeyStore
+import com.jarvis.assistant.automation.AutomationEngine
+import com.jarvis.assistant.automation.AutomationStore
+import com.jarvis.assistant.device.NotificationRepository
+import com.jarvis.assistant.device.QuickControls
+import com.jarvis.assistant.device.readBattery
+import com.jarvis.assistant.device.readNetwork
+import com.jarvis.assistant.device.readStorage
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
 /**
- * Local, offline command registry for the Phase 1 terminal.
+ * Local command line for the HUD terminal.
  *
- * This is intentionally *not* an AI. It is a small deterministic lookup so the interface can
- * be exercised end-to-end before the intelligence layer exists. Phase 5 replaces the body of
- * [respond] with a real backend round-trip while keeping the same UI contract:
- * in -> text, out -> lines of text.
+ * Every command here does real work against a real Android API — this replaced an earlier table
+ * that only printed text. Nothing is simulated: `battery` reads the battery, `torch on` turns the
+ * flashlight on, `run focus` starts a real routine.
+ *
+ * Commands that are not recognised return [Response.unknown] so the terminal can hand the input to
+ * the AI core instead of guessing.
  */
 object CommandRegistry {
 
-    data class Response(val output: List<String>)
+    data class Response(
+        val output: List<String>,
+        val unknown: Boolean = false,
+    )
 
-    private val commands: List<Pair<String, (String) -> List<String>>> = listOf(
-        "help" to { _ ->
-            listOf(
-                "AVAILABLE LOCAL COMMANDS",
-                "  status      system summary",
-                "  battery     cell diagnostics",
-                "  network     link diagnostics",
-                "  modules     list HUD modules",
-                "  alerts      notification panel status",
-                "  controls    quick action list",
-                "  phase       roadmap position",
-                "  routines    automation overview",
-                "  time        current system time",
-                "  clear       empty the terminal",
-                "NOTE: intelligence core is offline (phase 5).",
-            )
-        },
-        "status" to { _ ->
-            listOf(
-                "CORE :: ONLINE",
-                "PHASE :: 6 — MOBILE AUTOMATION",
-                "MODULES :: ${HudModules.all.size} REGISTERED / ${HudModules.all.count { it.isLive }} LIVE",
-                "AUTOMATION :: LIVE (CONFIRM-GATED)",
-                "AI CORE :: NOT CONNECTED",
-            )
-        },
-        "battery" to { _ ->
-            listOf(
-                "CELL DIAGNOSTICS",
-                "Open the POWER module for the live readout:",
-                "level, charge state, temperature, voltage and health.",
-            )
-        },
-        "network" to { _ ->
-            listOf(
-                "LINK DIAGNOSTICS",
-                "Open the NETWORK module for the live readout:",
-                "transport, validation state, downstream estimate.",
-            )
-        },
-        "modules" to { _ ->
-            listOf("REGISTERED HUD MODULES") + HudModules.all.map {
-                "  ${it.title.padEnd(12)} phase ${it.phase}  ${if (it.isLive) "LIVE" else "STAGED"}"
+    /** Bound so a long session cannot grow the terminal list without limit. */
+    const val MAX_HISTORY_LINES = 400
+
+    private val COMMANDS = listOf(
+        "help", "status", "battery", "network", "storage", "apps",
+        "alerts", "torch", "volume", "panel", "routines", "run", "stop",
+        "modules", "ai", "time", "clear",
+    )
+
+    fun banner(aiConfigured: Boolean, aiLabel: String?): List<String> = buildList {
+        add("J.A.R.V.I.S. TERMINAL")
+        add(
+            if (aiConfigured && aiLabel != null) {
+                "intelligence :: $aiLabel :: linked"
+            } else {
+                "intelligence :: not configured (settings > intelligence)"
             }
-        },
-        "phase" to { _ ->
-            listOf(
-                "ROADMAP",
-                "  [DONE   ] 1  HUD and theme",
-                "  [DONE   ] 2  Default launcher",
-                "  [DONE   ] 3  Device info and controls",
-                "  [QUEUED ] 4  Voice assistant",
-                "  [QUEUED ] 5  AI intelligence",
-                "  [ACTIVE ] 6  Mobile automation",
-            )
-        },
-        "alerts" to { _ ->
-            listOf(
-                "NOTIFICATION PANEL",
-                "Requires notification access in system settings.",
-                "Open the ALERTS module to grant it or read the current shade.",
-            )
-        },
-        "controls" to { _ ->
-            listOf(
-                "QUICK CONTROLS",
-                "  torch       real toggle, no permission",
-                "  volume      real toggle, no permission",
-                "  media       needs notification access",
-                "  wi-fi etc.  system panel only (Android restriction)",
-            )
-        },
-        "routines" to { _ ->
-            listOf(
-                "AUTOMATION",
-                "Routines run top to bottom, one at a time, max 20 steps.",
-                "Sensitive steps pause for explicit approval.",
-                "Gestures and screen presses need accessibility access.",
-            )
-        },
-        "time" to { _ ->
-            val now = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
-                .format(java.util.Date())
-            listOf("SYSTEM TIME :: $now")
-        },
-    )
-
-    private val hints = listOf(
-        "Try 'help' for the local command list.",
-        "Intelligence core is offline. This terminal is a local stub.",
-        "Voice input arrives in phase 4.",
-    )
-
-    /** Returns the output lines for [input]. Never throws, never touches the network. */
-    fun respond(input: String, context: String = ""): Response {
-        val trimmed = input.trim()
-        if (trimmed.isEmpty()) return Response(emptyList())
-        val key = trimmed.lowercase().substringBefore(' ')
-        val handler = commands.firstOrNull { it.first == key }?.second
-            ?: return Response(
-                listOf(
-                    "UNKNOWN COMMAND :: ${trimmed.uppercase()}",
-                    hints.random(),
-                )
-            )
-        return Response(handler(context))
+        )
+        add("type 'help' · local commands run on this device")
+        add("anything else is sent to your AI key, if configured")
     }
 
-    val banner: List<String> = listOf(
-        "J.A.R.V.I.S. LOCAL TERMINAL",
-        "phase 1 build — no AI core attached",
-        "input 'help' to list commands",
-    )
+    suspend fun respond(context: Context, raw: String): Response {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return Response(emptyList())
+
+        val tokens = trimmed.split(Regex("\\s+"))
+        val head = tokens.first().lowercase(Locale.US)
+        val argument = tokens.drop(1).joinToString(" ").trim()
+        val app = context.applicationContext
+
+        return when (head) {
+            "help" -> Response(helpLines())
+            "status" -> Response(statusLines(app))
+            "battery" -> Response(batteryLines(app))
+            "network" -> Response(networkLines(app))
+            "storage" -> Response(storageLines(app))
+            "apps" -> Response(appsLines(app))
+            "alerts" -> Response(alertsLines(app, argument))
+            "torch" -> Response(torchLines(app, argument))
+            "volume" -> Response(volumeLines(app, argument))
+            "panel" -> Response(panelLines(app, argument))
+            "routines" -> Response(routineLines(app))
+            "run" -> Response(runLines(app, argument))
+            "stop" -> Response(stopLines())
+            "modules" -> Response(moduleLines())
+            "ai" -> Response(aiLines(app))
+            "time" -> Response(
+                listOf(
+                    "LOCAL TIME",
+                    "  " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")),
+                    "  " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy")),
+                )
+            )
+            else -> Response(
+                output = listOf(
+                    "UNKNOWN COMMAND :: $head",
+                    "type 'help' for local commands.",
+                ),
+                unknown = true,
+            )
+        }
+    }
+
+    /** Handed to the model so it knows what the console can actually do. */
+    fun aiSystemPrompt(context: Context): String {
+        val battery = readBattery(context)
+        val network = readNetwork(context)
+        val storage = readStorage(context)
+        val routines = AutomationStore.load(context).joinToString(", ") { it.name }
+
+        return """
+            You are JARVIS, an on-device assistant inside an Android HUD app.
+            You are talking to the phone's owner through a small terminal panel on their screen.
+
+            Style: plain text only. No markdown, no asterisks, no code fences, no emoji.
+            Keep replies under 80 words unless the operator asks you to explain something.
+            Short lines read better than paragraphs on this panel.
+
+            Device right now: battery ${battery.percent}%, network ${network.transport},
+            storage ${storage.freeLabel} free of ${storage.totalLabel}.
+            Saved routines: ${routines.ifBlank { "none" }}.
+
+            Local commands the operator can run: ${COMMANDS.joinToString(", ")}.
+            Use the real syntax: torch on, volume 40, panel wifi, run <routine>, stop, battery.
+
+            You cannot read the screen, send messages, place calls, or run shell commands.
+            Say so plainly if asked rather than pretending.
+            If exactly one local command would help, end with one line formatted as:
+            RUN: <command>
+            Otherwise omit that line.
+        """.trimIndent()
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Command bodies
+    // -----------------------------------------------------------------------------------------
+
+    private fun helpLines(): List<String> = buildList {
+        add("LOCAL COMMANDS")
+        add("  status              core summary")
+        add("  battery             live cell state")
+        add("  network             link state")
+        add("  storage             free space")
+        add("  apps                installed launcher apps")
+        add("  alerts              notification count")
+        add("  alerts clear        dismiss clearable alerts")
+        add("  torch [on|off]      flashlight")
+        add("  volume [0-100|up|down]")
+        add("  panel wifi|bt|dnd|display|volume|notification|battery")
+        add("  routines            list saved routines")
+        add("  run <name>          start a routine")
+        add("  stop                halt the running routine")
+        add("  modules             HUD modules")
+        add("  ai                  intelligence status")
+        add("  time                clock")
+        add("  clear               wipe this session")
+        add("Unrecognised input goes to the AI core when a key is configured.")
+    }
+
+    private fun statusLines(context: Context): List<String> {
+        val config = AiKeyStore.config(context)
+        val running = AutomationEngine.isBusy
+        return listOf(
+            "CORE :: ONLINE",
+            "MODULES :: ${HudModules.all.size} REGISTERED / ${HudModules.all.count { it.isLive }} LIVE",
+            "INTELLIGENCE :: " + (config?.let { "${it.label} · ${it.resolvedModel}" } ?: "NOT CONFIGURED"),
+            "AUTOMATION :: " + if (running) "RUNNING" else "IDLE",
+            "NOTIFICATIONS :: " + if (NotificationRepository.hasAccess(context)) "LINKED" else "NO ACCESS",
+        )
+    }
+
+    private fun batteryLines(context: Context): List<String> {
+        val battery = readBattery(context)
+        return listOf(
+            "CELL DIAGNOSTICS",
+            "  LEVEL      ${battery.percent}%",
+            "  STATE      ${battery.statusLabel}",
+            "  PLUG       ${battery.plugLabel}",
+            "  TEMP       ${"%.1f".format(Locale.US, battery.temperatureC)}°C",
+            "  VOLTAGE    ${battery.voltageMv} mV",
+            "  HEALTH     ${battery.healthLabel}",
+        )
+    }
+
+    private fun networkLines(context: Context): List<String> {
+        val network = readNetwork(context)
+        return listOf(
+            "LINK DIAGNOSTICS",
+            "  TRANSPORT  ${network.transport}",
+            "  VALIDATED  ${if (network.validated) "YES" else "NO"}",
+            "  DOWNSTREAM ${network.downstreamKbps} kbps",
+        )
+    }
+
+    private fun storageLines(context: Context): List<String> {
+        val storage = readStorage(context)
+        return listOf(
+            "STORAGE",
+            "  USED   ${storage.usedLabel} of ${storage.totalLabel} (${storage.percentUsed}%)",
+            "  FREE   ${storage.freeLabel}",
+        )
+    }
+
+    private suspend fun appsLines(context: Context): List<String> {
+        val apps = AppRepository.loadApps(context)
+        val preview = apps.take(6).joinToString(", ") { it.label }
+        return buildList {
+            add("INSTALLED APPS :: ${apps.size}")
+            if (preview.isNotBlank()) add("  $preview")
+            if (apps.size > 6) add("  …and ${apps.size - 6} more")
+            add("open the APPS module for the full grid")
+        }
+    }
+
+    private fun alertsLines(context: Context, argument: String): List<String> {
+        if (!NotificationRepository.hasAccess(context)) {
+            return listOf(
+                "ALERTS :: NO ACCESS",
+                "grant notification access, then ask again",
+            )
+        }
+        return when (argument.lowercase(Locale.US)) {
+            "", "count", "list" -> {
+                val items = NotificationRepository.notifications.value
+                buildList {
+                    add("ALERTS :: ${items.size} active")
+                    items.take(5).forEach { item ->
+                        add("  ${item.appLabel}: ${item.title.take(40)}")
+                    }
+                }
+            }
+            "clear", "dismiss", "all" -> {
+                val cleared = NotificationRepository.dismissAllClearable()
+                listOf("ALERTS :: cleared $cleared")
+            }
+            else -> listOf("usage: alerts [clear]")
+        }
+    }
+
+    private fun torchLines(context: Context, argument: String): List<String> {
+        val available = QuickControls.Torch.isAvailable(context)
+        if (!available) return listOf("TORCH :: no flashlight on this device")
+
+        return when (argument.lowercase(Locale.US)) {
+            "on" -> {
+                if (QuickControls.Torch.isOn) {
+                    listOf("TORCH :: already on")
+                } else {
+                    QuickControls.Torch.toggle(context)
+                    listOf("TORCH :: on")
+                }
+            }
+            "off" -> {
+                QuickControls.Torch.setOff(context)
+                listOf("TORCH :: off")
+            }
+            "" -> {
+                val state = QuickControls.Torch.toggle(context)
+                    ?: return listOf("TORCH :: unavailable")
+                listOf("TORCH :: " + if (state) "on" else "off")
+            }
+            else -> listOf("usage: torch [on|off]")
+        }
+    }
+
+    private fun volumeLines(context: Context, argument: String): List<String> {
+        val target = argument.lowercase(Locale.US)
+        val result = when {
+            target == "up" -> QuickControls.adjustVolume(context, +1)
+            target == "down" -> QuickControls.adjustVolume(context, -1)
+            target.toIntOrNull() != null -> QuickControls.setMediaVolume(context, target.toInt())
+            else -> return listOf("usage: volume [0-100|up|down]")
+        }
+        return listOf("MEDIA VOLUME :: $result%")
+    }
+
+    private fun panelLines(context: Context, argument: String): List<String> {
+        return when (argument.lowercase(Locale.US)) {
+            "wifi", "internet" -> {
+                QuickControls.openInternetPanel(context); listOf("PANEL :: internet")
+            }
+            "bt", "bluetooth" -> {
+                QuickControls.openBluetoothSettings(context); listOf("PANEL :: bluetooth")
+            }
+            "dnd", "silent" -> {
+                QuickControls.openDndSettings(context); listOf("PANEL :: do not disturb")
+            }
+            "display", "screen" -> {
+                QuickControls.openDisplaySettings(context); listOf("PANEL :: display")
+            }
+            "volume", "audio" -> {
+                QuickControls.openVolumePanel(context); listOf("PANEL :: volume")
+            }
+            "notification", "notifications", "access" -> {
+                QuickControls.openNotificationAccessSettings(context)
+                listOf("PANEL :: notification access")
+            }
+            "battery", "saver" -> {
+                QuickControls.openBatterySaverSettings(context); listOf("PANEL :: battery saver")
+            }
+            else -> listOf("usage: panel wifi|bt|dnd|display|volume|notification|battery")
+        }
+    }
+
+    private fun routineLines(context: Context): List<String> {
+        val routines = AutomationStore.load(context)
+        if (routines.isEmpty()) return listOf("ROUTINES :: none saved")
+        return buildList {
+            add("ROUTINES :: ${routines.size}")
+            routines.forEach { routine ->
+                val sensitive = routine.sensitiveCount
+                add(
+                    "  ${routine.name}  ·  ${routine.steps.size} steps" +
+                        if (sensitive > 0) "  ·  $sensitive confirm" else ""
+                )
+            }
+            add("run <name> to start one")
+        }
+    }
+
+    private fun runLines(context: Context, argument: String): List<String> {
+        if (argument.isBlank()) return listOf("usage: run <routine name>")
+        if (AutomationEngine.isBusy) return listOf("AUTOMATION :: already running — 'stop' first")
+        val routines = AutomationStore.load(context)
+        val match = routines.firstOrNull { it.name.equals(argument, ignoreCase = true) }
+            ?: routines.firstOrNull { it.name.contains(argument, ignoreCase = true) }
+            ?: return listOf(
+                "ROUTINE NOT FOUND :: $argument",
+                "type 'routines' to list saved routines",
+            )
+        AutomationEngine.run(context, match)
+        return listOf("AUTOMATION :: started '${match.name}'")
+    }
+
+    private fun stopLines(): List<String> {
+        if (!AutomationEngine.isBusy) return listOf("AUTOMATION :: nothing running")
+        AutomationEngine.stop()
+        return listOf("AUTOMATION :: stop requested")
+    }
+
+    private fun moduleLines(): List<String> = buildList {
+        add("HUD MODULES")
+        HudModules.all.forEach { module ->
+            add("  ${module.title.padEnd(12)} ${if (module.isLive) "LIVE" else "STAGED"}")
+        }
+    }
+
+    private fun aiLines(context: Context): List<String> {
+        val config = AiKeyStore.config(context)
+            ?: return listOf(
+                "INTELLIGENCE :: NOT CONFIGURED",
+                "settings > intelligence > add an API key",
+                "any supported provider works; the key never leaves this device",
+            )
+        return listOf(
+            "INTELLIGENCE :: LINKED",
+            "  PROVIDER  ${config.label}",
+            "  MODEL     ${config.resolvedModel}",
+            "  KEY       ${config.maskedKey}",
+            "  WIRE      ${config.provider.wire}",
+        )
+    }
 }

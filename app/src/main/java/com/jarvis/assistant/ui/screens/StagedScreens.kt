@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,7 +19,6 @@ import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.ui.components.HudDivider
 import com.jarvis.assistant.ui.components.HudPanel
 import com.jarvis.assistant.ui.components.ReadoutRow
-import com.jarvis.assistant.ui.theme.AlertRed
 import com.jarvis.assistant.ui.theme.ElectricCyan
 import com.jarvis.assistant.ui.theme.IceBlue
 import com.jarvis.assistant.ui.theme.HudType
@@ -29,7 +27,7 @@ import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextSecondary
 
 // ---------------------------------------------------------------------------------------------
-// APPS (phase 2) — superseded by AppDrawerScreen, kept as the empty/failure explanation surface.
+// APPS — superseded by AppDrawerScreen, kept as the empty/failure explanation surface.
 // ---------------------------------------------------------------------------------------------
 
 /**
@@ -61,7 +59,7 @@ fun AppsScreen() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// VOICE (phase 4)
+// VOICE
 // ---------------------------------------------------------------------------------------------
 
 @Composable
@@ -70,7 +68,7 @@ fun VoiceScreen() {
 
     HudPanel(label = "MODULE STATUS", accent = IceBlue) {
         ReadoutRow(label = "STATE", value = "NOT INSTALLED", valueColor = TextMuted)
-        ReadoutRow(label = "TARGET PHASE", value = "PHASE 4")
+        ReadoutRow(label = "STATUS", value = "NOT BUILT", valueColor = TextMuted)
         ReadoutRow(label = "ENGINE", value = "SPEECH RECOGNIZER")
         ReadoutRow(label = "MIC PERMISSION", value = "NOT REQUESTED", valueColor = StatusGreen)
         HudDivider(modifier = Modifier.padding(vertical = 8.dp), accent = IceBlue)
@@ -107,59 +105,3 @@ fun VoiceScreen() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// AUTOMATION (phase 6)
-// ---------------------------------------------------------------------------------------------
-
-@Composable
-fun AutomationScreen() {
-    StagedWatermark(
-        icon = Icons.Outlined.AutoAwesome,
-        accent = AlertRed,
-        label = "AUTOMATION · STAGED",
-    )
-
-    HudPanel(label = "MODULE STATUS", accent = AlertRed) {
-        ReadoutRow(label = "STATE", value = "LOCKED", valueColor = AlertRed)
-        ReadoutRow(label = "TARGET PHASE", value = "PHASE 6")
-        ReadoutRow(label = "ACCESSIBILITY", value = "NOT ENABLED", valueColor = StatusGreen)
-        HudDivider(modifier = Modifier.padding(vertical = 8.dp), accent = AlertRed)
-        Text(
-            text = "No accessibility service is declared by this build. Automation will need an " +
-                "explicit, user-visible enable step in Android settings plus a confirmation " +
-                "prompt before any sensitive action runs.",
-            style = HudType.terminal.copy(fontSize = 10.sp),
-            color = TextSecondary,
-        )
-    }
-
-    HudPanel(label = "DESIGN RULES", accent = AlertRed) {
-        listOf(
-            "Every automated action is confirmed before it runs",
-            "No silent background control of other apps",
-            "Nothing leaves the device without a visible prompt",
-            "The user can revoke automation at any time",
-        ).forEach { line ->
-            Row(
-                modifier = Modifier.padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(4.dp)
-                        .background(AlertRed.copy(alpha = 0.8f)),
-                )
-                Spacer(Modifier.width(9.dp))
-                Text(text = line, style = HudType.value, color = TextSecondary)
-            }
-        }
-    }
-
-    HudPanel(label = "REALITY CHECK", accent = TextMuted) {
-        Text(
-            text = "Android does not allow an ordinary app to control every screen or every " +
-                "app. JARVIS automates only what the platform exposes, and says so plainly.",
-            style = HudType.terminal.copy(fontSize = 10.sp),
-            color = TextMuted,
-        )
-    }
-}

@@ -1,92 +1,94 @@
 # J.A.R.V.I.S.
 
-**Just A Rather Very Intelligent System** — a personal mobile intelligence interface for Android.
+A native Android HUD — *Just A Rather Very Intelligent System*. Dark, high-contrast, drawn with
+Compose Canvas rather than stock Material cards. It can be set as your Home app, so the HUD replaces
+the launcher instead of sitting behind it.
 
-Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · min SDK 29 (Android 10) · target SDK 34
-
-This repository is the native Android app. It is a new, independent project with no dependency on any
-earlier build.
-
-[![Build JARVIS APK](https://github.com/Rishu123-png/Jarvis---Android-Version-/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/Rishu123-png/Jarvis---Android-Version-/actions/workflows/build.yml)
-
-> **Design preview:** open [`preview/jarvis-hud.html`](preview/jarvis-hud.html) in any browser to see the
-> HUD layout, palette and reactor animation without installing anything.
+Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · minSdk 29 (Android 10) · targetSdk 34
 
 ---
 
-## Where the project is right now
+## What works right now
 
-| Phase | Scope | Status |
-| --- | --- | --- |
-| **1** | HUD, arc reactor, clock, battery, tiles, theme, dashboard | Merged |
-| 2 | Default launcher: home screen, app drawer, installed apps, launching | Merged |
-| 3 | Device information and controls (notifications, quick actions) | Merged |
-| 4 | Voice assistant: mic, speech recognition, spoken replies | Not started |
-| 5 | AI intelligence: backend, planning, tool use | Not started |
-| **6** | **Mobile automation with confirmation gates** | **Built — this branch (built ahead of 4 and 5)** |
+| Area | State |
+| --- | --- |
+| HUD, arc reactor, live telemetry, clock | Working |
+| Home app role, app drawer, launching apps | Working |
+| Notifications, torch, volume, media, system panels | Working |
+| Editable dock, storage telemetry | Working |
+| Automation routines with confirmation gates | Working |
+| Intelligence: your own AI key, any supported provider | Working |
+| Voice input and spoken replies | Not built |
 
-Phase 2 makes JARVIS a real Home app: it can be selected as the Android launcher, its drawer lists
-every launchable app on the device and opens them, and the dashboard carries a quick-access dock.
-Voice, AI and automation remain labelled as staged — no fake features.
-
----
-
-## What phase 1 actually does
-
-**Live, real data**
-
-- Clock and date, ticking on the wall-clock second boundary.
-- Battery percentage, charge state, power source, temperature, voltage, health and technology, read
-  from the `ACTION_BATTERY_CHANGED` system broadcast.
-- Network transport, validation state and downstream estimate from `ConnectivityManager`.
-- Memory used / total from `ActivityManager`, and device uptime from `SystemClock`.
-- Device model, manufacturer, Android release, API level and ABI.
-
-**Interface**
-
-- Animated **Arc Reactor** HUD drawn entirely with Compose `Canvas`: 72-tick bezel, battery power arc,
-  two counter-rotating rings, radial scale, scanning comet, breathing core bloom, orbiting markers.
-- Chamfered panel system with machined corner brackets, hairline gradient borders and a technical
-  grid backdrop with a reactor bloom and vignette.
-- Identity bar, telemetry strip, six shortcut tiles, self-typing system log, voice affordance.
-- Working **local terminal** (offline command table — not an AI) reached from the system log.
-- Six module panels: Apps (staged), Network (live), Power (live), Diagnostics (live), Voice (staged),
-  Automation (staged).
-- Portrait layout that scrolls and scales from small phones to tall ones.
-
-**Explicitly not in this build:** no launcher replacement, no notification access, no microphone, no
-accessibility service, no network calls, no API keys, no analytics. The only manifest permission is
-`ACCESS_NETWORK_STATE`, which is a normal (non-prompting) permission.
+Every tile on the HUD is either backed by a real Android API or clearly marked as not built. Nothing
+in the interface imitates a capability the app does not have.
 
 ---
 
-## Phase 6 — automation
+## Intelligence — bring your own key
 
-Built ahead of phases 4 and 5 by request. The runtime is independent of voice and AI, so those
-phases will plug into the same executor rather than replacing it.
+There is **no JARVIS server**. You paste your own provider key in *Settings → INTELLIGENCE*, and
+requests go from the phone straight to that provider.
 
-### What it does
+**Supported:** OpenAI · Anthropic · Google Gemini · Groq · xAI · OpenRouter · Mistral · any
+OpenAI-compatible endpoint (self-hosted, proxy, or a provider not listed).
 
-Routines are ordered lists of steps, stored on device as JSON. A routine runs top to bottom, one at
-a time, with a 20-step ceiling. A failing step is logged and the run continues, so one unavailable
-action does not strand the rest.
+The provider is inferred from the key's prefix, so pasting `sk-ant-…` selects Anthropic and
+`AIza…` selects Gemini automatically. The picker stays available if the guess is wrong, models are
+editable, and custom endpoints take a base URL.
 
-**Available steps:** open app · open link · dial number (dialer only, never calls) · compose SMS
-(never sends) · set timer · torch on/off · set media volume · play/pause · clear alerts · open a
-system panel · wait · system gesture (back/home/recents/shade/quick settings/lock) · press a labelled
-control on screen.
+**Handling.** The key is encrypted with the Android Keystore (AES-256-GCM) before it touches disk;
+only a masked `••••1234` is ever displayed. It is never logged, never written to the repo, and
+exists in plaintext only for the duration of a request. Uninstalling the app or clearing its data
+destroys the encryption key with it.
+
+**Failure is explicit.** A bad key, an unavailable model, a rate limit, a timeout or a dead network
+each produce a sentence you can act on. Connect and read timeouts are fixed, one request is in
+flight at a time, and the request is cancelled when you leave the screen — a slow provider cannot
+leave the panel stuck.
+
+---
+
+## Terminal — real commands
+
+The console runs real work against real Android APIs. It is not a shell emulator, and it does not
+print scripted text.
+
+```
+status      battery     network    storage     apps       alerts [clear]
+torch [on|off]          volume [0-100|up|down]          time
+panel wifi|bt|dnd|display|volume|notification|battery
+routines    run <name>  stop       modules    ai         help
+```
+
+Anything that is not a local command is offered to your AI key instead. When the model suggests a
+local action, it appears as a chip you have to tap — the model never executes anything by itself.
+
+History is capped, so a long session cannot grow the list without bound.
+
+---
+
+## Automation
+
+Routines are ordered step lists stored as JSON on the device. They run top to bottom, one at a time,
+with a 20-step ceiling. A failing step is logged and the run continues, so one unavailable action
+does not strand the rest.
+
+**Steps:** open app · open link · dial number (dialer only, never calls) · compose SMS (never sends) ·
+set timer · torch on/off · set media volume · play/pause · clear alerts · open a system panel · wait ·
+system gesture (back/home/recents/shade/quick settings/lock) · press a labelled control on screen.
 
 ### The safety model
 
 | Tier | Requires | Grants |
 | --- | --- | --- |
-| Nothing | — | app launching, glances, timers, torch, volume, panels |
+| Nothing | — | app launching, links, dialer, SMS composer, timer, torch, volume, panels |
 | Notification access | system switch | media transport, clearing alerts |
 | Accessibility service | system switch | navigation gestures |
 | Screen pressing | separate in-app opt-in | pressing one labelled control |
 
-Every **sensitive** step (gestures, screen presses) suspends the routine on a `CompletableDeferred`
-until you approve it. Decline halts the run. STOP cancels immediately and leaves nothing running.
+Every **sensitive** step suspends the routine until you approve it. Decline halts the run. STOP
+cancels immediately and leaves nothing running.
 
 The accessibility service's `onAccessibilityEvent` is intentionally empty: JARVIS never reads screen
 content in the background. `pressByText` is exact-match only, bounded to the active window, and
@@ -95,29 +97,43 @@ refuses to guess.
 ### What automation deliberately cannot do
 
 It will not place a call, send a message, or move money. Those steps open the relevant screen so the
-final action stays yours. It also cannot control every app or system screen — a regular Android app
-cannot, and the UI says so instead of implying otherwise.
+final action stays yours. It also cannot control every app or protected system screen — a regular
+Android app cannot, and the UI says so instead of implying otherwise.
 
 ---
 
-## Phase 2 — launcher
+## Launcher
 
 - **Selectable as the Home app.** `MainActivity` declares `HOME` + `DEFAULT` alongside `LAUNCHER`, with
   `stateNotNeeded`, `launchMode=singleTask` and `excludeFromRecents` — the combination a Home app needs.
-  JARVIS never switches the Home app itself: the user taps *Set JARVIS as home* in Launcher settings and
-  Android shows its own confirmation dialog.
+  JARVIS never switches the Home app itself: you tap *Set JARVIS as home* and Android shows its own
+  confirmation dialog.
 - **App drawer** — every launchable activity from `PackageManager`, alphabetical section headers, live
   search over label and package name, and a refresh control. Icons load off the main thread into an LRU
   cache, seeded synchronously so scrolling never flashes placeholders.
-- **App launching** — explicit `MAIN`/`LAUNCHER` component intent with `FLAG_ACTIVITY_NEW_TASK` (required
-  outside a task), falling back to `getLaunchIntentForPackage`, then a toast if the app cannot be opened.
+- **App launching** — explicit `MAIN`/`LAUNCHER` component intent with `FLAG_ACTIVITY_NEW_TASK`, falling
+  back to `getLaunchIntentForPackage`, then a toast if the app cannot be opened.
 - **Dock** — five slots filled from recognised system apps (dialer, messaging, browser, camera,
-  settings), topped up from installed apps so it is never empty on any device.
-- **Launcher settings** — live Home-role status, the system role request, the Home settings screen, and
-  the app info page.
+  settings), topped up from installed apps so it is never empty on any device. Long-press a slot to
+  change it.
 - **Package visibility** — the manifest declares a `<queries>` block. Without it, `queryIntentActivities`
   returns an empty list on Android 11+ and the drawer silently appears broken. That is the single most
-  common launcher bug, and it is why the CI now verifies the APK's intent filters.
+  common launcher bug, which is why CI verifies the APK's intent filters.
+
+---
+
+## Stability
+
+The HUD is a live surface, so the failure mode to design against is a janky or frozen screen:
+
+- Periodic work (clock, telemetry, media polling) parks while the app is in the background.
+- Automation steps, including the bounded accessibility-tree walk, run on a background dispatcher —
+  never on the main thread.
+- Overlapping app refreshes on resume are gated, so rapid foreground passes cannot queue up work.
+- The live notification list and terminal history are both capped.
+- Every network call has explicit connect and read timeouts and is cancellable.
+- Anything that can throw (package manager, keystore, accessibility tree, provider JSON) is wrapped
+  and degraded to a readable state rather than a crash.
 
 ---
 
@@ -139,7 +155,8 @@ cannot, and the UI says so instead of implying otherwise.
 > `instance_type: mac_mini_m2`. Using `linux_x2` on a free account fails *before the build starts*
 > with "The selected instance type is not available with the current billing plan". Android builds
 > work perfectly on the Mac machine; switch to `linux_x2` only if you enable billing. macOS builds
-> can queue for a while on the free plan, so start the build and come back to it.
+> can queue for a while on the free plan.
+
 3. Optional but recommended: add a keystore under *Team settings → Code signing identities → Android
    keystore* (the group `keystore_credentials`), then use **JARVIS · release APK** from then on.
 
@@ -149,30 +166,27 @@ check that no workflow requests a billing-gated instance type.
 
 **Install notes**
 
-- One package only: `com.jarvis.assistant`. There is no `.debug` suffix any more, so new builds update
-  the installed app instead of creating a second icon.
-- If you installed an older build that used `com.jarvis.assistant.debug`, uninstall it once.
+- One package only: `com.jarvis.assistant`. New builds update the installed app instead of creating a
+  second icon.
 - Uninstall the old app first if the signing key changed between builds — Android refuses an update
-  signed by a different key ("package conflicts with an existing package"). A Codemagic keystore keeps
-  the key stable forever.
+  signed by a different key. A Codemagic keystore keeps the key stable forever.
 - Play Protect warns about any self-signed app. Choose *Install anyway*.
 - Requires Android 10 (API 29) or newer.
 
 ### Option B — GitHub Actions (no local toolchain needed)
 
 Every push and pull request runs `.github/workflows/build.yml`, which installs JDK 17 + the Android
-SDK, runs `./gradlew assembleDebug`, and uploads the APK.
+SDK, runs `./gradlew assembleDebug assembleRelease`, validates `codemagic.yaml`, verifies the APK's
+signature and intent filters into the run summary, and uploads the APKs.
 
 1. Open the **Actions** tab → latest **Build JARVIS APK** run.
-2. Download the `jarvis-debug-apk` artifact, unzip it, and install `app-debug.apk` on the phone
-   (allow "install unknown apps" for your browser/file manager when prompted).
-
-Push a tag like `v1.0.0-phase1` and the APK is also attached to a GitHub Release.
+2. Download `jarvis-debug-apk`, unzip it, install `app-debug.apk` (allow "install unknown apps" when
+   prompted).
 
 ### Option C — Android Studio
 
-Open the repository folder, let Gradle sync, press Run. Requires Android Studio with JDK 17 and the
-Android 14 (API 34) SDK.
+Open the repository folder, let Gradle sync, press Run. Requires JDK 17 and the Android 14 (API 34)
+SDK.
 
 ### Option D — command line
 
@@ -180,9 +194,6 @@ Android 14 (API 34) SDK.
 ./gradlew assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew installDebug           # with a device connected over adb
 ```
-
-> Debug and release share the same package and the same signing key when a keystore is configured, so
-> you can always install a newer build straight over an older one.
 
 ---
 
@@ -196,11 +207,11 @@ Android 14 (API 34) SDK.
 | Ice Blue | `#8BEAFF` | Headings, highlights |
 | Status Green | `#48E5A2` | Nominal / charging |
 | Alert Red | `#FF465C` | Critical states only |
-| Amber | `#FFC24B` | Staged / caution |
+| Amber | `#FFC24B` | Caution / needs attention |
 
 Type is two families: **monospace** for every telemetry readout (numbers do not jitter, and it sells
-the instrument-panel feel), and the **platform sans** for headings and prose. Small labels are wide-
-tracked small caps.
+the instrument-panel feel), and the **platform sans** for headings and prose. Small labels are
+wide-tracked small caps.
 
 Shapes are `ChamferedShape` — a rectangle with 45° cut corners, configurable per corner, so panels and
 tiles never read as stock rounded cards.
@@ -212,67 +223,82 @@ tiles never read as stock rounded cards.
 ```
 app/src/main/java/com/jarvis/assistant/
 ├── MainActivity.kt              single-activity host
+├── ai/
+│   ├── AiProvider.kt            provider table, wire formats, key detection
+│   ├── AiKeyStore.kt            Keystore-encrypted key storage
+│   └── AiClient.kt              HTTP client for the three wire formats
+├── automation/
+│   ├── AutomationModels.kt      actions, steps, workflows, JSON
+│   ├── AutomationStore.kt       persistence + presets
+│   ├── StepExecutor.kt          one step, against real APIs
+│   ├── AutomationEngine.kt      sequential runner, confirmation gate, run log
+│   └── JarvisAccessibilityService.kt
 ├── device/
 │   ├── SystemStatus.kt          battery / network / memory / uptime / build info
-│   └── LauncherStatus.kt        home role, role request, app launching
+│   ├── LauncherStatus.kt        home role, role request, app launching
+│   ├── Notifications.kt         listener repository + access checks
+│   ├── QuickControls.kt         torch, volume, media session, system panels
+│   └── StorageStatus.kt         StatFs telemetry
 ├── data/
-│   ├── HudModules.kt            shortcut tile registry (id, accent, phase, live?)
-│   ├── CommandRegistry.kt       offline terminal command table
+│   ├── HudModules.kt            shortcut tile registry
+│   ├── CommandRegistry.kt       terminal commands + AI system prompt
 │   ├── BootSequence.kt          boot log + rotating status notes
-│   └── InstalledApps.kt         PackageManager index, icon LRU cache, dock picking
+│   ├── DockPrefs.kt             persisted dock
+│   └── InstalledApps.kt         PackageManager index, icon LRU cache
 └── ui/
     ├── JarvisApp.kt             shell + string-route navigation
     ├── theme/                   Color, Type, Shape (ChamferedShape), Theme
-    ├── components/
-    │   ├── ArcReactor.kt        the centrepiece, pure Canvas
-    │   ├── HudSurface.kt        panels, brackets, chips, readouts, meters, backdrop
-    │   ├── HudText.kt           clock, typewriter, blinking cursor, pulse dot
-    │   ├── Tiles.kt             shortcut tiles, telemetry stats, section headers
-    │   └── AppIcons.kt          icon loading, app grid tiles, dock slots
+    ├── components/              ArcReactor, HudSurface, HudText, Tiles, AppIcons, Lifecycle
     └── screens/
         ├── DashboardScreen.kt   the home HUD
         ├── ModuleScaffold.kt    shared module frame
         ├── TelemetryScreens.kt  Power, Network, Diagnostics
         ├── AppDrawerScreen.kt   installed apps, search, sections
-        ├── LauncherSettingsScreen.kt  home role + build info
-        ├── StagedScreens.kt     Voice, Automation, empty-drawer diagnostics
-        └── TerminalScreen.kt    local command shell
+        ├── AutomationScreen.kt  routines, run state, log
+        ├── AutomationEditorScreen.kt
+        ├── AiSettingsScreen.kt  provider, model, key
+        ├── TerminalScreen.kt    device console
+        └── …
 ```
 
-The split is deliberate: `device/` owns Android APIs, `data/` owns the model, `ui/components/` owns
-the visual language, `ui/screens/` only composes them. Phases 2–6 add packages beside these rather
-than rewriting them.
+The split is deliberate: `device/` owns Android APIs, `ai/` owns provider traffic, `data/` owns the
+model, `ui/components/` owns the visual language, and `ui/screens/` only composes them.
 
 ---
 
-## Phase 6 review checklist
+## Review checklists
 
-- [ ] Presets run with no special access (torch, volume, timer, clear alerts)
-- [ ] A routine with a gesture step asks for approval before acting, and Decline halts it
-- [ ] STOP halts a running routine and the log shows HALTED
-- [ ] Accessibility toggle reflects the real system state after you change it in settings
-- [ ] Screen pressing stays blocked until you allow it separately
-- [ ] Editor: add a step, set its value, reorder it, delete it, save, run
-- [ ] A failing step (e.g. open an app you uninstalled) is logged and the run continues
+**Intelligence**
 
-## Phase 2 review checklist
+- [ ] Paste a key in Settings → INTELLIGENCE; the detected provider matches the key.
+- [ ] TEST CONNECTION reports the provider and model, or a specific error.
+- [ ] Ask a question in the terminal and get a reply attributed to the provider.
+- [ ] A suggested `RUN:` chip only runs after you tap it.
+- [ ] FORGET KEY removes it and the terminal falls back to local-only.
 
-- [ ] Launcher settings shows *not the home app*, and *Set JARVIS as home* opens Android's dialog.
+**Automation**
+
+- [ ] Presets run with no special access (torch, volume, timer, clear alerts).
+- [ ] A gesture step asks for approval, and Decline halts the run.
+- [ ] STOP halts a running routine and the log shows HALTED.
+- [ ] Accessibility status reflects the real system state after you change it in settings.
+- [ ] Screen pressing stays blocked until you allow it separately.
+- [ ] Editor: add → configure → reorder → save → run.
+- [ ] A failing step is logged and the run continues.
+
+**Launcher**
+
+- [ ] Settings shows *not the home app*; *Set JARVIS as home* opens Android's dialog.
 - [ ] After choosing JARVIS, pressing Home opens the dashboard.
-- [ ] The drawer lists your real apps with their real icons, grouped A–Z.
-- [ ] Search filters as you type; the CLR chip clears it.
-- [ ] Tapping any app opens it.
-- [ ] The dock shows five apps and every one launches.
-- [ ] Back from the drawer returns to the HUD.
-- [ ] Pressing Home while inside another app returns to the HUD (not a blank screen).
+- [ ] The drawer lists real apps with real icons, grouped A–Z; search filters as you type.
+- [ ] Every dock slot launches.
+- [ ] Pressing Home inside another app returns to the HUD, not a blank screen.
 
-## Phase 1 review checklist
+**HUD**
 
-- [ ] Dashboard opens with the reactor animating and the clock ticking.
-- [ ] Battery percentage matches the system battery indicator.
-- [ ] Power / Network / Diagnostics panels show plausible live values.
-- [ ] Every tile responds; staged tiles say which phase they belong to.
-- [ ] System log types itself out; `TERMINAL` opens and `help` lists commands.
+- [ ] The reactor animates and the clock ticks.
+- [ ] Battery matches the system indicator; telemetry panels show plausible live values.
+- [ ] System log types itself out; `help` lists commands.
 - [ ] Back from any module returns to the HUD.
 - [ ] Layout survives a small screen without clipping.
 
@@ -280,16 +306,22 @@ than rewriting them.
 
 ## Security and privacy posture
 
-- No network permission, so this build cannot transmit anything.
-- No sensitive runtime permission is held: no microphone, no notification access, no accessibility.
-- No analytics, no crash reporting, no third-party SDKs.
-- API keys for later phases belong in `local.properties` or CI secrets — never in the repo
-  (`.gitignore` already excludes `secrets.properties`, `*.jks` and `.env`).
+- No JARVIS backend, no analytics, no crash reporting, no third-party SDKs.
+- `INTERNET` exists for one reason: sending your prompt to the provider whose key you stored. With no
+  key configured, the app makes no network request at all.
+- The AI key is encrypted with the Android Keystore and sent only to that provider.
+- No microphone permission is requested. Notification access and accessibility are optional, off by
+  default, revoked by a system switch you control.
+- Secrets never belong in the repository — `.gitignore` excludes `secrets.properties`, `*.jks`,
+  `keystore.properties` and `.env`.
 
 ---
 
 ## Honest limits
 
 Choosing JARVIS as the launcher will not replace Android. The lock screen, permission dialogs, system
-navigation and protected screens stay with the OS. "Control every app and every screen" is not
-possible for a regular app, and later phases will say so in the UI rather than over-promising.
+navigation and protected screens stay with the OS. It is a regular app: no root, no kernel access, no
+monitor mode, no shell inside another app's sandbox. Where a capability is impossible, the interface
+says so rather than pretending.
+
+Voice input is not built in this version.

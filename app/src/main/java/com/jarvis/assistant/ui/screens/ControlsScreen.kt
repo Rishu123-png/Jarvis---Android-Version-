@@ -89,9 +89,9 @@ fun ControlsScreen(
 ) {
     ModuleScaffold(
         title = "CONTROLS",
-        subtitle = "quick actions · phase 3",
+        subtitle = "quick actions",
         accent = ElectricCyan,
-        phaseLabel = "P3",
+        statusLabel = "LIVE",
         onBack = onBack,
     ) {
         // ---------------- direct control ----------------
@@ -244,13 +244,13 @@ fun ControlsScreen(
             ReadoutRow(label = "WIFI TOGGLE", value = "SYSTEM ONLY")
             ReadoutRow(label = "BLUETOOTH TOGGLE", value = "SYSTEM ONLY")
             ReadoutRow(label = "BRIGHTNESS WRITE", value = "WRITE_SETTINGS")
-            ReadoutRow(label = "AUTO-ROTATE", value = "PENDING PHASE 3b")
+            ReadoutRow(label = "AUTO-ROTATE", value = "NOT EXPOSED")
             HudDivider(modifier = Modifier.padding(vertical = 8.dp))
             Text(
                 text = "Since Android 10, apps cannot programmatically toggle Wi-Fi or Bluetooth; " +
                     "even system apps use panels. Settings writes need WRITE_SETTINGS, which is a " +
                     "special access grant. JARVIS could ask for it, but it is a broad permission " +
-                    "for a small gain — so phase 3 opens panels instead.",
+                    "for a small gain — so JARVIS opens the panel instead.",
                 style = HudType.terminal.copy(fontSize = 10.sp),
                 color = TextMuted,
             )

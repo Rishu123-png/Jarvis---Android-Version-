@@ -78,7 +78,7 @@ fun AutomationEditorScreen(
         title = "ROUTINE EDITOR",
         subtitle = "build a workflow",
         accent = ElectricCyan,
-        phaseLabel = "P6",
+        statusLabel = "DRAFT",
         onBack = onBack,
     ) {
         // ---- name ----
