@@ -7,6 +7,11 @@ Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · min SDK 29 (Andro
 This repository is the native Android app. It is a new, independent project with no dependency on any
 earlier build.
 
+[![Build JARVIS APK](https://github.com/Rishu123-png/Jarvis---Android-Version-/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/Rishu123-png/Jarvis---Android-Version-/actions/workflows/build.yml)
+
+> **Design preview:** open [`preview/jarvis-hud.html`](preview/jarvis-hud.html) in any browser to see the
+> HUD layout, palette and reactor animation without installing anything.
+
 ---
 
 ## Where the project is right now

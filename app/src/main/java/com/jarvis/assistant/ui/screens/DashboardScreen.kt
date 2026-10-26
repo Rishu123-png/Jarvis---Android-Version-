@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -178,7 +179,7 @@ fun DashboardScreen(
                     }
                 },
             ) {
-                Box(modifier = Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.fillMaxWidth().height(166.dp)) {
                     Typewriter(
                         lines = BootSequence.lines,
                         modifier = Modifier.fillMaxWidth(),
@@ -235,8 +236,10 @@ private fun IdentityBar(clock: ClockSnapshot, status: SystemStatus, device: Devi
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "J.A.R.V.I.S.",
-                    style = HudType.value.copy(fontSize = 19.sp, letterSpacing = 5.sp),
+                    style = HudType.value.copy(fontSize = 17.sp, letterSpacing = 4.sp),
                     color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.width(8.dp))
                 Box(
@@ -250,6 +253,8 @@ private fun IdentityBar(clock: ClockSnapshot, status: SystemStatus, device: Devi
                 text = device.displayName.uppercase() + " · ANDROID " + device.androidRelease,
                 style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.5.sp),
                 color = TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
 

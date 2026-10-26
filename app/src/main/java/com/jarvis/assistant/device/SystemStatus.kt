@@ -96,7 +96,17 @@ fun rememberDeviceInfo(): DeviceInfo = remember {
 @Composable
 fun rememberSystemStatus(refreshMillis: Long = 2_000L): SystemStatus {
     val context = LocalContext.current
-    var status by remember { mutableStateOf(SystemStatus()) }
+    // Seed synchronously so the first frame never renders a bogus 0% / OFFLINE state.
+    var status by remember(context) {
+        mutableStateOf(
+            SystemStatus(
+                battery = readBattery(context),
+                network = readNetwork(context),
+                memory = readMemory(context),
+                uptimeMillis = SystemClock.elapsedRealtime(),
+            )
+        )
+    }
 
     LaunchedEffect(context) {
         while (true) {
