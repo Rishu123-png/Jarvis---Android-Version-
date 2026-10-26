@@ -29,6 +29,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.jarvis.assistant.automation.AccessibilityStatus
+import com.jarvis.assistant.automation.AutomationEngine
+import com.jarvis.assistant.automation.AutomationStore
+import com.jarvis.assistant.automation.Workflow
 import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.DockPrefs
 import com.jarvis.assistant.data.HudModules
@@ -43,6 +47,7 @@ import com.jarvis.assistant.device.rememberSystemStatus
 import com.jarvis.assistant.ui.components.HudBackground
 import com.jarvis.assistant.ui.components.rememberClock
 import com.jarvis.assistant.ui.screens.AppDrawerScreen
+import com.jarvis.assistant.ui.screens.AutomationEditorScreen
 import com.jarvis.assistant.ui.screens.AutomationScreen
 import com.jarvis.assistant.ui.screens.ControlsScreen
 import com.jarvis.assistant.ui.screens.DashboardScreen
@@ -68,6 +73,7 @@ private const val ROUTE_TERMINAL = "terminal"
 private const val ROUTE_DRAWER = "drawer"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_DOCK = "dock"
+private const val ROUTE_ROUTINE = "routine"
 
 /**
  * Application shell.
@@ -107,6 +113,13 @@ fun JarvisApp() {
     var mediaTitle by remember { mutableStateOf<String?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
 
+    // ---- automation ----
+    var workflows by remember { mutableStateOf<List<Workflow>>(emptyList()) }
+    var editingWorkflow by remember { mutableStateOf<Workflow?>(null) }
+    var accessibilityEnabled by remember { mutableStateOf(false) }
+    var screenPressAllowed by remember { mutableStateOf(false) }
+    val runState by AutomationEngine.state.collectAsState()
+
     // ---- storage ----
     var storage by remember { mutableStateOf(readStorage(context)) }
 
@@ -136,6 +149,9 @@ fun JarvisApp() {
         torchAvailable = QuickControls.Torch.isAvailable(context)
         refreshControls()
         storage = readStorage(context)
+        workflows = AutomationStore.load(context)
+        accessibilityEnabled = AccessibilityStatus.isServiceEnabled(context)
+        screenPressAllowed = AccessibilityStatus.isScreenPressAllowed(context)
     }
 
     // Refresh on every foreground pass: apps change, access can be revoked, media comes and goes.
@@ -143,6 +159,8 @@ fun JarvisApp() {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 isHomeApp = LauncherStatus.isDefaultLauncher(context)
+                accessibilityEnabled = AccessibilityStatus.isServiceEnabled(context)
+                screenPressAllowed = AccessibilityStatus.isScreenPressAllowed(context)
                 scope.launch {
                     refreshApps()
                     refreshControls()
@@ -346,13 +364,63 @@ fun JarvisApp() {
                     onBack = { route = ROUTE_DASHBOARD },
                 ) { VoiceScreen() }
 
-                HudModules.AUTOMATION -> ModuleScaffold(
-                    title = "AUTOMATION",
-                    subtitle = "task control · phase 6",
-                    accent = AlertRed,
-                    phaseLabel = "P6",
+                HudModules.AUTOMATION -> AutomationScreen(
+                    workflows = workflows,
+                    runState = runState,
+                    accessibilityEnabled = accessibilityEnabled,
+                    screenPressAllowed = screenPressAllowed,
+                    notificationAccess = hasNotificationAccess,
+                    onRun = { workflow -> AutomationEngine.run(context, workflow) },
+                    onStop = { AutomationEngine.stop() },
+                    onConfirm = { approved -> AutomationEngine.confirm(approved) },
+                    onDismissFinished = { AutomationEngine.dismissFinished() },
+                    onEdit = { workflow ->
+                        editingWorkflow = workflow
+                        route = ROUTE_ROUTINE
+                    },
+                    onNew = {
+                        editingWorkflow = AutomationStore.newWorkflow()
+                        route = ROUTE_ROUTINE
+                    },
+                    onDelete = { workflow ->
+                        AutomationStore.delete(context, workflow.id)
+                        workflows = AutomationStore.load(context)
+                    },
+                    onOpenAccessibility = {
+                        LauncherStatus.openSystemScreen(context, AccessibilityStatus.settingsIntent())
+                    },
+                    onToggleScreenPress = { allowed ->
+                        AccessibilityStatus.setScreenPressAllowed(context, allowed)
+                        screenPressAllowed = allowed
+                    },
+                    onOpenNotificationAccess = {
+                        QuickControls.openNotificationAccessSettings(context)
+                    },
                     onBack = { route = ROUTE_DASHBOARD },
-                ) { AutomationScreen() }
+                )
+
+                ROUTE_ROUTINE -> {
+                    val draft = editingWorkflow
+                    if (draft == null) {
+                        LaunchedEffect(Unit) { route = ROUTE_DASHBOARD }
+                    } else {
+                        AutomationEditorScreen(
+                            workflow = draft,
+                            apps = installedApps,
+                            onChange = { updated -> editingWorkflow = updated },
+                            onSave = {
+                                AutomationStore.upsert(context, draft)
+                                workflows = AutomationStore.load(context)
+                                editingWorkflow = null
+                                route = ROUTE_DASHBOARD
+                            },
+                            onBack = {
+                                editingWorkflow = null
+                                route = ROUTE_DASHBOARD
+                            },
+                        )
+                    }
+                }
 
                 else -> DashboardScreen(
                     clock = clock,

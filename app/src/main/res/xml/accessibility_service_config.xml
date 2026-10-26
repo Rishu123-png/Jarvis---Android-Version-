@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Accessibility configuration for JARVIS automation.
+
+  Scope kept as narrow as the feature allows:
+    * canRetrieveWindowContent="true" is required to find a labelled button when the operator
+      explicitly runs a "press on screen" step. Nothing is read in the background — the service's
+      onAccessibilityEvent is intentionally empty.
+    * No flags that would let JARVIS monitor content types it does not need.
+    * feedbackGeneric + notificationTimeout: JARVIS reacts to explicit commands, not to the user's
+      live interaction.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canPerformGestures="false"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="100"
+    android:settingsActivity="com.jarvis.assistant.MainActivity" />

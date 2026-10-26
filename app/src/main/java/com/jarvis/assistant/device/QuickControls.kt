@@ -132,6 +132,19 @@ object QuickControls {
         }
     }
 
+    /** Sets media volume absolutely (0–100). Returns the value the system reports afterwards. */
+    fun setMediaVolume(context: Context, percent: Int): Int {
+        val audio = context.getSystemService(AudioManager::class.java) ?: return 0
+        return try {
+            val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+            val target = (percent.coerceIn(0, 100) * max / 100f).toInt().coerceIn(0, max)
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+            mediaVolumePercent(context)
+        } catch (t: Throwable) {
+            mediaVolumePercent(context)
+        }
+    }
+
     fun isSilent(context: Context): Boolean {
         val audio = context.getSystemService(AudioManager::class.java) ?: return false
         return audio.ringerMode == AudioManager.RINGER_MODE_SILENT

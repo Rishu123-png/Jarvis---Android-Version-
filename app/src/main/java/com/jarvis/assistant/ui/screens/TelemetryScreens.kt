@@ -275,6 +275,6 @@ fun DiagnosticsScreen(
         ReadoutRow(label = "DEVICE CONTROL", value = "PHASE 3 · LIVE", valueColor = StatusGreen)
         ReadoutRow(label = "VOICE", value = "PHASE 4 · STAGED", valueColor = TextMuted)
         ReadoutRow(label = "AI CORE", value = "PHASE 5 · STAGED", valueColor = TextMuted)
-        ReadoutRow(label = "AUTOMATION", value = "PHASE 6 · STAGED", valueColor = TextMuted)
+        ReadoutRow(label = "AUTOMATION", value = "PHASE 6 · LIVE", valueColor = StatusGreen)
     }
 }
