@@ -80,6 +80,27 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!--
+          Automation accessibility service.
+
+          Inert until the user enables JARVIS under Settings -> Accessibility, and even then its only
+          capabilities are navigation gestures and pressing a control by exact label (that second
+          tier needs a separate in-app opt-in). onAccessibilityEvent is intentionally empty: no
+          background screen reading.
+        -->
+        <service
+            android:name=".automation.JarvisAccessibilityService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
     </application>
 
 </manifest>

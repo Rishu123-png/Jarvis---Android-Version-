@@ -23,6 +23,7 @@ object CommandRegistry {
                 "  alerts      notification panel status",
                 "  controls    quick action list",
                 "  phase       roadmap position",
+                "  routines    automation overview",
                 "  time        current system time",
                 "  clear       empty the terminal",
                 "NOTE: intelligence core is offline (phase 5).",
@@ -31,9 +32,9 @@ object CommandRegistry {
         "status" to { _ ->
             listOf(
                 "CORE :: ONLINE",
-                "PHASE :: 3 — DEVICE INFO AND CONTROLS",
+                "PHASE :: 6 — MOBILE AUTOMATION",
                 "MODULES :: ${HudModules.all.size} REGISTERED / ${HudModules.all.count { it.isLive }} LIVE",
-                "AUTOMATION :: LOCKED",
+                "AUTOMATION :: LIVE (CONFIRM-GATED)",
                 "AI CORE :: NOT CONNECTED",
             )
         },
@@ -61,10 +62,10 @@ object CommandRegistry {
                 "ROADMAP",
                 "  [DONE   ] 1  HUD and theme",
                 "  [DONE   ] 2  Default launcher",
-                "  [ACTIVE ] 3  Device info and controls",
+                "  [DONE   ] 3  Device info and controls",
                 "  [QUEUED ] 4  Voice assistant",
                 "  [QUEUED ] 5  AI intelligence",
-                "  [QUEUED ] 6  Mobile automation",
+                "  [ACTIVE ] 6  Mobile automation",
             )
         },
         "alerts" to { _ ->
@@ -81,6 +82,14 @@ object CommandRegistry {
                 "  volume      real toggle, no permission",
                 "  media       needs notification access",
                 "  wi-fi etc.  system panel only (Android restriction)",
+            )
+        },
+        "routines" to { _ ->
+            listOf(
+                "AUTOMATION",
+                "Routines run top to bottom, one at a time, max 20 steps.",
+                "Sensitive steps pause for explicit approval.",
+                "Gestures and screen presses need accessibility access.",
             )
         },
         "time" to { _ ->

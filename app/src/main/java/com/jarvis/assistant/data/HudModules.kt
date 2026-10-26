@@ -113,11 +113,11 @@ object HudModules {
         HudModule(
             id = AUTOMATION,
             title = "AUTOMATION",
-            caption = "Task control",
+            caption = "Routine control",
             icon = Icons.Outlined.AutoAwesome,
             accent = AlertRed,
             phase = 6,
-            isLive = false,
+            isLive = true,
         ),
     )
 
