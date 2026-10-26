@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -115,7 +116,9 @@ object AutomationEngine {
             }
 
             for ((index, step) in steps.withIndex()) {
-                if (!currentJob.isActive) {
+                // `isActive` here is the coroutine's own flag, so STOP (which cancels the job)
+                // breaks the loop cleanly between steps.
+                if (!isActive) {
                     stopped = true
                     break
                 }
