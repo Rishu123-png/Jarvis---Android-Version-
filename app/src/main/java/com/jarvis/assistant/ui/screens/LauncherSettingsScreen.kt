@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -43,6 +45,7 @@ import com.jarvis.assistant.ui.components.HudDivider
 import com.jarvis.assistant.ui.components.HudPanel
 import com.jarvis.assistant.ui.components.PulseDot
 import com.jarvis.assistant.ui.components.ReadoutRow
+import com.jarvis.assistant.ui.theme.Amber
 import com.jarvis.assistant.ui.theme.AlertRed
 import com.jarvis.assistant.ui.theme.ChipShape
 import com.jarvis.assistant.ui.theme.ElectricCyan
@@ -63,6 +66,10 @@ import com.jarvis.assistant.ui.theme.TextSecondary
 @Composable
 fun LauncherSettingsScreen(
     appCount: Int,
+    notificationAccess: Boolean,
+    isDockCustom: Boolean,
+    onEditDock: () -> Unit,
+    onOpenNotificationAccess: () -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -187,6 +194,56 @@ fun LauncherSettingsScreen(
                     "A user-editable dock arrives with local storage in phase 3.",
                 style = HudType.terminal.copy(fontSize = 10.sp),
                 color = TextSecondary,
+            )
+        }
+
+        HudPanel(label = "DEVICE ACCESS", accent = if (notificationAccess) StatusGreen else Amber) {
+            ReadoutRow(
+                label = "NOTIFICATIONS",
+                value = if (notificationAccess) "GRANTED" else "NOT GRANTED",
+                valueColor = if (notificationAccess) StatusGreen else Amber,
+            )
+            ReadoutRow(label = "TORCH", value = "NO PERMISSION NEEDED", valueColor = StatusGreen)
+            ReadoutRow(label = "MEDIA VOLUME", value = "NO PERMISSION NEEDED", valueColor = StatusGreen)
+            ReadoutRow(label = "MICROPHONE", value = "NOT REQUESTED", valueColor = StatusGreen)
+            ReadoutRow(label = "ACCESSIBILITY", value = "NOT USED", valueColor = StatusGreen)
+            Spacer(Modifier.height(10.dp))
+            ActionButton(
+                label = if (notificationAccess) {
+                    "MANAGE NOTIFICATION ACCESS"
+                } else {
+                    "ENABLE NOTIFICATION ACCESS"
+                },
+                icon = Icons.Outlined.NotificationsActive,
+                accent = if (notificationAccess) IceBlue else Amber,
+                filled = !notificationAccess,
+                onClick = onOpenNotificationAccess,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Notification access is the only special permission JARVIS can use. It powers " +
+                    "the alerts panel and media controls, is granted in system settings, and can be " +
+                    "revoked there at any time.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted,
+            )
+        }
+
+        HudPanel(label = "HUD LAYOUT", accent = ElectricCyan) {
+            ReadoutRow(
+                label = "DOCK",
+                value = if (isDockCustom) "CUSTOM" else "AUTO-FILLED",
+                valueColor = if (isDockCustom) ElectricCyan else StatusGreen,
+            )
+            ReadoutRow(label = "SLOTS", value = "5")
+            ReadoutRow(label = "STORAGE", value = "SHARED PREFERENCES")
+            Spacer(Modifier.height(10.dp))
+            ActionButton(
+                label = "EDIT QUICK ACCESS DOCK",
+                icon = Icons.Outlined.Tune,
+                accent = ElectricCyan,
+                filled = false,
+                onClick = onEditDock,
             )
         }
 

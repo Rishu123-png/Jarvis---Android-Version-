@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.device.DeviceInfo
+import com.jarvis.assistant.device.StorageStatus
 import com.jarvis.assistant.device.SystemStatus
 import com.jarvis.assistant.ui.components.ClockSnapshot
 import com.jarvis.assistant.ui.components.HudChip
@@ -198,6 +199,7 @@ fun DiagnosticsScreen(
     status: SystemStatus,
     device: DeviceInfo,
     clock: ClockSnapshot,
+    storage: StorageStatus,
 ) {
     val memory = status.memory
 
@@ -233,6 +235,32 @@ fun DiagnosticsScreen(
         HudMeter(progress = memory.percent / 100f, accent = IceBlue, height = 6.dp)
     }
 
+    HudPanel(label = "STORAGE", accent = StatusGreen) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = storage.usedLabel,
+                style = HudType.clock.copy(fontSize = 26.sp),
+                color = TextPrimary,
+            )
+            Text(
+                text = " USED OF ${storage.totalLabel}",
+                style = HudType.value,
+                color = TextMuted,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        HudMeter(progress = storage.percentUsed / 100f, accent = StatusGreen, height = 6.dp)
+        Spacer(Modifier.height(6.dp))
+        ReadoutRow(label = "FREE", value = storage.freeLabel)
+        ReadoutRow(label = "USED", value = storage.usedLabel)
+        ReadoutRow(
+            label = "HEADROOM",
+            value = if (storage.percentUsed >= 90) "LOW" else "NOMINAL",
+            valueColor = if (storage.percentUsed >= 90) AlertRed else StatusGreen,
+        )
+    }
+
     HudPanel(label = "RUNTIME") {
         ReadoutRow(label = "UPTIME", value = status.uptimeLabel)
         ReadoutRow(label = "LOCAL TIME", value = "${clock.time}:${clock.seconds}")
@@ -243,8 +271,8 @@ fun DiagnosticsScreen(
 
     HudPanel(label = "MODULE MATRIX", accent = StatusGreen) {
         ReadoutRow(label = "HUD + THEME", value = "PHASE 1 · LIVE", valueColor = StatusGreen)
-        ReadoutRow(label = "LAUNCHER", value = "PHASE 2 · STAGED", valueColor = TextMuted)
-        ReadoutRow(label = "DEVICE CONTROL", value = "PHASE 3 · PARTIAL", valueColor = IceBlue)
+        ReadoutRow(label = "LAUNCHER", value = "PHASE 2 · LIVE", valueColor = StatusGreen)
+        ReadoutRow(label = "DEVICE CONTROL", value = "PHASE 3 · LIVE", valueColor = StatusGreen)
         ReadoutRow(label = "VOICE", value = "PHASE 4 · STAGED", valueColor = TextMuted)
         ReadoutRow(label = "AI CORE", value = "PHASE 5 · STAGED", valueColor = TextMuted)
         ReadoutRow(label = "AUTOMATION", value = "PHASE 6 · STAGED", valueColor = TextMuted)

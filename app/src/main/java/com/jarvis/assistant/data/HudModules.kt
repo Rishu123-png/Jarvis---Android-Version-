@@ -5,6 +5,8 @@ import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BatteryFull
 import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Radar
 import androidx.compose.material.icons.outlined.Wifi
@@ -39,6 +41,8 @@ object HudModules {
     const val NETWORK = "network"
     const val POWER = "power"
     const val DIAGNOSTICS = "diagnostics"
+    const val NOTIFICATIONS = "notifications"
+    const val CONTROLS = "controls"
     const val VOICE = "voice"
     const val AUTOMATION = "automation"
 
@@ -77,6 +81,24 @@ object HudModules {
             icon = Icons.Outlined.Memory,
             accent = ElectricCyan,
             phase = 1,
+            isLive = true,
+        ),
+        HudModule(
+            id = NOTIFICATIONS,
+            title = "ALERTS",
+            caption = "Notification shade",
+            icon = Icons.Outlined.NotificationsActive,
+            accent = ElectricCyan,
+            phase = 3,
+            isLive = true,
+        ),
+        HudModule(
+            id = CONTROLS,
+            title = "CONTROLS",
+            caption = "Quick actions",
+            icon = Icons.Outlined.Tune,
+            accent = IceBlue,
+            phase = 3,
             isLive = true,
         ),
         HudModule(

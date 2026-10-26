@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -28,20 +30,28 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.jarvis.assistant.data.AppRepository
+import com.jarvis.assistant.data.DockPrefs
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
 import com.jarvis.assistant.device.LauncherStatus
+import com.jarvis.assistant.device.NotificationAccess
+import com.jarvis.assistant.device.NotificationRepository
+import com.jarvis.assistant.device.QuickControls
+import com.jarvis.assistant.device.readStorage
 import com.jarvis.assistant.device.rememberDeviceInfo
 import com.jarvis.assistant.device.rememberSystemStatus
 import com.jarvis.assistant.ui.components.HudBackground
 import com.jarvis.assistant.ui.components.rememberClock
 import com.jarvis.assistant.ui.screens.AppDrawerScreen
 import com.jarvis.assistant.ui.screens.AutomationScreen
+import com.jarvis.assistant.ui.screens.ControlsScreen
 import com.jarvis.assistant.ui.screens.DashboardScreen
 import com.jarvis.assistant.ui.screens.DiagnosticsScreen
+import com.jarvis.assistant.ui.screens.DockPickerScreen
 import com.jarvis.assistant.ui.screens.LauncherSettingsScreen
 import com.jarvis.assistant.ui.screens.ModuleScaffold
 import com.jarvis.assistant.ui.screens.NetworkScreen
+import com.jarvis.assistant.ui.screens.NotificationsScreen
 import com.jarvis.assistant.ui.screens.PowerScreen
 import com.jarvis.assistant.ui.screens.TerminalScreen
 import com.jarvis.assistant.ui.screens.VoiceScreen
@@ -50,23 +60,21 @@ import com.jarvis.assistant.ui.theme.Amber
 import com.jarvis.assistant.ui.theme.ElectricCyan
 import com.jarvis.assistant.ui.theme.IceBlue
 import com.jarvis.assistant.ui.theme.StatusGreen
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val ROUTE_DASHBOARD = "dashboard"
 private const val ROUTE_TERMINAL = "terminal"
 private const val ROUTE_DRAWER = "drawer"
 private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_DOCK = "dock"
 
 /**
  * Application shell.
  *
- * Phase 2 adds the app drawer and launcher settings, plus the state a Home app needs: the
- * installed-app index (refreshed when the app returns to the foreground, since apps get
- * installed and uninstalled while it is backgrounded) and whether JARVIS currently owns the
- * Home role.
- *
- * Navigation stays a small string route + [AnimatedContent] — eight leaf destinations do not
- * justify a navigation library.
+ * Owns every piece of device state the HUD renders — installed apps, the persisted dock, the Home
+ * role, notification access and the live notification list, plus the phase 3 control state (torch,
+ * volume, media). Screens stay stateless so they can be previewed and reasoned about in isolation.
  */
 @Composable
 fun JarvisApp() {
@@ -79,33 +87,82 @@ fun JarvisApp() {
     val device = rememberDeviceInfo()
 
     var route by rememberSaveable { mutableStateOf(ROUTE_DASHBOARD) }
+    var dockEditSlot by rememberSaveable { mutableIntStateOf(0) }
 
+    // ---- apps + dock ----
     var installedApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(true) }
+    var dockApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
+    var isDockCustom by remember { mutableStateOf(DockPrefs.isCustom(context)) }
+
+    // ---- launcher + notifications ----
     var isHomeApp by remember { mutableStateOf(LauncherStatus.isDefaultLauncher(context)) }
+    var hasNotificationAccess by remember { mutableStateOf(NotificationAccess.isGranted(context)) }
+    val notifications by NotificationRepository.notifications.collectAsState()
+
+    // ---- controls ----
+    var torchOn by remember { mutableStateOf(false) }
+    var torchAvailable by remember { mutableStateOf(true) }
+    var volumePercent by remember { mutableIntStateOf(0) }
+    var mediaTitle by remember { mutableStateOf<String?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
+
+    // ---- storage ----
+    var storage by remember { mutableStateOf(readStorage(context)) }
 
     suspend fun refreshApps() {
         isLoadingApps = true
         val loaded = AppRepository.loadApps(context)
         installedApps = loaded
+        dockApps = DockPrefs.resolve(context, loaded)
+        isDockCustom = DockPrefs.isCustom(context)
         isLoadingApps = false
     }
 
-    LaunchedEffect(context) { refreshApps() }
+    suspend fun refreshControls() {
+        volumePercent = QuickControls.mediaVolumePercent(context)
+        hasNotificationAccess = NotificationAccess.isGranted(context)
+        if (hasNotificationAccess) {
+            mediaTitle = QuickControls.mediaNowPlaying(context)
+            isPlaying = QuickControls.isPlaying(context)
+        } else {
+            mediaTitle = null
+            isPlaying = false
+        }
+    }
 
-    // Re-index and re-check the Home role every time the shell comes back to the foreground.
+    LaunchedEffect(context) {
+        refreshApps()
+        torchAvailable = QuickControls.Torch.isAvailable(context)
+        refreshControls()
+        storage = readStorage(context)
+    }
+
+    // Refresh on every foreground pass: apps change, access can be revoked, media comes and goes.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 isHomeApp = LauncherStatus.isDefaultLauncher(context)
-                scope.launch { refreshApps() }
+                scope.launch {
+                    refreshApps()
+                    refreshControls()
+                    storage = readStorage(context)
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val dockApps = remember(installedApps) { AppRepository.dock(installedApps) }
+    // Media state is polled while anything is playing; cheap, and avoids holding a MediaController.
+    LaunchedEffect(route, hasNotificationAccess) {
+        if (!hasNotificationAccess) return@LaunchedEffect
+        while (true) {
+            mediaTitle = QuickControls.mediaNowPlaying(context)
+            isPlaying = QuickControls.isPlaying(context)
+            delay(2_000)
+        }
+    }
 
     val launchApp: (InstalledApp) -> Unit = { app -> LauncherStatus.launch(context, app) }
 
@@ -133,11 +190,18 @@ fun JarvisApp() {
                 ROUTE_DASHBOARD -> DashboardScreen(
                     clock = clock,
                     status = status,
+                    storage = storage,
                     device = device,
                     dockApps = dockApps,
                     appCount = installedApps.size,
                     isHomeApp = isHomeApp,
+                    notificationCount = notifications.size,
+                    isDockCustom = isDockCustom,
                     onLaunchApp = launchApp,
+                    onEditDock = { slot ->
+                        dockEditSlot = slot
+                        route = ROUTE_DOCK
+                    },
                     onOpenDrawer = { route = ROUTE_DRAWER },
                     onOpenSettings = { route = ROUTE_SETTINGS },
                     onOpenModule = { module -> route = module.id },
@@ -156,6 +220,32 @@ fun JarvisApp() {
 
                 ROUTE_SETTINGS -> LauncherSettingsScreen(
                     appCount = installedApps.size,
+                    notificationAccess = hasNotificationAccess,
+                    isDockCustom = isDockCustom,
+                    onEditDock = { dockEditSlot = 0; route = ROUTE_DOCK },
+                    onOpenNotificationAccess = {
+                        QuickControls.openNotificationAccessSettings(context)
+                    },
+                    onBack = { route = ROUTE_DASHBOARD },
+                )
+
+                ROUTE_DOCK -> DockPickerScreen(
+                    apps = installedApps,
+                    currentDock = dockApps,
+                    isCustom = isDockCustom,
+                    initialSlot = dockEditSlot,
+                    onPick = { slot, app ->
+                        if (app == null) {
+                            DockPrefs.setSlot(context, slot, null)
+                        } else {
+                            DockPrefs.setSlot(context, slot, app)
+                        }
+                        scope.launch { refreshApps() }
+                    },
+                    onReset = {
+                        DockPrefs.clear(context)
+                        scope.launch { refreshApps() }
+                    },
                     onBack = { route = ROUTE_DASHBOARD },
                 )
 
@@ -164,6 +254,56 @@ fun JarvisApp() {
                     isLoading = isLoadingApps,
                     onLaunch = launchApp,
                     onRefresh = { scope.launch { refreshApps() } },
+                    onBack = { route = ROUTE_DASHBOARD },
+                )
+
+                HudModules.NOTIFICATIONS -> NotificationsScreen(
+                    notifications = notifications,
+                    hasAccess = hasNotificationAccess,
+                    onEnableAccess = { QuickControls.openNotificationAccessSettings(context) },
+                    onDismiss = { item -> NotificationRepository.dismiss(item.key) },
+                    onDismissAll = { NotificationRepository.dismissAllClearable() },
+                    onBack = { route = ROUTE_DASHBOARD },
+                )
+
+                HudModules.CONTROLS -> ControlsScreen(
+                    torchOn = torchOn,
+                    torchAvailable = torchAvailable,
+                    volumePercent = volumePercent,
+                    mediaTitle = mediaTitle,
+                    isPlaying = isPlaying,
+                    hasNotificationAccess = hasNotificationAccess,
+                    onToggleTorch = {
+                        val result = QuickControls.Torch.toggle(context)
+                        if (result == null) {
+                            torchAvailable = false
+                        } else {
+                            torchOn = result
+                        }
+                    },
+                    onVolumeDown = { volumePercent = QuickControls.adjustVolume(context, -1) },
+                    onVolumeUp = { volumePercent = QuickControls.adjustVolume(context, +1) },
+                    onTogglePlayback = {
+                        QuickControls.togglePlayback(context)?.let { playing ->
+                            isPlaying = playing
+                        }
+                        mediaTitle = QuickControls.mediaNowPlaying(context)
+                    },
+                    onNext = {
+                        QuickControls.skipNext(context)
+                        mediaTitle = QuickControls.mediaNowPlaying(context)
+                    },
+                    onPrevious = {
+                        QuickControls.skipPrevious(context)
+                        mediaTitle = QuickControls.mediaNowPlaying(context)
+                    },
+                    onOpenInternetPanel = { QuickControls.openInternetPanel(context) },
+                    onOpenBluetoothSettings = { QuickControls.openBluetoothSettings(context) },
+                    onOpenDndSettings = { QuickControls.openDndSettings(context) },
+                    onOpenDisplaySettings = { QuickControls.openDisplaySettings(context) },
+                    onOpenNotificationAccess = {
+                        QuickControls.openNotificationAccessSettings(context)
+                    },
                     onBack = { route = ROUTE_DASHBOARD },
                 )
 
@@ -189,7 +329,14 @@ fun JarvisApp() {
                     accent = ElectricCyan,
                     phaseLabel = "P1",
                     onBack = { route = ROUTE_DASHBOARD },
-                ) { DiagnosticsScreen(status = status, device = device, clock = clock) }
+                ) {
+                    DiagnosticsScreen(
+                        status = status,
+                        device = device,
+                        clock = clock,
+                        storage = storage,
+                    )
+                }
 
                 HudModules.VOICE -> ModuleScaffold(
                     title = "VOICE",
@@ -210,11 +357,15 @@ fun JarvisApp() {
                 else -> DashboardScreen(
                     clock = clock,
                     status = status,
+                    storage = storage,
                     device = device,
                     dockApps = dockApps,
                     appCount = installedApps.size,
                     isHomeApp = isHomeApp,
+                    notificationCount = notifications.size,
+                    isDockCustom = isDockCustom,
                     onLaunchApp = launchApp,
+                    onEditDock = { slot -> dockEditSlot = slot; route = ROUTE_DOCK },
                     onOpenDrawer = { route = ROUTE_DRAWER },
                     onOpenSettings = { route = ROUTE_SETTINGS },
                     onOpenModule = { module -> route = module.id },

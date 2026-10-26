@@ -53,6 +53,7 @@ fun HudTile(
     module: HudModule,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    badge: String? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -125,11 +126,26 @@ fun HudTile(
                 )
             }
             Spacer(Modifier.weight(1f))
-            Text(
-                text = if (module.isLive) "LIVE" else "P${module.phase}",
-                style = HudType.label,
-                color = if (module.isLive) accent else TextMuted,
-            )
+            if (badge != null && badge != "0") {
+                Box(
+                    modifier = Modifier
+                        .background(accent.copy(alpha = 0.18f), com.jarvis.assistant.ui.theme.ChipShape)
+                        .border(1.dp, accent.copy(alpha = 0.5f), com.jarvis.assistant.ui.theme.ChipShape)
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                ) {
+                    Text(
+                        text = badge,
+                        style = HudType.label.copy(fontSize = 9.sp),
+                        color = accent,
+                    )
+                }
+            } else {
+                Text(
+                    text = if (module.isLive) "LIVE" else "P${module.phase}",
+                    style = HudType.label,
+                    color = if (module.isLive) accent else TextMuted,
+                )
+            }
         }
 
         Column {
