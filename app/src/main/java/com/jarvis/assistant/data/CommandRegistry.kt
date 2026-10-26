@@ -20,6 +20,8 @@ object CommandRegistry {
                 "  battery     cell diagnostics",
                 "  network     link diagnostics",
                 "  modules     list HUD modules",
+                "  alerts      notification panel status",
+                "  controls    quick action list",
                 "  phase       roadmap position",
                 "  time        current system time",
                 "  clear       empty the terminal",
@@ -29,7 +31,7 @@ object CommandRegistry {
         "status" to { _ ->
             listOf(
                 "CORE :: ONLINE",
-                "PHASE :: 1 — HUD AND THEME",
+                "PHASE :: 3 — DEVICE INFO AND CONTROLS",
                 "MODULES :: ${HudModules.all.size} REGISTERED / ${HudModules.all.count { it.isLive }} LIVE",
                 "AUTOMATION :: LOCKED",
                 "AI CORE :: NOT CONNECTED",
@@ -57,12 +59,28 @@ object CommandRegistry {
         "phase" to { _ ->
             listOf(
                 "ROADMAP",
-                "  [ACTIVE ] 1  HUD and theme",
-                "  [QUEUED ] 2  Default launcher",
-                "  [QUEUED ] 3  Device info and controls",
+                "  [DONE   ] 1  HUD and theme",
+                "  [DONE   ] 2  Default launcher",
+                "  [ACTIVE ] 3  Device info and controls",
                 "  [QUEUED ] 4  Voice assistant",
                 "  [QUEUED ] 5  AI intelligence",
                 "  [QUEUED ] 6  Mobile automation",
+            )
+        },
+        "alerts" to { _ ->
+            listOf(
+                "NOTIFICATION PANEL",
+                "Requires notification access in system settings.",
+                "Open the ALERTS module to grant it or read the current shade.",
+            )
+        },
+        "controls" to { _ ->
+            listOf(
+                "QUICK CONTROLS",
+                "  torch       real toggle, no permission",
+                "  volume      real toggle, no permission",
+                "  media       needs notification access",
+                "  wi-fi etc.  system panel only (Android restriction)",
             )
         },
         "time" to { _ ->

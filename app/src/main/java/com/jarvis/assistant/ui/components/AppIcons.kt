@@ -5,7 +5,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -133,11 +135,13 @@ fun AppGridTile(
 }
 
 /** Compact dock slot: icon inside a chamfered bezel. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DockSlot(
     app: InstalledApp,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -160,7 +164,12 @@ fun DockSlot(
                 ElectricCyan.copy(alpha = if (pressed) 0.6f else 0.2f),
                 TileShape,
             )
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .combinedClickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .padding(9.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -186,6 +195,7 @@ fun AppDock(
     onLaunch: (InstalledApp) -> Unit,
     modifier: Modifier = Modifier,
     slots: Int = 5,
+    onLongPress: ((index: Int) -> Unit)? = null,
 ) {
     androidx.compose.foundation.layout.Row(
         modifier = modifier.fillMaxWidth(),
@@ -197,6 +207,7 @@ fun AppDock(
                 DockSlot(
                     app = app,
                     onClick = { onLaunch(app) },
+                    onLongClick = onLongPress?.let { cb -> { cb(index) } },
                     modifier = Modifier.weight(1f),
                 )
             } else {

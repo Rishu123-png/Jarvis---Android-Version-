@@ -63,6 +63,23 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!--
+          Notification listener.
+
+          Android only binds this service after the user explicitly enables JARVIS under
+          Settings -> Notification access. It is never bound implicitly, holds no data on disk, and
+          is the same mechanism smartwatches and car integrations use.
+        -->
+        <service
+            android:name=".device.JarvisNotificationListener"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

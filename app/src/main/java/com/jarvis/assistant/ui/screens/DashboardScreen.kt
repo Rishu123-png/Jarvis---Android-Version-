@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Settings
@@ -46,6 +47,7 @@ import com.jarvis.assistant.device.DeviceInfo
 import com.jarvis.assistant.data.HudModule
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
+import com.jarvis.assistant.device.StorageStatus
 import com.jarvis.assistant.device.SystemStatus
 import com.jarvis.assistant.ui.components.AppDock
 import com.jarvis.assistant.ui.components.ArcReactor
@@ -81,11 +83,15 @@ import kotlinx.coroutines.delay
 fun DashboardScreen(
     clock: ClockSnapshot,
     status: SystemStatus,
+    storage: StorageStatus,
     device: DeviceInfo,
     dockApps: List<InstalledApp>,
     appCount: Int,
     isHomeApp: Boolean,
+    notificationCount: Int,
+    isDockCustom: Boolean,
     onLaunchApp: (InstalledApp) -> Unit,
+    onEditDock: (slot: Int) -> Unit,
     onOpenDrawer: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenModule: (HudModule) -> Unit,
@@ -150,10 +156,10 @@ fun DashboardScreen(
                     modifier = Modifier.weight(1f),
                 )
                 TelemetryStat(
-                    label = "UPTIME",
-                    value = status.uptimeLabel,
-                    accent = TextSecondary,
-                    caption = "SINCE BOOT",
+                    label = "STORAGE",
+                    value = "${storage.percentUsed}%",
+                    accent = if (storage.percentUsed >= 90) AlertRed else TextSecondary,
+                    progress = storage.percentUsed / 100f,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -163,7 +169,9 @@ fun DashboardScreen(
             DockBlock(
                 dockApps = dockApps,
                 appCount = appCount,
+                isDockCustom = isDockCustom,
                 onLaunchApp = onLaunchApp,
+                onEditDock = onEditDock,
                 onOpenDrawer = onOpenDrawer,
             )
         }
@@ -186,6 +194,11 @@ fun DashboardScreen(
                         module = module,
                         onClick = { onOpenModule(module) },
                         modifier = Modifier.weight(1f),
+                        badge = if (module.id == HudModules.NOTIFICATIONS && notificationCount > 0) {
+                            notificationCount.coerceAtMost(99).toString()
+                        } else {
+                            null
+                        },
                     )
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -431,7 +444,9 @@ private fun TerminalLink(onClick: () -> Unit) {
 private fun DockBlock(
     dockApps: List<InstalledApp>,
     appCount: Int,
+    isDockCustom: Boolean,
     onLaunchApp: (InstalledApp) -> Unit,
+    onEditDock: (slot: Int) -> Unit,
     onOpenDrawer: () -> Unit,
 ) {
     Column {
@@ -444,6 +459,28 @@ private fun DockBlock(
                 style = HudType.sectionTitle,
                 color = ElectricCyan.copy(alpha = 0.9f),
             )
+            Spacer(Modifier.width(8.dp))
+            Row(
+                modifier = Modifier
+                    .background(Color(0xFF0A1826), ChipShape)
+                    .border(1.dp, ElectricCyan.copy(alpha = 0.2f), ChipShape)
+                    .clickable { onEditDock(0) }
+                    .padding(horizontal = 7.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Edit,
+                    contentDescription = "Edit dock",
+                    tint = ElectricCyan.copy(alpha = 0.8f),
+                    modifier = Modifier.size(11.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = if (isDockCustom) "CUSTOM" else "AUTO",
+                    style = HudType.label.copy(fontSize = 7.sp, letterSpacing = 1.sp),
+                    color = if (isDockCustom) ElectricCyan else TextMuted,
+                )
+            }
             Spacer(Modifier.weight(1f))
             Row(
                 modifier = Modifier
@@ -470,7 +507,11 @@ private fun DockBlock(
 
         Spacer(Modifier.height(10.dp))
 
-        AppDock(apps = dockApps, onLaunch = onLaunchApp)
+        AppDock(
+            apps = dockApps,
+            onLaunch = onLaunchApp,
+            onLongPress = { index -> onEditDock(index) },
+        )
     }
 }
 
