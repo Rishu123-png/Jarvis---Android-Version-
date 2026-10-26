@@ -48,6 +48,35 @@ jobs:
 
       # Both build types are compiled: debug proves the app assembles, release proves the
       # signing fallback works so Codemagic's release workflow cannot fail on a missing keystore.
+      # Guards codemagic.yaml: valid YAML, and every script step is POSIX-clean so it behaves the
+      # same on Codemagic's macOS and Linux images.
+      - name: Validate codemagic.yaml
+        run: |
+          python3 - <<'EOF'
+          import subprocess, sys, tempfile, os, yaml
+          doc = yaml.safe_load(open("codemagic.yaml"))
+          assert "workflows" in doc, "no workflows key"
+          failures = 0
+          for wf, spec in doc["workflows"].items():
+              inst = spec.get("instance_type")
+              print(f"{wf}: instance_type={inst}")
+              if inst in ("linux_x2", "linux_x4", "windows_x2", "mac_mini_m4"):
+                  print(f"::error::{wf} uses {inst}, which needs Codemagic billing enabled")
+                  failures += 1
+              for step in spec.get("scripts", []):
+                  with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as f:
+                      f.write("#!/bin/sh\n" + step["script"])
+                      path = f.name
+                  r = subprocess.run(["sh", "-n", path], capture_output=True, text=True)
+                  status = "ok" if r.returncode == 0 else "FAIL"
+                  print(f"  [{status}] {step['name']}")
+                  if r.returncode != 0:
+                      print(r.stderr)
+                      failures += 1
+                  os.unlink(path)
+          sys.exit(1 if failures else 0)
+          EOF
+
       - name: Build debug + release APKs
         run: |
           set -o pipefail
