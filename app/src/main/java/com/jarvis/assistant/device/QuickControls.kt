@@ -215,7 +215,10 @@ object QuickControls {
 
     fun openBluetoothSettings(context: Context) = openSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS)
 
-    fun openDndSettings(context: Context) = openSettings(context, Settings.ACTION_ZEN_MODE_SETTINGS)
+    // ACTION_ZEN_MODE_SETTINGS is not public API; the important-interruptions screen is the
+    // supported entry point to Do Not Disturb (API 28+, and minSdk is 29).
+    fun openDndSettings(context: Context) =
+        openSettings(context, Settings.ACTION_ZEN_MODE_IMPORTANT_INTERRUPTIONS_SETTINGS)
 
     fun openBatterySaverSettings(context: Context) =
         openSettings(context, Settings.ACTION_BATTERY_SAVER_SETTINGS)
