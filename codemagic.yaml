@@ -22,9 +22,26 @@ workflows:
         - ~/.gradle/caches
         - ~/.gradle/wrapper
     scripts:
+      - name: Resolve sdkmanager
+        # Codemagic images keep cmdline-tools in different places; locate it, but never fail.
+        script: |
+          if ! command -v sdkmanager > /dev/null 2>&1; then
+            for dir in "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin "$ANDROID_HOME"/cmdline-tools/*/bin \
+                       "$ANDROID_SDK_ROOT"/tools/bin "$ANDROID_HOME"/tools/bin; do
+              if [ -x "$dir/sdkmanager" ]; then
+                export PATH="$dir:$PATH"
+                echo "PATH=$PATH" >> "$CM_ENV"
+                break
+              fi
+            done
+          fi
+          command -v sdkmanager || echo "::warning::sdkmanager not found; using the preinstalled SDK"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+
       - name: Accept SDK licences
         script: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          echo "licences handled"
       - name: Ensure SDK components
         # Never fatal: newer Codemagic images already ship these.
         script: |
@@ -70,9 +87,26 @@ workflows:
         - ~/.gradle/caches
         - ~/.gradle/wrapper
     scripts:
+      - name: Resolve sdkmanager
+        # Codemagic images keep cmdline-tools in different places; locate it, but never fail.
+        script: |
+          if ! command -v sdkmanager > /dev/null 2>&1; then
+            for dir in "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin "$ANDROID_HOME"/cmdline-tools/*/bin \
+                       "$ANDROID_SDK_ROOT"/tools/bin "$ANDROID_HOME"/tools/bin; do
+              if [ -x "$dir/sdkmanager" ]; then
+                export PATH="$dir:$PATH"
+                echo "PATH=$PATH" >> "$CM_ENV"
+                break
+              fi
+            done
+          fi
+          command -v sdkmanager || echo "::warning::sdkmanager not found; using the preinstalled SDK"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+
       - name: Accept SDK licences
         script: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          echo "licences handled"
       - name: Ensure SDK components
         script: |
           sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true

@@ -55,13 +55,20 @@ jobs:
 
       - name: Verify APK signatures and manifest (launcher intent filters)
         run: |
-          set -x
+          OUT="$GITHUB_STEP_SUMMARY"
+          echo "## APK verification" >> "$OUT"
           BT="$ANDROID_SDK_ROOT/build-tools/34.0.0"
           for apk in app/build/outputs/apk/debug/*.apk app/build/outputs/apk/release/*.apk; do
             [ -f "$apk" ] || continue
             echo "== $apk"
-            "$BT/apksigner" verify --print-certs "$apk" | head -6
-            "$BT/aapt2" dump badging "$apk" | grep -E "^package:|launchable-activity|category-home|category\.LAUNCHER" | head -8
+            echo "### $apk" >> "$OUT"
+            echo '```' >> "$OUT"
+            "$BT/apksigner" verify --print-certs "$apk" 2>&1 | head -6 | tee -a "$OUT"
+            "$BT/aapt2" dump badging "$apk" 2>&1 \
+              | grep -E "^package:|launchable-activity|HOME|LAUNCHER" | head -8 | tee -a "$OUT"
+            "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$apk" 2>/dev/null \
+              | grep -iE "android.intent.category.(HOME|LAUNCHER|DEFAULT)" | head -6 | tee -a "$OUT"
+            echo '```' >> "$OUT"
           done
 
       - name: Upload debug APK
