@@ -215,10 +215,17 @@ object QuickControls {
 
     fun openBluetoothSettings(context: Context) = openSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS)
 
-    // ACTION_ZEN_MODE_SETTINGS is not public API; the important-interruptions screen is the
-    // supported entry point to Do Not Disturb (API 28+, and minSdk is 29).
-    fun openDndSettings(context: Context) =
-        openSettings(context, Settings.ACTION_ZEN_MODE_IMPORTANT_INTERRUPTIONS_SETTINGS)
+    /**
+     * Do Not Disturb lives in different screens across OEMs and API levels, and the specific
+     * `Settings.ACTION_ZEN_MODE_*` constants are not all public. Rather than guess at a constant
+     * that may not exist, try the known action strings in order and resolve each first.
+     */
+    fun openDndSettings(context: Context) = openFirstAvailableSettings(
+        context,
+        "android.settings.ZEN_MODE_SETTINGS",
+        "android.settings.ZEN_MODE_PRIORITY_SETTINGS",
+        Settings.ACTION_SOUND_SETTINGS,
+    )
 
     fun openBatterySaverSettings(context: Context) =
         openSettings(context, Settings.ACTION_BATTERY_SAVER_SETTINGS)
@@ -236,6 +243,27 @@ object QuickControls {
             // Fall back to the connectivity settings screen on OEMs without panels.
             openSettings(context, Settings.ACTION_WIRELESS_SETTINGS)
         }
+    }
+
+    /** Starts the first settings action that actually resolves on this device. */
+    private fun openFirstAvailableSettings(context: Context, vararg actions: String) {
+        val pm = context.packageManager
+        for (action in actions) {
+            val intent = Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val resolvable = try {
+                pm.resolveActivity(intent, 0) != null
+            } catch (t: Throwable) {
+                false
+            }
+            if (!resolvable) continue
+            try {
+                context.startActivity(intent)
+                return
+            } catch (t: Throwable) {
+                // Try the next candidate.
+            }
+        }
+        openSettings(context, Settings.ACTION_SOUND_SETTINGS)
     }
 
     private fun openSettings(context: Context, action: String) {
