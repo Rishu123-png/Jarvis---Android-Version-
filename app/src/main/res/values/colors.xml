@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Core HUD palette. Mirrored in ui/theme/Color.kt for Compose usage. -->
+    <color name="void_black">#FF03070D</color>
+    <color name="deep_navy">#FF091421</color>
+    <color name="electric_cyan">#FF16C8FF</color>
+    <color name="ice_blue">#FF8BEAFF</color>
+    <color name="alert_red">#FFFF465C</color>
+    <color name="status_green">#FF48E5A2</color>
+    <color name="ic_launcher_background">#FF03070D</color>
+</resources>
