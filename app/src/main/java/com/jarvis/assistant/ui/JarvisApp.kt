@@ -36,8 +36,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.jarvis.assistant.device.CalendarBridge
 import com.jarvis.assistant.device.HealthLog
 import com.jarvis.assistant.device.LockGate
+import com.jarvis.assistant.device.Nudges
 import com.jarvis.assistant.device.NotifyBrain
 import com.jarvis.assistant.device.Whereabouts
 import androidx.lifecycle.Lifecycle
@@ -172,14 +174,24 @@ fun JarvisApp(
     var lockNoticeEnabled by remember { mutableStateOf(LockGate.noticeEnabled(context)) }
     var notifyBrainEnabled by remember { mutableStateOf(NotifyBrain.isEnabled(context)) }
     var roadRoutingEnabled by remember { mutableStateOf(Whereabouts.roadRoutingEnabled(context)) }
+    var nudgesEnabled by remember { mutableStateOf(Nudges.isEnabled(context)) }
 
     // ---- today, for the dashboard ------------------------------------------------------------
     var stepsToday by remember { mutableStateOf<Int?>(null) }
     var waterToday by remember { mutableIntStateOf(0) }
+    var nextEvent by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(route) {
         if (route == ROUTE_DASHBOARD) {
             stepsToday = HealthLog.stepsToday(context)
             waterToday = HealthLog.waterToday(context)
+            nextEvent = try {
+                CalendarBridge.next(context)?.let { event ->
+                    val clock = CalendarBridge.clockOf(event.startMillis)
+                    "${event.title} \u00B7 $clock"
+                }
+            } catch (t: Throwable) {
+                null
+            }
         }
     }
 
@@ -304,6 +316,14 @@ fun JarvisApp(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // The brief: said once per unlock, never during quiet hours, never twice in three hours. It runs
+    // outside the lock overlay so it fires when the gate actually opens, not while it is drawn.
+    LaunchedEffect(locked) {
+        if (!locked) {
+            scope.launch { Nudges.greet(context) }
+        }
     }
 
     // Opened from the bubble or the widget: arm the voice surface once.
@@ -477,9 +497,10 @@ fun JarvisApp(
                     stepsToday = stepsToday,
                     waterToday = waterToday,
                     onAddWater = {
-                        waterToday = HealthLog.addWater(context, 250)
+                        HealthLog.addWater(context, 250)
                         waterToday = HealthLog.waterToday(context)
                     },
+                    nextEvent = nextEvent,
                     clock = clock,
                     status = status,
                     storage = storage,
@@ -618,6 +639,11 @@ fun JarvisApp(
                     onToggleRoadRouting = { enable ->
                         Whereabouts.setRoadRouting(context, enable)
                         roadRoutingEnabled = enable
+                    },
+                    nudgesEnabled = nudgesEnabled,
+                    onToggleNudges = { enable ->
+                        Nudges.setEnabled(context, enable)
+                        nudgesEnabled = enable
                     },
                     lockNoticeEnabled = lockNoticeEnabled,
                     onToggleLockNotice = { enable ->
@@ -914,6 +940,7 @@ fun JarvisApp(
                         HealthLog.addWater(context, 250)
                         waterToday = HealthLog.waterToday(context)
                     },
+                    nextEvent = nextEvent,
                     isDockCustom = isDockCustom,
                     onLaunchApp = launchApp,
                     onEditDock = { slot -> dockEditSlot = slot; route = ROUTE_DOCK },

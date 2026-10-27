@@ -14,13 +14,16 @@ import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.PhraseBook
 import com.jarvis.assistant.data.PhraseIntent
 import com.jarvis.assistant.data.Units
+import com.jarvis.assistant.data.When
 import com.jarvis.assistant.device.Access
 import com.jarvis.assistant.device.AppLaunch
+import com.jarvis.assistant.device.CalendarBridge
 import com.jarvis.assistant.device.Files
 import com.jarvis.assistant.device.HealthLog
 import com.jarvis.assistant.device.Messaging
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.NotifyBrain
+import com.jarvis.assistant.device.VoiceNotes
 import com.jarvis.assistant.device.Whereabouts
 import com.jarvis.assistant.device.readBattery
 import com.jarvis.assistant.device.readNetwork
@@ -97,16 +100,20 @@ object IntentRouter {
             )
         }
 
+        // A short follow-up ("do that for Amit", "and tomorrow") only means something next to the
+        // previous turn, so it is completed before anything else looks at it.
+        val completed = FollowUp.rewritten(FollowUp.last(context), spoken) ?: spoken
+
         if (aiReady(context)) {
             val viaAi = try {
-                aiPlan(context, spoken, previous)
+                aiPlan(context, completed, previous)
             } catch (t: Throwable) {
                 null
             }
             if (viaAi != null) return viaAi
         }
 
-        return localPlan(context, spoken, previous)
+        return localPlan(context, completed, previous)
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -894,6 +901,102 @@ object IntentRouter {
                 }
             }
 
+            PhraseIntent.CALENDAR -> {
+                if (!CalendarBridge.canRead(context)) {
+                    return said("CALENDAR", "calendar_permission", subtitle = "CALENDAR")
+                }
+                val mode = when {
+                    clean.contains("next") || clean.contains("agla") -> "next"
+                    clean.contains("week") || clean.contains("hafte") -> "week"
+                    else -> "today"
+                }
+                val events = when (mode) {
+                    "next" -> CalendarBridge.next(context)?.let { listOf(it) }
+                    "week" -> CalendarBridge.upcoming(context, days = 7, limit = 5)
+                    else -> CalendarBridge.today(context)
+                }.orEmpty()
+
+                if (events.isEmpty()) {
+                    return said("CALENDAR", "calendar_none", "", subtitle = "CALENDAR")
+                }
+                if (mode == "next" && events.size == 1) {
+                    val event = events.first()
+                    return answer(
+                        "NEXT \u00B7 ${upper(event.title, 16)}",
+                        Language.say(
+                            lang,
+                            "calendar_next",
+                            event.title,
+                            CalendarBridge.clockOf(event.startMillis),
+                        ),
+                        subtitle = "CALENDAR",
+                    )
+                }
+                val listing = events.joinToString("; ") { event ->
+                    "${event.title} \u00B7 ${CalendarBridge.clockOf(event.startMillis)}"
+                }
+                return answer("CALENDAR \u00B7 ${events.size}", listing, subtitle = "CALENDAR")
+            }
+
+            PhraseIntent.CALENDAR_ADD -> {
+                if (!CalendarBridge.canWrite(context)) {
+                    return said("ADD EVENT", "calendar_permission", subtitle = "CALENDAR")
+                }
+                // "add meeting with Amit tomorrow at 4" -> title, then the time words.
+                val title = calendarTitleOf(heard)
+                val parsed = When.parse(heard)
+                if (parsed == null) {
+                    return said("ADD EVENT", "calendar_no_time", subtitle = "CALENDAR")
+                }
+                return answer(
+                    "ADD \u00B7 ${upper(title, 16)}",
+                    Language.say(lang, "calendar_added", "$title ${When.spoken(parsed.at).lowercase(Locale.US)}"),
+                    listOf(
+                        step(
+                            ActionType.CALENDAR_ADD,
+                            "${parsed.at}|$title",
+                            "ADD EVENT",
+                        ),
+                    ),
+                    "CALENDAR",
+                )
+            }
+
+            PhraseIntent.CONTACT_ADD -> {
+                val name = contactNameOf(heard)
+                val number = contactNumberOf(heard)
+                if (name.isNullOrBlank() || number.isNullOrBlank()) {
+                    return answer(
+                        "SAVE CONTACT",
+                        "Tell me the number and the name: \"save 98765 43210 as Amit\".",
+                        subtitle = "CONTACTS",
+                    )
+                }
+                return answer(
+                    "SAVE \u00B7 ${upper(name, 16)}",
+                    Language.say(lang, "contact_saved", name),
+                    listOf(step(ActionType.CONTACT_ADD, "$name|$number", "SAVE CONTACT")),
+                    "CONTACTS",
+                )
+            }
+
+            PhraseIntent.VOICE_NOTE -> {
+                if (!VoiceNotes.canRecord(context)) {
+                    return answer(
+                        "VOICE NOTE",
+                        "Microphone access is off. Allow it in Advanced and I can record.",
+                        subtitle = "NOTES",
+                    )
+                }
+                val seconds = noteSecondsOf(clean)
+                return answer(
+                    "RECORD \u00B7 ${seconds}S",
+                    Language.say(lang, "note_recording", seconds),
+                    listOf(step(ActionType.RECORD_NOTE, seconds.toString(), "RECORD NOTE")),
+                    "NOTES",
+                )
+            }
+
             PhraseIntent.HELP -> return answer("HELP", helpText(context, lang), subtitle = "JARVIS")
 
             PhraseIntent.CALL -> return answer(
@@ -1012,6 +1115,48 @@ object IntentRouter {
     // ---------------------------------------------------------------------------------------------
     // Slot extraction — the words around a request, never the model's guesswork
     // ---------------------------------------------------------------------------------------------
+
+    /** "add meeting with Amit tomorrow at 4" -> "Meeting with Amit". */
+    private fun calendarTitleOf(heard: String): String {
+        var text = heard.trim()
+        text = text.replace(
+            Regex("(?i)^(?:add|create|schedule|book|new)\\s+(?:an?\\s+)?(?:event|meeting|appointment)\\s*"),
+            "",
+        )
+        text = text.replace(Regex("(?i)^(?:calendar mein add karo|meeting rakho)\\s*"), "")
+        text = text.replace(
+            Regex(
+                "(?i)\\b(?:today|tomorrow|tonight|aaj|kal|parso|day after tomorrow|next week)\\b.*$",
+            ),
+            "",
+        )
+        text = text.replace(Regex("(?i)\\s+at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?\\b.*$"), "")
+        text = text.replace(Regex("(?i)\\s+\\d{1,2}\\s*(?:am|pm|baje).*$"), "")
+        text = text.replace(Regex("\\s+"), " ").trim().trimEnd(',', '.')
+        if (text.isBlank()) return "Event"
+        return text.replaceFirstChar { it.uppercaseChar() }.take(80)
+    }
+
+    private fun contactNameOf(heard: String): String? =
+        Regex("(?i)\\bas\\s+([\\p{L}][\\p{L} .]{1,40})$").find(heard.trim())
+            ?.groupValues?.getOrNull(1)?.trim()
+            ?: Regex("(?i)\\b(?:name is|naam)\\s+([\\p{L}][\\p{L} .]{1,40})$").find(heard.trim())
+                ?.groupValues?.getOrNull(1)?.trim()
+
+    private fun contactNumberOf(heard: String): String? =
+        Regex("(\\+?\\d[\\d \\-]{5,18}\\d)").find(heard)?.groupValues?.getOrNull(1)
+            ?.filter { it.isDigit() || it == '+' }
+            ?.takeIf { it.count { ch -> ch.isDigit() } >= 6 }
+
+    private fun noteSecondsOf(clean: String): Int {
+        val match = Regex("(\\d{1,4})\\s*(?:seconds?|secs?|minutes?|mins?)").find(clean)
+        if (match != null) {
+            val value = match.groupValues[1].toIntOrNull() ?: 60
+            val isMinutes = clean.contains("minute") || clean.contains("min")
+            return (if (isMinutes) value * 60 else value).coerceIn(2, VoiceNotes.MAX_SECONDS)
+        }
+        return VoiceNotes.DEFAULT_SECONDS
+    }
 
     private fun openTargetOf(clean: String): String? {
         val pattern = Regex("^(?:open|launch|start|run|khol|kholo|khol do|open up)\\s+(.+)$")

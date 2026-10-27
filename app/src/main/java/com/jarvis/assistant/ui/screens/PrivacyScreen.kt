@@ -68,6 +68,8 @@ fun PrivacyScreen(
     onSelectLockMode: (Boolean) -> Unit,
     notifyBrainEnabled: Boolean,
     onToggleNotifyBrain: (Boolean) -> Unit,
+    nudgesEnabled: Boolean,
+    onToggleNudges: (Boolean) -> Unit,
     roadRoutingEnabled: Boolean,
     onToggleRoadRouting: (Boolean) -> Unit,
     lockNoticeEnabled: Boolean,
@@ -404,6 +406,33 @@ fun PrivacyScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 KeypadKey(if (notifyBrainEnabled) "TURN OFF" else "TURN ON") {
                     onToggleNotifyBrain(!notifyBrainEnabled)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        HudPanel(
+            label = "MORNING BRIEF",
+            accent = if (nudgesEnabled) StatusGreen else Amber,
+            trailing = {
+                HudChip(
+                    text = if (nudgesEnabled) "ON" else "OFF",
+                    accent = if (nudgesEnabled) StatusGreen else Amber,
+                )
+            },
+        ) {
+            Text(
+                text = "When you open JARVIS it says the useful thing once — the next event, a battery " +
+                    "that will not last, people waiting for an answer — and stays quiet when there is " +
+                    "nothing to say. At most once every three hours.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey(if (nudgesEnabled) "TURN OFF" else "TURN ON") {
+                    onToggleNudges(!nudgesEnabled)
                 }
             }
         }

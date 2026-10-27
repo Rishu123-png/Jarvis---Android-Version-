@@ -12,6 +12,14 @@ family member released to family should not be called 2.4.
 
 Everything below is new in this release.
 
+**Also in this same version (built straight after):** your calendar read aloud and events created by
+voice ("add meeting with Amit tomorrow at 4"), "save this number as Amit" writing a real contact,
+voice notes recorded straight into `Music/JARVIS`, multi-turn follow-ups ("do that for Khushi",
+"and tomorrow", "make it 8:30"), and a once-every-three-hours brief when you open JARVIS — the next
+event, a dying battery, people waiting for an answer — silent when there is nothing to say.
+Replies are now spoken by a voice in the operator's own language, and the dashboard's TODAY panel
+shows the next event beside today's steps and water.
+
 **It answers everything now.** The old router was a chain of regexes: "open gallery" worked, "gallery
 kholo" and "show my photos" did not, and a miss produced "I could not find an app called gallery".
 A phrase book of ~400 wordings across ~50 intents replaces it, matched exact → prefix → word-set →
@@ -59,8 +67,9 @@ are scrubbed from every spoken reply before it is heard.
 
 **Also in this release**: 15 new automation actions (message, reply, read alerts, find file, open
 file, open gallery, location, distance, navigate, calculate, settings page, read screen, share, health,
-log water) available to routines and to the AI planner; one ACCESS panel that states every permission
-and what breaks without it; 7 new JVM test suites (13 in total).
+log water, read calendar, add event, save contact, record note) available to routines and to the AI
+planner; one ACCESS panel that states every permission and what breaks without it; 10 new JVM test
+suites (16 in total).
 
 ---
 
