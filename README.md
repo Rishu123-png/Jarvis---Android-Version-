@@ -19,6 +19,7 @@ Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · minSdk 29 (Androi
 | Editable dock, storage telemetry | Working |
 | Automation: control flow, triggers, AI-authored routines | Working |
 | Privileged shell via Shizuku (optional, adb-level, no root) | Working |
+| Instagram creator analytics (your own account, your token) | Working |
 | Intelligence: your own AI key, any supported provider | Working |
 | Voice input and spoken replies | Not built |
 
@@ -54,6 +55,34 @@ panel stuck.
 
 ---
 
+## Instagram analytics
+
+A creator module, built on Meta's official API and nothing else.
+
+- **Connect once.** Paste an access token for your own professional (Creator or Business) account
+  in *HUD → INSTAGRAM*. Two sources are supported: **Business Login for Instagram**
+  (`graph.instagram.com`, refreshable to 60 days from the screen) and **Facebook Login for Business**
+  (`graph.facebook.com`, for a Page-linked account).
+- **Reads:** profile and counts, the newest 25 posts with likes/comments, per-post insights
+  (reach, saves, shares, total interactions) for the newest 12, and account reach / profile views for
+  the window Meta reports. About 16 requests per sync against a limit of 4,800 × impressions.
+- **Computed on device:** engagement rate per post and per format, average interactions, interaction
+  rate on reached audience, format ranking, best posting day and hour (only when two posts share the
+  bucket), cadence, days since last post, and follower change since the first sync.
+- **AI briefing.** *ANALYSE WITH AI* sends that compact table to **your** AI key and returns a short
+  plan — what works, what does not, one format test, one timing change, one hook change. The prompt
+  forbids inventing metrics, competitors or demographics.
+- **Honest by construction.** A metric Meta refuses is listed under *MISSING METRICS*, never
+  rendered as zero. The age of every reading is on screen, so a cached count is never mistaken for a
+  live one. The module states plainly that DMs, other accounts, demographics, hashtag trends and ad
+  spend are not available.
+
+The token is encrypted with the Android Keystore, sent only to Meta, and revocable from
+Instagram → Settings → Apps and websites. Disconnecting deletes the token, the cache and the growth
+series.
+
+---
+
 ## Terminal — real commands
 
 The console runs real work against real Android APIs. It is not a shell emulator, and it does not
@@ -64,7 +93,7 @@ status      battery     network    storage     apps       alerts [clear]
 torch [on|off]          volume [0-100|up|down]          time
 panel wifi|bt|dnd|display|volume|notification|battery
 dnd [status|on|off|priority|alarms|silent]
-shizuku                 shell <command>
+shizuku                 shell <command>          insta
 routines    run <name>  stop       modules    ai         help
 ```
 
@@ -299,6 +328,11 @@ app/src/main/java/com/jarvis/assistant/
 │   ├── ShizukuShell.kt          optional adb-level shell: status, permission, timeouts
 │   └── ShellUserService.kt      runs in the Shizuku process as shell/root, one command at a time
 │   (app/src/main/aidl/…/IShellService.aidl  the one-method interface between the two)
+├── social/
+│   ├── InstagramModels.kt       profile, media, snapshot, growth point + JSON
+│   ├── InstagramStore.kt        Keystore-encrypted token, cached snapshot, growth series
+│   ├── InstagramClient.kt       Meta API reads, per-metric tolerance, request budget
+│   └── InstagramAnalytics.kt    pure on-device maths + the AI briefing prompt
 ├── data/
 │   ├── HudModules.kt            shortcut tile registry
 │   ├── CommandRegistry.kt       terminal commands + AI system prompt
@@ -359,6 +393,18 @@ model, `ui/components/` owns the visual language, and `ui/screens/` only compose
 - [ ] Killing Shizuku mid-session does not crash JARVIS; the next shell attempt reports it is not
       running.
 
+**Instagram**
+
+- [ ] With no token, the module shows the connect panel and *WHAT THIS CANNOT SEE*; nothing crashes.
+- [ ] A bad token fails with Meta's own message plus a usable hint, and saves nothing.
+- [ ] A valid token syncs profile, posts and insights; the reading age shows *JUST NOW*.
+- [ ] Re-opening the module paints from cache instantly and only refreshes when the reading is stale.
+- [ ] *MISSING METRICS* lists anything Meta refused instead of showing zeros.
+- [ ] `insta` in the terminal answers from cache without touching the network.
+- [ ] *ANALYSE WITH AI* returns a plan, and with no AI key says so instead of failing silently.
+- [ ] *EXTEND TOKEN* works for an Instagram Login token and is disabled for a Facebook Login token.
+- [ ] DISCONNECT removes the token; re-opening shows the connect panel again.
+
 **Launcher**
 
 - [ ] Settings shows *not the home app*; *Set JARVIS as home* opens Android's dialog.
@@ -385,6 +431,9 @@ model, `ui/components/` owns the visual language, and `ui/screens/` only compose
 - The AI key is encrypted with the Android Keystore and sent only to that provider.
 - No microphone permission is requested. Notification access, accessibility and Do Not Disturb access
   are optional, off by default, revoked by a system switch you control.
+- The Instagram access token is encrypted with the Android Keystore, sent only to Meta, and can be
+  revoked from the Instagram app at any time. No Instagram credential is ever stored in this
+  repository.
 - Shizuku is entirely optional. If it is not installed, its manifest provider never answers and every
   privileged path reports "not available"; nothing binds, nothing waits, nothing crashes. No root is
   required — Shizuku is started once over adb or wireless debugging.
@@ -403,3 +452,8 @@ the identity `adb shell` already has — no more, and no root. Where a capabilit
 interface says so rather than pretending.
 
 Voice input is not built in this version.
+
+The Instagram module reads **your own** professional account through Meta's API. There is no API that
+grants "all access" to Instagram — DMs, other people's accounts, audience demographics, hashtag trends
+and ad spend are either separate APIs or not exposed at all, and anything claiming otherwise is
+scraping. Personal accounts have no API; the account must be Creator or Business.
