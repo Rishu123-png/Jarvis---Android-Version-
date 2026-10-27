@@ -28,6 +28,7 @@ import com.jarvis.assistant.ui.theme.IceBlue
 import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextPrimary
+import com.jarvis.assistant.ui.theme.TextSecondary
 import com.jarvis.assistant.voice.StepPhase
 import com.jarvis.assistant.voice.VoicePhase
 import com.jarvis.assistant.voice.VoiceTask

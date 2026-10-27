@@ -133,7 +133,7 @@ object IntentRouter {
         )
     }
 
-    private fun systemPrompt(context: Context): String {
+    private suspend fun systemPrompt(context: Context): String {
         val actions = voiceActions.joinToString("\n") { action ->
             val kind = when (action.paramKind) {
                 ParamKind.NONE -> "no param"
