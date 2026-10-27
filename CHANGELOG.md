@@ -17,6 +17,8 @@ voice ("add meeting with Amit tomorrow at 4"), "save this number as Amit" writin
 voice notes recorded straight into `Music/JARVIS`, multi-turn follow-ups ("do that for Khushi",
 "and tomorrow", "make it 8:30"), and a once-every-three-hours brief when you open JARVIS — the next
 event, a dying battery, people waiting for an answer — silent when there is nothing to say.
+Replies are now spoken by a voice in the operator's own language, and the dashboard's TODAY panel
+shows the next event beside today's steps and water.
 
 **It answers everything now.** The old router was a chain of regexes: "open gallery" worked, "gallery
 kholo" and "show my photos" did not, and a miss produced "I could not find an app called gallery".
