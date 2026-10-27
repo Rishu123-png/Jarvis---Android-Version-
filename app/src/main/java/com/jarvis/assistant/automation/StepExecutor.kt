@@ -9,8 +9,10 @@ import android.net.Uri
 import android.provider.AlarmClock
 import androidx.core.app.NotificationCompat
 import com.jarvis.assistant.R
+import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
+import com.jarvis.assistant.shell.ShizukuShell
 import kotlinx.coroutines.delay
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -54,6 +56,12 @@ object StepExecutor {
             !AccessibilityStatus.isScreenPressAllowed(context)
         ) {
             warnings.add("\"Press on screen\" steps are disabled until you allow them.")
+        }
+        if (all.any { it.action == ActionType.SET_DND } && !DndControl.hasAccess(context)) {
+            warnings.add("Needs Do Not Disturb access, which is granted in system settings.")
+        }
+        if (all.any { it.action == ActionType.SHELL } && !ShizukuShell.isReady) {
+            warnings.add("Needs an active Shizuku connection for shell steps.")
         }
         val unconfigured = all.count { !it.isConfigured }
         if (unconfigured > 0) warnings.add("$unconfigured step(s) have no value set.")
@@ -216,6 +224,10 @@ object StepExecutor {
             ActionType.NOTIFY -> notify(context, step.param)
 
             ActionType.OPEN_PANEL -> openPanel(context, step.param)
+
+            ActionType.SET_DND -> setDnd(context, step.param)
+
+            ActionType.SHELL -> runShell(context, step.param)
 
             // ------------------------------------------------------------------ speech + network
             ActionType.SAY -> {
@@ -422,6 +434,45 @@ object StepExecutor {
             }
 
             else -> Result.Failed("Unknown panel \"$key\" (try wifi, bluetooth, dnd, display, volume, battery)")
+        }
+    }
+
+    private fun setDnd(context: Context, raw: String): Result {
+        val key = raw.trim().lowercase(Locale.US)
+        val current = DndControl.current(context)
+        val mode = when {
+            key.isEmpty() || key == "toggle" ->
+                if (current == null || current == DndControl.Mode.OFF) DndControl.Mode.SILENT
+                else DndControl.Mode.OFF
+
+            key == "on" -> DndControl.Mode.SILENT
+            key == "off" -> DndControl.Mode.OFF
+            else -> DndControl.Mode.fromText(key)
+        } ?: return Result.Failed("Unknown mode \"$raw\" (try off, priority, alarms, silent)")
+
+        // null means the special access has not been granted — say that, do not pretend.
+        val applied = DndControl.set(context, mode)
+            ?: return Result.Skipped("Do Not Disturb access is not granted")
+        return if (applied) {
+            Result.Ok("Do Not Disturb: ${mode.label}")
+        } else {
+            Result.Failed("Android refused the change")
+        }
+    }
+
+    private suspend fun runShell(context: Context, raw: String): Result {
+        val command = raw.trim()
+        if (command.isEmpty()) return Result.Failed("No command given")
+        return when (val outcome = ShizukuShell.exec(context, command)) {
+            is ShizukuShell.Outcome.Failed -> Result.Skipped(outcome.reason)
+            is ShizukuShell.Outcome.Ok -> {
+                val tail = outcome.output.lineSequence().firstOrNull().orEmpty().take(120)
+                if (outcome.exitCode == 0) {
+                    Result.Ok(if (tail.isBlank()) "Ran · no output" else "Ran · $tail")
+                } else {
+                    Result.Failed("exit ${outcome.exitCode}" + if (tail.isBlank()) "" else " · $tail")
+                }
+            }
         }
     }
 

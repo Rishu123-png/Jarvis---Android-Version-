@@ -18,8 +18,10 @@ import android.provider.Settings
  *
  *  * **Real, no permission:** torch, media volume, media transport (play/pause/next/prev) once
  *    notification access is granted, and reading every device/status value.
- *  * **Opened as a system panel:** Wi-Fi, Bluetooth, Do Not Disturb, battery saver. A regular app
- *    cannot silently flip these on modern Android, and trying would be dishonest.
+ *  * **Opened as a system panel:** Wi-Fi, Bluetooth, battery saver. A regular app cannot silently
+ *    flip these on modern Android, and trying would be dishonest.
+ *  * **Real, with one special grant:** Do Not Disturb — see [DndControl]. Without that grant this
+ *    class still offers the system screen rather than a dead toggle.
  *  * **Not offered:** anything needing WRITE_SETTINGS or a device-owner profile.
  */
 object QuickControls {
@@ -251,6 +253,17 @@ object QuickControls {
         context,
         "android.settings.ZEN_MODE_SETTINGS",
         "android.settings.ZEN_MODE_PRIORITY_SETTINGS",
+        Settings.ACTION_SOUND_SETTINGS,
+    )
+
+    /**
+     * The one screen that actually grants the DND toggle to an app
+     * (Settings -> Notifications -> Do Not Disturb access). Falls back through the OEM variants.
+     */
+    fun openDndAccessSettings(context: Context) = openFirstAvailableSettings(
+        context,
+        Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS,
+        "android.settings.ZEN_MODE_SETTINGS",
         Settings.ACTION_SOUND_SETTINGS,
     )
 

@@ -33,8 +33,8 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.6.0"
+        versionCode = 8
+        versionName = "1.7.0"
 
         vectorDrawables { useSupportLibrary = true }
     }
@@ -85,6 +85,8 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        // The Shizuku user service is described by an AIDL interface.
+        aidl = true
     }
 
     packaging {
@@ -106,6 +108,13 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
+
+    /*
+     * Shizuku: optional adb-level shell access, granted by the operator, no root involved.
+     * Both artifacts are inert when Shizuku is not installed — nothing binds, nothing blocks.
+     */
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

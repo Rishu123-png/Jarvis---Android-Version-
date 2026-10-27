@@ -43,6 +43,10 @@ enum class ActionType(
     DISMISS_NOTIFICATIONS("dismiss_alerts", "CLEAR ALERTS", "Dismiss every clearable alert", ParamKind.NONE, needsNotificationAccess = true),
     NOTIFY("notify", "NOTIFY ME", "Post a JARVIS alert with your own text", ParamKind.TEXT),
     OPEN_PANEL("panel", "OPEN PANEL", "Open a system panel", ParamKind.TEXT),
+    SET_DND("dnd", "DO NOT DISTURB", "Silence interruptions: off, priority, alarms, silent", ParamKind.TEXT),
+
+    // ---- privileged (needs Shizuku; degrades to a skip when it is not connected) ----
+    SHELL("shell", "SHELL COMMAND", "Run an adb-level command through Shizuku", ParamKind.TEXT, sensitive = true),
 
     // ---- speech + network ----
     SAY("say", "SAY", "Speak text out loud", ParamKind.TEXT),

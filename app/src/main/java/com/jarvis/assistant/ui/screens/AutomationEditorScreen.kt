@@ -185,6 +185,7 @@ private fun defaultParam(action: ActionType): String = when (action) {
     ActionType.REPEAT_BLOCK -> "2"
     ActionType.GLOBAL_ACTION -> "home"
     ActionType.OPEN_PANEL -> "wifi"
+    ActionType.SET_DND -> "silent"
     else -> ""
 }
 
@@ -915,6 +916,8 @@ private fun ParamSheet(
                     ActionType.DEEP_LINK -> "app://screen"
                     ActionType.DIAL_NUMBER, ActionType.COMPOSE_SMS -> "+91…"
                     ActionType.OPEN_PANEL -> "wifi · bluetooth · dnd · display · volume · battery"
+                    ActionType.SET_DND -> "silent · priority · alarms · off"
+                    ActionType.SHELL -> "adb-level command, e.g. pm list packages -3"
                     ActionType.GLOBAL_ACTION -> "back · home · recents · notifications · quick · lock"
                     ActionType.PRESS_TEXT -> "exact button label"
                     ActionType.SET_ALARM -> "07:30"

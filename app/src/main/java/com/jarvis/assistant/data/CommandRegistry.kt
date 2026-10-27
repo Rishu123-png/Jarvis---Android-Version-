@@ -4,11 +4,13 @@ import android.content.Context
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.automation.AutomationEngine
 import com.jarvis.assistant.automation.AutomationStore
+import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
 import com.jarvis.assistant.device.readBattery
 import com.jarvis.assistant.device.readNetwork
 import com.jarvis.assistant.device.readStorage
+import com.jarvis.assistant.shell.ShizukuShell
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -35,8 +37,8 @@ object CommandRegistry {
 
     private val COMMANDS = listOf(
         "help", "status", "battery", "network", "storage", "apps",
-        "alerts", "torch", "volume", "panel", "routines", "run", "stop",
-        "modules", "ai", "time", "clear",
+        "alerts", "torch", "volume", "panel", "dnd", "routines", "run", "stop",
+        "modules", "ai", "time", "clear", "shizuku", "shell",
     )
 
     fun banner(aiConfigured: Boolean, aiLabel: String?): List<String> = buildList {
@@ -72,6 +74,9 @@ object CommandRegistry {
             "torch" -> Response(torchLines(app, argument))
             "volume" -> Response(volumeLines(app, argument))
             "panel" -> Response(panelLines(app, argument))
+            "dnd" -> Response(dndLines(app, argument))
+            "shizuku" -> Response(shizukuLines(app))
+            "shell" -> Response(shellLines(app, argument))
             "routines" -> Response(routineLines(app))
             "run" -> Response(runLines(app, argument))
             "stop" -> Response(stopLines())
@@ -116,7 +121,8 @@ object CommandRegistry {
             Local commands the operator can run: ${COMMANDS.joinToString(", ")}.
             Use the real syntax: torch on, volume 40, panel wifi, run <routine>, stop, battery.
 
-            You cannot read the screen, send messages, place calls, or run shell commands.
+            You cannot read the screen, send messages, or place calls.
+            Shell commands only work if Shizuku is connected; never assume it is.
             Say so plainly if asked rather than pretending.
             If exactly one local command would help, end with one line formatted as:
             RUN: <command>
@@ -140,6 +146,9 @@ object CommandRegistry {
         add("  torch [on|off]      flashlight")
         add("  volume [0-100|up|down]")
         add("  panel wifi|bt|dnd|display|volume|notification|battery")
+        add("  dnd [status|on|off|priority|alarms|silent]")
+        add("  shizuku             privileged shell status")
+        add("  shell <command>     run a command through Shizuku")
         add("  routines            list saved routines")
         add("  run <name>          start a routine")
         add("  stop                halt the running routine")
@@ -292,6 +301,69 @@ object CommandRegistry {
                 QuickControls.openBatterySaverSettings(context); listOf("PANEL :: battery saver")
             }
             else -> listOf("usage: panel wifi|bt|dnd|display|volume|notification|battery")
+        }
+    }
+
+    private fun dndLines(context: Context, argument: String): List<String> {
+        val key = argument.lowercase(Locale.US).trim()
+        if (key.isEmpty() || key == "status") {
+            return listOf(
+                "INTERRUPTIONS :: " + DndControl.label(context),
+                "  ACCESS  " + if (DndControl.hasAccess(context)) "GRANTED" else "NOT GRANTED",
+                "  MODES   off · priority · alarms · silent",
+            )
+        }
+        if (!DndControl.hasAccess(context)) {
+            QuickControls.openDndAccessSettings(context)
+            return listOf(
+                "DND :: access not granted",
+                "grant 'Do Not Disturb access' to JARVIS, then try again",
+                "opened the system screen",
+            )
+        }
+        val mode = when (key) {
+            "on" -> DndControl.Mode.SILENT
+            "off" -> DndControl.Mode.OFF
+            else -> DndControl.Mode.fromText(key)
+        } ?: return listOf("usage: dnd [status|on|off|priority|alarms|silent]")
+
+        return when (DndControl.set(context, mode)) {
+            true -> listOf("INTERRUPTIONS :: ${mode.label}")
+            false -> listOf("DND :: android refused the change")
+            null -> listOf("DND :: access not granted")
+        }
+    }
+
+    private suspend fun shizukuLines(context: Context): List<String> {
+        ShizukuShell.attach(context)
+        ShizukuShell.refresh(context)
+        val state = ShizukuShell.state.value
+        return listOf(
+            "PRIVILEGED SHELL :: " + ShizukuShell.describe(state),
+            "  PRIVILEGE  " + state.privilege.ifBlank { "—" },
+            "  NOTE       " + state.detail.ifBlank { "adb-level access, no root needed" },
+            "  USAGE      shell <command>",
+        )
+    }
+
+    private suspend fun shellLines(context: Context, argument: String): List<String> {
+        if (argument.isBlank()) {
+            return listOf("usage: shell <command>", "type 'shizuku' for connection status")
+        }
+        return when (val outcome = ShizukuShell.exec(context, argument)) {
+            is ShizukuShell.Outcome.Failed -> listOf(
+                "SHELL :: " + outcome.reason,
+                "type 'shizuku' for status",
+            )
+
+            is ShizukuShell.Outcome.Ok -> buildList {
+                add("SHELL :: exit ${outcome.exitCode}")
+                if (outcome.output.isBlank()) {
+                    add("  (no output)")
+                } else {
+                    outcome.output.lineSequence().take(12).forEach { add("  $it") }
+                }
+            }
         }
     }
 

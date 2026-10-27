@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bluetooth
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.DoNotDisturbOn
 import androidx.compose.material.icons.outlined.FlashlightOn
@@ -44,6 +46,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.ui.components.HudDivider
 import com.jarvis.assistant.ui.components.HudMeter
 import com.jarvis.assistant.ui.components.HudPanel
@@ -83,6 +86,10 @@ fun ControlsScreen(
     onOpenInternetPanel: () -> Unit,
     onOpenBluetoothSettings: () -> Unit,
     onOpenDndSettings: () -> Unit,
+    dndAccess: Boolean,
+    dndMode: DndControl.Mode?,
+    onSetDnd: (DndControl.Mode) -> Unit,
+    onOpenDndAccess: () -> Unit,
     onOpenDisplaySettings: () -> Unit,
     onOpenNotificationAccess: () -> Unit,
     onBack: () -> Unit,
@@ -204,6 +211,57 @@ fun ControlsScreen(
             }
         }
 
+        // ---------------- quiet mode ----------------
+        HudPanel(
+            label = "QUIET MODE",
+            accent = if (dndAccess) StatusGreen else Amber,
+            trailing = {
+                Text(
+                    text = if (dndAccess) {
+                        (dndMode ?: DndControl.Mode.OFF).label
+                    } else {
+                        "ACCESS NEEDED"
+                    },
+                    style = HudType.label.copy(fontSize = 8.sp),
+                    color = if (dndAccess) StatusGreen else Amber,
+                )
+            },
+        ) {
+            Text(
+                text = if (dndAccess) {
+                    "Silences interruptions directly. Android allows this only because you granted " +
+                        "Do Not Disturb access; revoke it any time and these buttons open the " +
+                        "system screen instead."
+                } else {
+                    "JARVIS cannot change interruptions until you grant Do Not Disturb access. " +
+                        "The button below opens the exact system screen for it."
+                },
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(12.dp))
+
+            DndControl.Mode.entries.forEach { mode ->
+                ModeButton(
+                    mode = mode,
+                    selected = dndMode == mode,
+                    enabled = dndAccess,
+                    onClick = { onSetDnd(mode) },
+                )
+                Spacer(Modifier.height(7.dp))
+            }
+
+            if (!dndAccess) {
+                Spacer(Modifier.height(3.dp))
+                ModeButton(
+                    mode = null,
+                    selected = false,
+                    enabled = true,
+                    onClick = onOpenDndAccess,
+                )
+            }
+        }
+
         // ---------------- handed to android ----------------
         HudPanel(label = "SYSTEM PANELS", accent = TextMuted) {
             Text(
@@ -229,7 +287,7 @@ fun ControlsScreen(
             SystemRow(
                 icon = Icons.Outlined.DoNotDisturbOn,
                 label = "DO NOT DISTURB",
-                caption = "Zen mode settings",
+                caption = if (dndAccess) "Full control above · this opens system settings" else "Zen mode settings",
                 onClick = onOpenDndSettings,
             )
             SystemRow(
@@ -241,6 +299,11 @@ fun ControlsScreen(
         }
 
         HudPanel(label = "WHY SOME TOGGLES ARE MISSING", accent = TextMuted) {
+            ReadoutRow(
+                label = "DND TOGGLE",
+                value = if (dndAccess) "DIRECT" else "NEEDS ONE GRANT",
+                valueColor = if (dndAccess) StatusGreen else Amber,
+            )
             ReadoutRow(label = "WIFI TOGGLE", value = "SYSTEM ONLY")
             ReadoutRow(label = "BLUETOOTH TOGGLE", value = "SYSTEM ONLY")
             ReadoutRow(label = "BRIGHTNESS WRITE", value = "WRITE_SETTINGS")
@@ -253,6 +316,68 @@ fun ControlsScreen(
                     "for a small gain — so JARVIS opens the panel instead.",
                 style = HudType.terminal.copy(fontSize = 10.sp),
                 color = TextMuted,
+            )
+        }
+    }
+}
+
+@Composable
+/**
+ * One interruption mode. When [mode] is null this row is the "grant access" affordance, which is
+ * why it takes a nullable mode instead of a second composable.
+ */
+@Composable
+private fun ModeButton(
+    mode: DndControl.Mode?,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val accent = when {
+        !enabled -> TextMuted
+        selected -> StatusGreen
+        else -> ElectricCyan
+    }
+    val label = mode?.label ?: "GRANT DO NOT DISTURB ACCESS"
+    val caption = mode?.note ?: "Opens the system screen that allows direct control"
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (selected) accent.copy(alpha = 0.14f) else PanelNavy.copy(alpha = 0.7f), ChipShape)
+            .border(1.dp, accent.copy(alpha = if (selected) 0.6f else 0.22f), ChipShape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 11.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (mode == null) Icons.Outlined.OpenInNew else Icons.Outlined.DoNotDisturbOn,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(15.dp),
+        )
+        Spacer(Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.4.sp),
+                color = if (enabled) TextPrimary else TextMuted,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = caption,
+                style = HudType.terminal.copy(fontSize = 9.sp),
+                color = TextMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (selected) {
+            Icon(
+                imageVector = Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = StatusGreen,
+                modifier = Modifier.size(14.dp),
             )
         }
     }
