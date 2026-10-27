@@ -33,8 +33,8 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 15
-        versionName = "2.2.0"
+        versionCode = 16
+        versionName = "2.3.0"
 
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -122,6 +122,12 @@ dependencies {
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
+
+    /*
+     * ML Kit text recognition, bundled rather than Play-Services-backed: the screen agent needs OCR
+     * for apps that expose no accessibility text, and it must work with no network at all.
+     */
+    implementation(libs.androidx.mlkit.text)
 
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)

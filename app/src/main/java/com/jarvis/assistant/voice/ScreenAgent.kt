@@ -64,13 +64,20 @@ object ScreenAgent {
 
         repeat(MAX_STEPS) { index ->
             val app = JarvisAccessibilityService.currentPackage() ?: "unknown"
-            val labels = JarvisAccessibilityService.visibleLabels(MAX_LABELS)
-            if (labels.isEmpty() && index > 0) {
-                // A blank screen is usually an ad or a splash; wait once, then give up honestly.
-                delay(SETTLE_MS)
+            var labels = JarvisAccessibilityService.visibleLabels(MAX_LABELS)
+            var viaOcr = false
+
+            if (labels.isEmpty()) {
+                // Some apps draw their own UI, so the tree is empty. Read the pixels instead.
+                labels = readScreenByOcr(context)
+                viaOcr = labels.isNotEmpty()
+                if (labels.isEmpty() && index > 0) {
+                    // A blank screen is usually an ad or a splash; wait once, then decide again.
+                    delay(SETTLE_MS)
+                }
             }
 
-            val decision = decide(context, goal, app, labels, history)
+            val decision = decide(context, goal, app, labels, history, viaOcr)
                 ?: return "The brain stopped answering partway through."
 
             when (decision.action) {
@@ -149,17 +156,36 @@ object ScreenAgent {
         return JarvisAccessibilityService.perform(action)
     }
 
+    /** Screenshot + on-device OCR, used only when the accessibility tree has nothing to offer. */
+    private suspend fun readScreenByOcr(context: Context): List<String> {
+        val (bitmap, _) = JarvisAccessibilityService.captureBitmap(context)
+        if (bitmap == null) return emptyList()
+        return try {
+            Ocr.readLines(context, bitmap, MAX_LABELS)
+        } catch (t: Throwable) {
+            emptyList()
+        } finally {
+            try {
+                bitmap.recycle()
+            } catch (t: Throwable) {
+                // Already recycled.
+            }
+        }
+    }
+
     private suspend fun decide(
         context: Context,
         goal: String,
         app: String,
         labels: List<String>,
         history: List<String>,
+        viaOcr: Boolean,
     ): Decision? {
         if (AiKeyStore.config(context) == null) return null
 
         val done = if (history.isEmpty()) "- nothing yet" else history.joinToString("\n") { "- $it" }
         val visible = if (labels.isEmpty()) "(nothing readable)" else labels.joinToString(" | ")
+        val source = if (viaOcr) "read from the screen image (no accessibility text)" else "accessibility text"
 
         val system = """
             You are driving an Android phone through an accessibility service, ONE action at a time.
@@ -179,6 +205,8 @@ object ScreenAgent {
             Rules:
             - One action per reply. Do not describe several steps.
             - Only press labels that appear in the visible list.
+            - If the visible text was read from a screenshot, labels are approximate: copy the words
+              exactly as given, and prefer the shortest label that clearly means the control you want.
             - Never repeat an action that already appears in the actions taken list.
             - When the goal is met, reply done immediately.
             - "say" is at most 40 characters, present tense, about what you are doing.
@@ -189,7 +217,7 @@ object ScreenAgent {
             App in front: $app
             Actions taken:
             $done
-            Visible labels: $visible
+            Visible text, $source: $visible
         """.trimIndent()
 
         val reply = withTimeoutOrNull(DECISION_TIMEOUT_MS) {

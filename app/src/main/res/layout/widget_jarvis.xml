@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Widget plate: a 12-hour live clock, the wordmark, and the one thing it does.
+  TextClock is used so the time is always right without waking the app or the battery.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_surface"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:letterSpacing="0.28"
+        android:text="J.A.R.V.I.S."
+        android:textColor="#8BEAFF"
+        android:textSize="10sp" />
+
+    <TextClock
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:fontFamily="monospace"
+        android:format12Hour="h:mm"
+        android:format24Hour="h:mm"
+        android:textColor="#E7F6FF"
+        android:textSize="34sp" />
+
+    <TextView
+        android:id="@+id/widget_meridiem_hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:letterSpacing="0.2"
+        android:text="TAP TO SPEAK"
+        android:textColor="#4E6E85"
+        android:textSize="9sp" />
+</LinearLayout>

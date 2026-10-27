@@ -269,7 +269,7 @@ fun DiagnosticsScreen(
 
     HudPanel(label = "RUNTIME") {
         ReadoutRow(label = "UPTIME", value = status.uptimeLabel)
-        ReadoutRow(label = "LOCAL TIME", value = "${clock.time}:${clock.seconds}")
+        ReadoutRow(label = "LOCAL TIME", value = clock.labelWithSeconds)
         ReadoutRow(label = "DATE", value = clock.date)
         ReadoutRow(label = "REFRESH", value = "1 Hz CLOCK / 2 s TELEMETRY")
         ReadoutRow(label = "RENDER", value = "COMPOSE · GPU CANVAS")

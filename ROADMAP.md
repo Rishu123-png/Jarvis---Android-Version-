@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **2.2.0 (versionCode 15)**.
+Last updated with **2.3.0 (versionCode 16)**.
 
 ---
 
@@ -32,6 +32,10 @@ Last updated with **2.2.0 (versionCode 15)**.
 | Tests: 5 JVM suites over the pure logic, run in CI before the APKs | Live |
 | Quick Settings tiles (open JARVIS, torch) | Live |
 | Reminders, screenshot action, subsystem health panel | Live |
+| Privacy lock (PBKDF2 PIN), floating bubble, home-screen widget | Live |
+| Downloads, translate, per-app speech engine choice | Live |
+| OCR fallback for the screen agent (bundled, on device) | Live |
+| VERIFY step type, multi-turn voice, 12-hour clock | Live |
 | Automated tests | **None** |
 
 ---
@@ -61,25 +65,23 @@ Quick Settings tiles (open JARVIS, torch), reminders as real notifications (exac
 screenshot via the accessibility API, and a SUBSYSTEMS panel in DIAGNOSTICS that reports every
 permission-gated capability honestly.
 
-### Phase C — Medium (one pass each)
+### Phase C — Medium ✔ shipped in 2.3.0
 
-| Item | Note |
+Privacy lock (PBKDF2 PIN, relock after a minute), floating bubble (opt-in, foreground, never listens on
+its own), home-screen widget (live 12-hour `TextClock`), downloads worker (bounded, progress
+notification, `Download/JARVIS`), translate through the operator's key.
+
+### Phase D — Depth, partly shipped in 2.3.0
+
+| Item | State |
 | --- | --- |
-| Home-screen widget | Reactor + three paddles; `Glance` or a remote-views layout |
-| Floating assistant bubble | `SYSTEM_ALERT_WINDOW`, opt-in, foreground service — the one place an ANR could hide, so it must be dismissible and non-blocking |
-| App lock / privacy PIN | Gates automation and AI history; never stores a plaintext PIN |
-| Downloads worker | WorkManager + progress notification; pairs with the Shizuku tier |
-| Translate | Through the operator's own AI key first |
-
-### Phase D — Depth, only if the above feel solid
-
-- **Offline Whisper** so voice works with no key and no network (40–75 MB of model weight — the
-  reason it was deferred; the engine is already pluggable).
-- **VERIFY step type** in automation, plus a plan → check → run preview for AI-authored routines.
-- **Screen-loop improvements**: OCR fallback for custom-drawn apps that expose no labels, and a
-  longer action budget behind an explicit opt-in.
-- **Multi-turn voice**: "do it again but louder" — the memory layer already stores enough context.
-- Health Connect / weather / geofences — each adds a permission and must degrade to a hidden row.
+| VERIFY step type (app / screen / notification / battery / charging / network) | Shipped |
+| OCR fallback for custom-drawn apps (bundled ML Kit, on device) | Shipped |
+| Multi-turn voice (previous command passed to the planner) | Shipped |
+| Speech engine choice: auto / whisper / device / device-offline | Shipped |
+| **True on-device Whisper** (40–75 MB of model weight, native build) | **Still deferred** — the offline route uses the platform recognizer instead |
+| Longer screen-agent budget behind an opt-in | Not started |
+| Health Connect / weather / geofences | Not started |
 
 ### Deliberately out of scope
 
@@ -124,7 +126,8 @@ ideas are worth more than the code — everything below is a rewrite, not a port
 | — | Voice, memory, focus home, voice chains, screen loop | **Shipped** (2.0.0, 2.1.0) |
 | A | Tests over the pure logic | **Shipped** (2.2.0) |
 | B | Quick Settings tile, reminders, screenshot, diagnostics depth | **Shipped** (2.2.0) |
-| C | Widget, bubble, app lock, downloads, translate | Queued |
-| D | Offline Whisper, VERIFY step, OCR fallback, multi-turn voice | Later |
+| C | Privacy lock, bubble, widget, downloads, translate | **Shipped** (2.3.0) |
+| D | VERIFY, OCR fallback, multi-turn voice, engine choice | **Shipped** (2.3.0) |
+| D | On-device Whisper model, longer agent budget, health/weather | Later |
 
 Everything in "Deliberately out of scope" stays out unless the operator asks.

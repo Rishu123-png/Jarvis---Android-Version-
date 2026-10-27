@@ -16,6 +16,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -49,7 +50,10 @@ import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.DockPrefs
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
+import com.jarvis.assistant.device.Bubble
 import com.jarvis.assistant.device.DndControl
+import com.jarvis.assistant.device.JarvisWidget
+import com.jarvis.assistant.device.Privacy
 import com.jarvis.assistant.device.LauncherStatus
 import com.jarvis.assistant.device.NotificationAccess
 import com.jarvis.assistant.device.NotificationRepository
@@ -78,18 +82,24 @@ import com.jarvis.assistant.ui.screens.LauncherSettingsScreen
 import com.jarvis.assistant.ui.screens.ModuleScaffold
 import com.jarvis.assistant.ui.screens.NetworkScreen
 import com.jarvis.assistant.ui.screens.NotificationsScreen
+import com.jarvis.assistant.ui.screens.PrivacyScreen
 import com.jarvis.assistant.ui.screens.PowerScreen
+import com.jarvis.assistant.ui.screens.LockScreen
 import com.jarvis.assistant.ui.screens.TerminalScreen
 import com.jarvis.assistant.ui.screens.VoiceScreen
 import com.jarvis.assistant.ui.theme.Amber
 import com.jarvis.assistant.ui.theme.ElectricCyan
 import com.jarvis.assistant.ui.theme.IceBlue
 import com.jarvis.assistant.ui.theme.StatusGreen
+import com.jarvis.assistant.ui.theme.VoidBlack
+import com.jarvis.assistant.voice.VoiceController
+import com.jarvis.assistant.voice.VoiceSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
+import androidx.compose.runtime.mutableLongStateOf
 
 private const val ROUTE_HOME = "home"
 private const val ROUTE_DASHBOARD = "dashboard"
@@ -100,6 +110,7 @@ private const val ROUTE_DOCK = "dock"
 private const val ROUTE_ROUTINE = "routine"
 private const val ROUTE_AI = "ai"
 private const val ROUTE_COMPOSE = "compose"
+private const val ROUTE_ADVANCED = "advanced"
 
 /** True when JARVIS may post its own notifications (always true below Android 13). */
 private fun canPostNotifications(context: android.content.Context): Boolean =
@@ -121,7 +132,10 @@ private fun canPostNotifications(context: android.content.Context): Boolean =
  * previewed and reasoned about in isolation.
  */
 @Composable
-fun JarvisApp() {
+fun JarvisApp(
+    voiceArmed: Boolean = false,
+    onVoiceConsumed: () -> Unit = {},
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
@@ -131,6 +145,14 @@ fun JarvisApp() {
     val device = rememberDeviceInfo()
 
     var route by rememberSaveable { mutableStateOf(ROUTE_HOME) }
+
+    // ---- privacy lock ----
+    var locked by remember { mutableStateOf(Privacy.isEnabled(context)) }
+    var leftAt by remember { mutableLongStateOf(0L) }
+    var pinEnabled by remember { mutableStateOf(Privacy.isEnabled(context)) }
+    var bubbleEnabled by remember { mutableStateOf(Bubble.isEnabled(context)) }
+    var bubbleAllowed by remember { mutableStateOf(Bubble.canDraw(context)) }
+    var speechRoute by remember { mutableStateOf(VoiceSettings.route(context)) }
     var dockEditSlot by rememberSaveable { mutableIntStateOf(0) }
 
     // ---- apps + dock ----
@@ -187,6 +209,36 @@ fun JarvisApp() {
 
     // ---- intelligence ----
     var aiConfig by remember { mutableStateOf(AiKeyStore.config(context)) }
+
+    // Lock again after a minute in the background, and keep permission switches honest.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> leftAt = System.currentTimeMillis()
+                Lifecycle.Event.ON_RESUME -> {
+                    bubbleAllowed = Bubble.canDraw(context)
+                    if (Privacy.isEnabled(context) && leftAt > 0 &&
+                        System.currentTimeMillis() - leftAt > Privacy.LOCK_AFTER_MS
+                    ) {
+                        locked = true
+                        route = ROUTE_HOME
+                    }
+                    leftAt = 0L
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Opened from the bubble or the widget: arm the voice surface once.
+    LaunchedEffect(voiceArmed) {
+        if (voiceArmed) {
+            onVoiceConsumed()
+            if (!locked) VoiceController.toggle(context)
+        }
+    }
 
     // Prevents overlapping app refreshes when several resume events arrive in quick succession.
     val refreshGate = remember { AtomicBoolean(false) }
@@ -313,7 +365,9 @@ fun JarvisApp() {
         }
     }
 
-    BackHandler(enabled = route != ROUTE_HOME) { route = ROUTE_HOME }
+    BackHandler(enabled = route != ROUTE_HOME) {
+        route = if (route == ROUTE_ADVANCED) ROUTE_SETTINGS else ROUTE_HOME
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         HudBackground()
@@ -408,7 +462,53 @@ fun JarvisApp() {
                     shizuku = shizukuState,
                     onOpenDndAccess = { QuickControls.openDndAccessSettings(context) },
                     onShizukuAction = shizukuAction,
+                    onOpenAdvanced = { route = ROUTE_ADVANCED },
+                    pinEnabled = pinEnabled,
                     onBack = { route = ROUTE_DASHBOARD },
+                )
+
+                ROUTE_ADVANCED -> PrivacyScreen(
+                    pinEnabled = pinEnabled,
+                    bubbleEnabled = bubbleEnabled,
+                    bubbleAllowed = bubbleAllowed,
+                    speechRoute = speechRoute,
+                    onSetPin = { pin ->
+                        if (Privacy.setPin(context, pin) == null) {
+                            pinEnabled = true
+                            locked = false
+                        }
+                    },
+                    onClearPin = {
+                        Privacy.disable(context)
+                        pinEnabled = false
+                        locked = false
+                    },
+                    onToggleBubble = { enable ->
+                        if (enable) {
+                            val started = Bubble.start(context)
+                            bubbleEnabled = started
+                            if (!started) bubbleAllowed = Bubble.canDraw(context)
+                        } else {
+                            Bubble.stop(context)
+                            bubbleEnabled = false
+                        }
+                    },
+                    onOpenOverlaySettings = {
+                        try {
+                            context.startActivity(
+                                Bubble.permissionIntent(context)
+                                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        } catch (t: Throwable) {
+                            // Some OEMs hide this screen; the row already says it is not granted.
+                        }
+                    },
+                    onSelectRoute = { picked ->
+                        VoiceSettings.setRoute(context, picked)
+                        speechRoute = picked
+                    },
+                    onAddWidget = { requestWidget(context) },
+                    onBack = { route = ROUTE_SETTINGS },
                 )
 
                 ROUTE_DOCK -> DockPickerScreen(
@@ -703,6 +803,28 @@ fun JarvisApp() {
             }
         }
 
+        // The privacy gate covers everything, including a suspended routine: an unlocked screen is
+        // the only place JARVIS may be read.
+        if (locked) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(VoidBlack)
+                    .windowInsetsPadding(WindowInsets.systemBars),
+            ) {
+                LockScreen(
+                    onUnlock = { pin ->
+                        if (Privacy.verify(context, pin)) {
+                            locked = false
+                            true
+                        } else {
+                            false
+                        }
+                    },
+                )
+            }
+        }
+
         // A suspended routine must stay answerable from any screen. Drawn last so it sits above
         // the route content, including the automation screen.
         (runState as? RunState.AwaitingConfirmation)?.let { pending ->
@@ -716,5 +838,24 @@ fun JarvisApp() {
                 onDecline = { AutomationEngine.confirm(false) },
             )
         }
+    }
+}
+
+/**
+ * Asks the launcher to pin the JARVIS widget.
+ *
+ * Android 8+ supports the system prompt; older launchers (and some OEM ones) silently refuse, in which
+ * case the existing widgets are simply refreshed and the operator can add it by hand.
+ */
+private fun requestWidget(context: android.content.Context) {
+    try {
+        val manager = android.appwidget.AppWidgetManager.getInstance(context) ?: return
+        val provider = android.content.ComponentName(context, JarvisWidget::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= 26 && manager.isRequestPinAppWidgetSupported) {
+            manager.requestPinAppWidget(provider, null, null)
+        }
+        JarvisWidget.refresh(context)
+    } catch (t: Throwable) {
+        // Launcher does not support pinning; nothing else to do.
     }
 }

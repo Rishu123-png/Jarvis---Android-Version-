@@ -173,6 +173,21 @@ object VoiceParsing {
         return ReminderAsk(inSeconds = inSeconds, atClock = atClock, text = text)
     }
 
+    /** "18:30" -> "6:30 PM". Falls back to the input when it is not a valid HH:mm. */
+    fun clock12(hhmm: String): String {
+        val parts = hhmm.trim().split(":")
+        val hour = parts.getOrNull(0)?.toIntOrNull() ?: return hhmm
+        val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        if (hour !in 0..23 || minute !in 0..59) return hhmm
+        val suffix = if (hour < 12) "AM" else "PM"
+        val display = when {
+            hour == 0 -> 12
+            hour > 12 -> hour - 12
+            else -> hour
+        }
+        return "$display:" + String.format(Locale.US, "%02d", minute) + " $suffix"
+    }
+
     /** Contact-name comparison key: lowercase, letters and digits only. */
     fun normaliseName(value: String): String =
         value.lowercase(Locale.getDefault())

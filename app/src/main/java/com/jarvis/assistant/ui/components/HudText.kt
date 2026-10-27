@@ -33,6 +33,13 @@ import java.util.Locale
 // Clock
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * One clock tick.
+ *
+ * [time] is the **12-hour** display form without a leading zero ("2:52"), [meridiem] is AM or PM,
+ * and [time24] keeps the 24-hour value for anything technical (logs, terminals, file names). The HUD
+ * shows the 12-hour form everywhere it faces the operator.
+ */
 data class ClockSnapshot(
     val time: String = "--:--",
     val seconds: String = "--",
@@ -40,17 +47,25 @@ data class ClockSnapshot(
     val date: String = "",
     val time24: String = "--:--",
 ) {
+    /** "2:52 PM" — the form used in speech and in one-line readouts. */
+    val label: String get() = "$time $meridiem".trim()
+
+    /** "2:52:04 PM" — used where the seconds matter. */
+    val labelWithSeconds: String get() = "$time:$seconds $meridiem".trim()
+
     companion object {
-        private val timeFmt = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
+        private val timeFmt = DateTimeFormatter.ofPattern("h:mm", Locale.US)
+        private val time24Fmt = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
         private val secondFmt = DateTimeFormatter.ofPattern("ss", Locale.US)
+        private val meridiemFmt = DateTimeFormatter.ofPattern("a", Locale.US)
         private val dateFmt = DateTimeFormatter.ofPattern("EEE dd MMM yyyy", Locale.US)
 
         fun from(now: LocalDateTime): ClockSnapshot = ClockSnapshot(
             time = timeFmt.format(now),
             seconds = secondFmt.format(now),
-            meridiem = "",
+            meridiem = meridiemFmt.format(now).uppercase(Locale.US),
             date = dateFmt.format(now).uppercase(Locale.US),
-            time24 = timeFmt.format(now),
+            time24 = time24Fmt.format(now),
         )
     }
 }

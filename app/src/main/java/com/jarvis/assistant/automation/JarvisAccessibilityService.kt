@@ -154,6 +154,58 @@ class JarvisAccessibilityService : AccessibilityService() {
          * than a view the app can see. Nothing is stored anywhere else and the buffer is closed as
          * soon as the PNG is written.
          */
+        /** The raw screen as a bitmap, for the OCR fallback. Caller owns the bitmap. */
+        suspend fun captureBitmap(context: Context): Pair<Bitmap?, String?> {
+            val service = instance
+                ?: return null to "Screen control is off, so I cannot capture the screen."
+            if (Build.VERSION.SDK_INT < 30) return null to "Screenshots need Android 11 or newer."
+
+            val done = CompletableDeferred<Pair<Bitmap?, String?>>()
+            try {
+                service.takeScreenshot(
+                    Display.DEFAULT_DISPLAY,
+                    ContextCompat.getMainExecutor(context),
+                    object : AccessibilityService.TakeScreenshotCallback {
+                        override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
+                            val buffer = result.hardwareBuffer
+                            val bitmap = try {
+                                Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
+                                    ?.copy(Bitmap.Config.ARGB_8888, false)
+                            } catch (t: Throwable) {
+                                null
+                            } finally {
+                                try {
+                                    buffer.close()
+                                } catch (t: Throwable) {
+                                    // Already closed.
+                                }
+                            }
+                            if (!done.isCompleted) {
+                                done.complete(
+                                    if (bitmap == null) {
+                                        null to "The screen could not be read."
+                                    } else {
+                                        bitmap to null
+                                    },
+                                )
+                            }
+                        }
+
+                        override fun onFailure(errorCode: Int) {
+                            if (!done.isCompleted) {
+                                done.complete(null to "The screen could not be captured (code $errorCode).")
+                            }
+                        }
+                    },
+                )
+            } catch (t: Throwable) {
+                return null to "The screen could not be captured."
+            }
+
+            return withTimeoutOrNull(8_000L) { done.await() }
+                ?: (null to "The screenshot timed out.")
+        }
+
         suspend fun screenshot(context: Context): Pair<Uri?, String?> {
             val service = instance
                 ?: return null to "Screen control is off, so I cannot capture the screen."
