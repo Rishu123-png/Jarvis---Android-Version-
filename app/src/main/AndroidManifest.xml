@@ -52,6 +52,16 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
 
     <!--
+      Camera.
+
+      Used by exactly one action — "take a photo" — and by nothing in the background. The capture
+      activity is shown for about a second, takes one frame, writes it to Pictures/JARVIS and
+      finishes. A spoken chain such as "open camera, capture, show it" then opens the newest file.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!--
       Shizuku (optional).
 
       `moe.shizuku.manager.permission.API_V23` and the `<meta-data>` marker below are contributed by
@@ -197,6 +207,19 @@
           ordinary app can query it. If Shizuku is not installed this provider simply never answers;
           nothing else in the app depends on it being alive.
         -->
+        <!--
+          Camera capture surface. Framework theme on purpose: no Compose or AppCompat dependency, so
+          this window cannot fail to inflate. It is excluded from recents and never kept alive.
+        -->
+        <activity
+            android:name=".device.CaptureActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            tools:ignore="LockedOrientationActivity" />
+
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"

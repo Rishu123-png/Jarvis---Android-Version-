@@ -31,6 +31,10 @@ enum class ActionType(
     COMPOSE_SMS("sms", "COMPOSE SMS", "Open the composer with a number filled in", ParamKind.TEXT, sensitive = true),
     CALL_CONTACT("call_contact", "CALL CONTACT", "Call a saved contact by name, e.g. Dad", ParamKind.TEXT, sensitive = true),
 
+    // ---- capture (JARVIS takes the frame itself; no shutter to press) ----
+    CAPTURE_PHOTO("capture_photo", "TAKE PHOTO", "Take one photo and save it to Pictures/JARVIS", ParamKind.NONE, sensitive = true),
+    OPEN_LAST_PHOTO("last_photo", "SHOW LAST PHOTO", "Open the newest photo in a gallery app", ParamKind.NONE),
+
     // ---- device ----
     TORCH_ON("torch_on", "TORCH ON", "Turn the flashlight on", ParamKind.NONE),
     TORCH_OFF("torch_off", "TORCH OFF", "Turn the flashlight off", ParamKind.NONE),

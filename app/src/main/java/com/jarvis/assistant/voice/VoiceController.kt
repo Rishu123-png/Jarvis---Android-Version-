@@ -224,18 +224,19 @@ object VoiceController {
             return
         }
 
+        val hasScreenTask = plan.screenGoal != null
         _state.value = _state.value.copy(
             title = plan.title,
             subtitle = plan.subtitle,
             source = plan.source,
             steps = plan.steps.map { VoiceStep(it.label) },
             reply = plan.say,
-            phase = if (plan.steps.isEmpty()) VoicePhase.DONE else VoicePhase.RUNNING,
+            phase = if (plan.steps.isEmpty() && !hasScreenTask) VoicePhase.DONE else VoicePhase.RUNNING,
         )
 
         runCatching { VoiceMemory.remember(context, heard, plan.title) }
 
-        if (plan.steps.isEmpty()) {
+        if (plan.steps.isEmpty() && !hasScreenTask) {
             speak(context, plan.say)
             scheduleDismiss(id)
             return
@@ -272,6 +273,14 @@ object VoiceController {
 
         if (id != taskId) return
 
+        // The fixed steps are done; if the request needed an app JARVIS cannot predict, the
+        // screen-aware loop finishes the job one tap at a time.
+        val goal = plan.screenGoal
+        if (failure == null && goal != null) {
+            failure = runScreenTask(context, id, goal)
+            if (id != taskId) return
+        }
+
         if (failure == null) {
             _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = plan.say, error = null)
             speak(context, plan.say)
@@ -285,6 +294,54 @@ object VoiceController {
     // ---------------------------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Runs the observe → decide → act loop and streams every action onto the card, so a long task
+     * is watchable instead of a spinner.
+     */
+    private suspend fun runScreenTask(context: Context, id: Int, goal: String): String? {
+        appendStep(id, "SCREEN TASK", "READING THE SCREEN")
+        val failure = try {
+            ScreenAgent.run(context, goal) { event -> appendAgentEvent(id, event.label, event.detail) }
+        } catch (t: Throwable) {
+            "The screen task stopped (${t.javaClass.simpleName})."
+        }
+        closeLastStep(id, failure == null)
+        return failure
+    }
+
+    private fun appendStep(id: Int, label: String, detail: String) {
+        if (id != taskId) return
+        val current = _state.value
+        _state.value = current.copy(steps = current.steps + VoiceStep(label, StepPhase.ACTIVE, detail))
+    }
+
+    private fun appendAgentEvent(id: Int, label: String, detail: String) {
+        if (id != taskId) return
+        val current = _state.value
+        val closed = current.steps.mapIndexed { index, step ->
+            if (index == current.steps.lastIndex && step.phase == StepPhase.ACTIVE) {
+                step.copy(phase = StepPhase.DONE)
+            } else {
+                step
+            }
+        }
+        _state.value = current.copy(steps = closed + VoiceStep(label, StepPhase.ACTIVE, detail))
+    }
+
+    private fun closeLastStep(id: Int, ok: Boolean) {
+        if (id != taskId) return
+        val current = _state.value
+        if (current.steps.isEmpty()) return
+        val updated = current.steps.mapIndexed { index, step ->
+            if (index == current.steps.lastIndex) {
+                step.copy(phase = if (ok) StepPhase.DONE else StepPhase.FAILED)
+            } else {
+                step
+            }
+        }
+        _state.value = current.copy(steps = updated)
+    }
 
     private fun mark(id: Int, index: Int, phase: StepPhase, detail: String = "") {
         if (id != taskId) return
