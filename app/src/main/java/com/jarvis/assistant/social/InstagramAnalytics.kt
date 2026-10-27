@@ -28,7 +28,7 @@ data class FormatStat(
  * makes the numbers explainable: each finding in [findings] is derived from a field the screen also
  * shows, so nothing here can invent a metric Meta never returned.
  */
-data class InstagramAnalytics(
+data class IgAnalysis(
     val followers: Int,
     val postCount: Int,
     val windowDays: Long,
@@ -59,7 +59,7 @@ object InstagramAnalytics {
     private const val HEALTHY_RATE_LOW = 1.0
     private const val HEALTHY_RATE_HIGH = 5.0
 
-    fun compute(snapshot: IgSnapshot, growth: List<GrowthPoint>): InstagramAnalytics {
+    fun compute(snapshot: IgSnapshot, growth: List<GrowthPoint>): IgAnalysis {
         val followers = snapshot.profile.followers.coerceAtLeast(1)
         val media = snapshot.media
         val now = System.currentTimeMillis()
@@ -154,7 +154,7 @@ object InstagramAnalytics {
             delta = delta,
         )
 
-        return InstagramAnalytics(
+        return IgAnalysis(
             followers = snapshot.profile.followers,
             postCount = media.size,
             windowDays = windowDays,
