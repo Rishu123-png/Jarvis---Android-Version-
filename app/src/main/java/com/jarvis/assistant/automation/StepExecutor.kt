@@ -4,15 +4,19 @@ import android.accessibilityservice.AccessibilityService
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.AlarmClock
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.jarvis.assistant.R
 import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
 import com.jarvis.assistant.shell.ShizukuShell
+import com.jarvis.assistant.voice.Contacts
 import kotlinx.coroutines.delay
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -62,6 +66,19 @@ object StepExecutor {
         }
         if (all.any { it.action == ActionType.SHELL } && !ShizukuShell.isReady) {
             warnings.add("Needs an active Shizuku connection for shell steps.")
+        }
+        if (all.any { it.action == ActionType.CALL_CONTACT }) {
+            if (!Contacts.canRead(context)) {
+                warnings.add("Needs contact access to turn a name into a number.")
+            }
+            if (!canPlaceCalls(context)) {
+                warnings.add("Phone permission is off — the dialer will open instead of calling.")
+            }
+        }
+        if (all.any { it.action == ActionType.TYPE_TEXT } &&
+            !AccessibilityStatus.isServiceEnabled(context)
+        ) {
+            warnings.add("Needs accessibility access to type into another app.")
         }
         val unconfigured = all.count { !it.isConfigured }
         if (unconfigured > 0) warnings.add("$unconfigured step(s) have no value set.")
@@ -129,6 +146,8 @@ object StepExecutor {
                     Result.Ok("Dialer opened, not called")
                 }
             }
+
+            ActionType.CALL_CONTACT -> callContact(context, step.param)
 
             ActionType.COMPOSE_SMS -> {
                 val number = step.param.trim()
@@ -256,6 +275,8 @@ object StepExecutor {
                     }
                 }
             }
+
+            ActionType.TYPE_TEXT -> typeText(context, step.param)
 
             // ------------------------------------------------------------------ timing
             ActionType.WAIT -> {
@@ -514,6 +535,57 @@ object StepExecutor {
             null
         }
     }
+
+    /**
+     * Calls a saved contact.
+     *
+     * The name is resolved against the address book or a remembered alias. With CALL_PHONE the call
+     * is placed; without it the dialer opens with the number filled in and the card says so — the
+     * one thing this must never do is report a call that did not happen.
+     */
+    private suspend fun callContact(context: Context, raw: String): Result {
+        val query = raw.trim()
+        if (query.isEmpty()) return Result.Failed("No contact named")
+        if (!Contacts.canRead(context) && Contacts.aliasName(context, query) == null) {
+            return Result.Failed("Contact access is off — allow it in Settings")
+        }
+        val match = Contacts.resolve(context, query)
+            ?: return Result.Failed("No contact matched \"$query\"")
+        val uri = Uri.parse("tel:" + Uri.encode(match.number))
+        return try {
+            if (canPlaceCalls(context)) {
+                context.startActivity(
+                    Intent(Intent.ACTION_CALL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+                Result.Ok("Calling ${match.name}")
+            } else {
+                context.startActivity(
+                    Intent(Intent.ACTION_DIAL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+                Result.Ok("Dialer open for ${match.name} — allow phone permission to call directly")
+            }
+        } catch (t: Throwable) {
+            Result.Failed("Could not start the call")
+        }
+    }
+
+    /** Types into whatever field currently has focus, through the accessibility service. */
+    private fun typeText(context: Context, text: String): Result {
+        if (text.isBlank()) return Result.Failed("Nothing to type")
+        if (!AccessibilityStatus.isServiceEnabled(context)) {
+            return Result.Failed("Accessibility is off — enable JARVIS in system settings")
+        }
+        return if (JarvisAccessibilityService.typeInto(text)) {
+            Result.Ok("Typed ${text.take(28)}")
+        } else {
+            Result.Failed("No text field had focus")
+        }
+    }
+
+    private fun canPlaceCalls(context: Context): Boolean = ContextCompat.checkSelfPermission(
+        context.applicationContext,
+        Manifest.permission.CALL_PHONE,
+    ) == PackageManager.PERMISSION_GRANTED
 
     private fun appLabel(context: Context, pkg: String): String = try {
         context.packageManager.getApplicationLabel(

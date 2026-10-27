@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.accessibility.AccessibilityEvent
@@ -98,6 +99,62 @@ class JarvisAccessibilityService : AccessibilityService() {
                     // Ignore: recycling is best-effort on modern API levels.
                 }
             }
+        }
+
+        /**
+         * Types [text] into the focused editable field of the active window.
+         *
+         * Used by "send a message" flows: the chat is opened by a deep link, the text goes into the
+         * composer, and a separate PRESS_TEXT step taps Send. Gated exactly like [pressByText]: the
+         * service must be enabled *and* the operator must have switched screen actions on.
+         */
+        fun typeInto(text: String): Boolean {
+            val service = instance ?: return false
+            if (!AccessibilityStatus.isScreenPressAllowed(service)) return false
+            if (text.isBlank()) return false
+
+            val root: AccessibilityNodeInfo = try {
+                service.rootInActiveWindow ?: return false
+            } catch (t: Throwable) {
+                return false
+            }
+
+            return try {
+                val target = findFocusedEditable(root, depth = 0, counter = intArrayOf(0))
+                    ?: return false
+                val arguments = Bundle().apply {
+                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                }
+                target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            } catch (t: Throwable) {
+                false
+            } finally {
+                @Suppress("DEPRECATION")
+                try {
+                    root.recycle()
+                } catch (t: Throwable) {
+                    // Best-effort on modern API levels.
+                }
+            }
+        }
+
+        private fun findFocusedEditable(
+            node: AccessibilityNodeInfo,
+            depth: Int,
+            counter: IntArray,
+        ): AccessibilityNodeInfo? {
+            if (depth > 24 || counter[0] > 800) return null
+            counter[0]++
+            if (node.isEditable && node.isFocused) return node
+            for (index in 0 until node.childCount) {
+                val child = try {
+                    node.getChild(index)
+                } catch (t: Throwable) {
+                    null
+                } ?: continue
+                findFocusedEditable(child, depth + 1, counter)?.let { return it }
+            }
+            return null
         }
 
         private fun findExact(

@@ -29,6 +29,7 @@ enum class ActionType(
     DEEP_LINK("deep_link", "DEEP LINK", "Open an app's own URI scheme", ParamKind.TEXT, sensitive = true),
     DIAL_NUMBER("dial", "DIAL NUMBER", "Open the dialer with a number filled in", ParamKind.TEXT, sensitive = true),
     COMPOSE_SMS("sms", "COMPOSE SMS", "Open the composer with a number filled in", ParamKind.TEXT, sensitive = true),
+    CALL_CONTACT("call_contact", "CALL CONTACT", "Call a saved contact by name, e.g. Dad", ParamKind.TEXT, sensitive = true),
 
     // ---- device ----
     TORCH_ON("torch_on", "TORCH ON", "Turn the flashlight on", ParamKind.NONE),
@@ -55,6 +56,7 @@ enum class ActionType(
     // ---- accessibility ----
     GLOBAL_ACTION("global", "SYSTEM GESTURE", "Back, home, recents, shade, quick settings, lock", ParamKind.TEXT, needsAccessibility = true, sensitive = true),
     PRESS_TEXT("press", "PRESS ON SCREEN", "Tap a control with an exact label", ParamKind.TEXT, needsAccessibility = true, sensitive = true),
+    TYPE_TEXT("type_text", "TYPE TEXT", "Type into the focused text field", ParamKind.TEXT, needsAccessibility = true, sensitive = true),
 
     // ---- timing ----
     WAIT("wait", "WAIT", "Pause the routine, in seconds", ParamKind.NUMBER),

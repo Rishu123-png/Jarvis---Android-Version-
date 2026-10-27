@@ -73,6 +73,7 @@ import com.jarvis.assistant.ui.screens.ControlsScreen
 import com.jarvis.assistant.ui.screens.DashboardScreen
 import com.jarvis.assistant.ui.screens.DiagnosticsScreen
 import com.jarvis.assistant.ui.screens.DockPickerScreen
+import com.jarvis.assistant.ui.screens.HomeScreen
 import com.jarvis.assistant.ui.screens.LauncherSettingsScreen
 import com.jarvis.assistant.ui.screens.ModuleScaffold
 import com.jarvis.assistant.ui.screens.NetworkScreen
@@ -90,6 +91,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
+private const val ROUTE_HOME = "home"
 private const val ROUTE_DASHBOARD = "dashboard"
 private const val ROUTE_TERMINAL = "terminal"
 private const val ROUTE_DRAWER = "drawer"
@@ -128,7 +130,7 @@ fun JarvisApp() {
     val status = rememberSystemStatus()
     val device = rememberDeviceInfo()
 
-    var route by rememberSaveable { mutableStateOf(ROUTE_DASHBOARD) }
+    var route by rememberSaveable { mutableStateOf(ROUTE_HOME) }
     var dockEditSlot by rememberSaveable { mutableIntStateOf(0) }
 
     // ---- apps + dock ----
@@ -311,7 +313,7 @@ fun JarvisApp() {
         }
     }
 
-    BackHandler(enabled = route != ROUTE_DASHBOARD) { route = ROUTE_DASHBOARD }
+    BackHandler(enabled = route != ROUTE_HOME) { route = ROUTE_HOME }
 
     Box(modifier = Modifier.fillMaxSize()) {
         HudBackground()
@@ -319,7 +321,7 @@ fun JarvisApp() {
         AnimatedContent(
             targetState = route,
             transitionSpec = {
-                val forward = targetState != ROUTE_DASHBOARD
+                val forward = targetState != ROUTE_HOME
                 (fadeIn(tween(240)) + slideInHorizontally(tween(260)) { if (forward) it / 12 else -it / 12 })
                     .togetherWith(
                         fadeOut(tween(140)) +
@@ -332,6 +334,17 @@ fun JarvisApp() {
                 .windowInsetsPadding(WindowInsets.systemBars),
         ) { current ->
             when (current) {
+                ROUTE_HOME -> HomeScreen(
+                    clock = clock,
+                    status = status,
+                    isHomeApp = isHomeApp,
+                    appCount = installedApps.size,
+                    notificationCount = notifications.size,
+                    onOpenModules = { route = ROUTE_DASHBOARD },
+                    onOpenDrawer = { route = ROUTE_DRAWER },
+                    onOpenSettings = { route = ROUTE_SETTINGS },
+                )
+
                 ROUTE_DASHBOARD -> DashboardScreen(
                     clock = clock,
                     status = status,
@@ -349,7 +362,9 @@ fun JarvisApp() {
                     },
                     onOpenDrawer = { route = ROUTE_DRAWER },
                     onOpenSettings = { route = ROUTE_SETTINGS },
-                    onOpenModule = { module -> route = module.id },
+                    onOpenModule = { module ->
+                        route = if (module.id == HudModules.VOICE) ROUTE_HOME else module.id
+                    },
                     onOpenTerminal = { route = ROUTE_TERMINAL },
                 )
 
@@ -518,13 +533,16 @@ fun JarvisApp() {
                     onBack = { route = ROUTE_DASHBOARD },
                 )
 
-                HudModules.VOICE -> ModuleScaffold(
-                    title = "VOICE",
-                    subtitle = "speech interface",
-                    accent = Amber,
-                    statusLabel = "OFFLINE",
-                    onBack = { route = ROUTE_DASHBOARD },
-                ) { VoiceScreen() }
+                HudModules.VOICE -> HomeScreen(
+                    clock = clock,
+                    status = status,
+                    isHomeApp = isHomeApp,
+                    appCount = installedApps.size,
+                    notificationCount = notifications.size,
+                    onOpenModules = { route = ROUTE_DASHBOARD },
+                    onOpenDrawer = { route = ROUTE_DRAWER },
+                    onOpenSettings = { route = ROUTE_SETTINGS },
+                )
 
                 HudModules.AUTOMATION -> AutomationScreen(
                     workflows = workflows,
