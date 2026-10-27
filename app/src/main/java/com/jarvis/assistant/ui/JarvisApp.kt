@@ -63,6 +63,7 @@ import com.jarvis.assistant.ui.components.HudBackground
 import com.jarvis.assistant.ui.components.rememberClock
 import com.jarvis.assistant.ui.components.rememberIsResumed
 import com.jarvis.assistant.ui.screens.AiSettingsScreen
+import com.jarvis.assistant.ui.screens.InstagramScreen
 import com.jarvis.assistant.ui.screens.AppDrawerScreen
 import com.jarvis.assistant.ui.screens.AutomationEditorScreen
 import com.jarvis.assistant.ui.screens.AutomationScreen
@@ -507,6 +508,10 @@ fun JarvisApp() {
                         aiLabel = aiConfig?.label,
                     )
                 }
+
+                HudModules.INSTAGRAM -> InstagramScreen(
+                    onBack = { route = ROUTE_DASHBOARD },
+                )
 
                 HudModules.VOICE -> ModuleScaffold(
                     title = "VOICE",

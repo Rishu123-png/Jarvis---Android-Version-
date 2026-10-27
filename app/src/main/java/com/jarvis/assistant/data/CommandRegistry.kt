@@ -11,6 +11,8 @@ import com.jarvis.assistant.device.readBattery
 import com.jarvis.assistant.device.readNetwork
 import com.jarvis.assistant.device.readStorage
 import com.jarvis.assistant.shell.ShizukuShell
+import com.jarvis.assistant.social.InstagramAnalytics
+import com.jarvis.assistant.social.InstagramStore
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -38,7 +40,7 @@ object CommandRegistry {
     private val COMMANDS = listOf(
         "help", "status", "battery", "network", "storage", "apps",
         "alerts", "torch", "volume", "panel", "dnd", "routines", "run", "stop",
-        "modules", "ai", "time", "clear", "shizuku", "shell",
+        "modules", "ai", "insta", "time", "clear", "shizuku", "shell",
     )
 
     fun banner(aiConfigured: Boolean, aiLabel: String?): List<String> = buildList {
@@ -82,6 +84,7 @@ object CommandRegistry {
             "stop" -> Response(stopLines())
             "modules" -> Response(moduleLines())
             "ai" -> Response(aiLines(app))
+            "insta", "instagram" -> Response(instaLines(app))
             "time" -> Response(
                 listOf(
                     "LOCAL TIME",
@@ -154,6 +157,7 @@ object CommandRegistry {
         add("  stop                halt the running routine")
         add("  modules             HUD modules")
         add("  ai                  intelligence status")
+        add("  insta               instagram creator summary")
         add("  time                clock")
         add("  clear               wipe this session")
         add("Unrecognised input goes to the AI core when a key is configured.")
@@ -408,6 +412,51 @@ object CommandRegistry {
         HudModules.all.forEach { module ->
             add("  ${module.title.padEnd(12)} ${if (module.isLive) "LIVE" else "STAGED"}")
         }
+    }
+
+    /**
+     * Instagram summary from the cached sync — deliberately offline. A terminal command should
+     * answer instantly; the module's REFRESH is the place that spends requests against Meta.
+     */
+    private fun instaLines(context: Context): List<String> {
+        if (!InstagramStore.isConnected(context)) {
+            return listOf(
+                "INSTAGRAM :: NOT LINKED",
+                "open HUD > INSTAGRAM to paste an access token",
+            )
+        }
+        val snapshot = InstagramStore.cachedSnapshot(context)
+            ?: return listOf(
+                "INSTAGRAM :: LINKED · no reading yet",
+                "open the INSTAGRAM module and tap SYNC NOW",
+            )
+        val stats = InstagramAnalytics.compute(snapshot, InstagramStore.growth(context))
+        val minutes = ((System.currentTimeMillis() - snapshot.fetchedAt) / 60_000L).coerceAtLeast(0L)
+        return listOf(
+            "INSTAGRAM :: ${snapshot.profile.handle} · ${snapshot.profile.followers} followers",
+            "  POSTS   ${stats.postCount} analysed · ${stats.averageEngagement.toInt()} avg interactions",
+            "  RATE    " + String.format(Locale.US, "%.2f%%", stats.engagementRate),
+            "  BEST    " + (
+                stats.bestFormat?.let { format ->
+                    format.format + " · " + String.format(Locale.US, "%.2f%%", format.averageRate)
+                } ?: "—"
+                ),
+            "  TIMING  " + (
+                stats.bestDay?.let { day ->
+                    day + (stats.bestHour?.let { String.format(Locale.US, " %02d:00", it) } ?: "")
+                } ?: "not enough posts"
+                ),
+            "  GROWTH  " + (
+                stats.followerDelta?.let { delta -> (if (delta >= 0) "+" else "") + delta + " since first sync" }
+                    ?: "first reading"
+                ),
+            "  SYNCED  " + when {
+                minutes < 1 -> "just now"
+                minutes < 60 -> "$minutes min ago"
+                minutes < 1_440 -> "${minutes / 60} h ago"
+                else -> "${minutes / 1_440} d ago"
+            },
+        )
     }
 
     private fun aiLines(context: Context): List<String> {
