@@ -95,6 +95,8 @@ fun DashboardScreen(
     stepsToday: Int?,
     waterToday: Int,
     onAddWater: () -> Unit,
+    /** The next calendar event, as "Standup · 4:00 PM", or null. */
+    nextEvent: String?,
     isDockCustom: Boolean,
     onLaunchApp: (InstalledApp) -> Unit,
     onEditDock: (slot: Int) -> Unit,
@@ -211,6 +213,18 @@ fun DashboardScreen(
                             text = "+250 ML",
                             style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.4.sp),
                             color = ElectricCyan,
+                        )
+                    }
+                }
+                if (nextEvent != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        HudChip(text = "NEXT", accent = IceBlue)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = nextEvent,
+                            style = HudType.valueSmall,
+                            color = TextSecondary,
                         )
                     }
                 }

@@ -825,7 +825,12 @@ object StepExecutor {
     /** Marks the human reply as the outcome, and speaks it. Used by the "answer" actions. */
     private suspend fun speakAndReport(context: Context, text: String): Result {
         try {
-            SpeechOut.speak(context, text, timeoutMillis = 15_000L)
+            SpeechOut.speak(
+                context,
+                text,
+                timeoutMillis = 15_000L,
+                language = SpokenLanguage.last(context).tag,
+            )
         } catch (t: Throwable) {
             // Speaking is best-effort; the card still shows the answer.
         }

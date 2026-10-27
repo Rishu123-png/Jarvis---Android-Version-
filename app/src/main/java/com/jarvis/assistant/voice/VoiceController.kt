@@ -246,11 +246,25 @@ object VoiceController {
             phase = if (plan.steps.isEmpty() && !hasScreenTask) VoicePhase.DONE else VoicePhase.RUNNING,
         )
 
-        runCatching { VoiceMemory.remember(context, heard, plan.title) }
+        runCatching {
+            VoiceMemory.remember(context, heard, plan.title)
+            FollowUp.remember(
+                context,
+                FollowUp.Turn(
+                    heard = heard,
+                    title = plan.title,
+                    said = plan.say,
+                    slot = plan.steps.firstOrNull()?.param.orEmpty(),
+                ),
+            )
+        }
         lastHeard = heard
+        val spokenLang = Language.detect(heard)
+        SpokenLanguage.remember(context, spokenLang)
+        val spokenLanguage = spokenLang.tag
 
         if (plan.steps.isEmpty() && !hasScreenTask) {
-            speak(context, plan.say)
+            speak(context, plan.say, spokenLanguage)
             scheduleDismiss(id)
             return
         }
@@ -296,7 +310,7 @@ object VoiceController {
 
         if (failure == null) {
             _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = plan.say, error = null)
-            speak(context, plan.say)
+            speak(context, plan.say, spokenLanguage)
             scheduleDismiss(id)
         } else {
             _state.value = _state.value.copy(phase = VoicePhase.FAILED, reply = failure, error = failure)
@@ -376,11 +390,11 @@ object VoiceController {
         )
     }
 
-    private fun speak(context: Context, text: String) {
+    private fun speak(context: Context, text: String, language: String? = null) {
         if (text.isBlank()) return
         scope.launch {
             try {
-                SpeechOut.speak(context, text.take(240))
+                SpeechOut.speak(context, text.take(240), language = language)
             } catch (t: Throwable) {
                 // Speech is a courtesy; silence is not an error.
             }
