@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **2.3.1 (versionCode 17)**.
+Last updated with **1.0.0 (versionCode 18)**.
 
 ---
 
@@ -29,7 +29,12 @@ Last updated with **2.3.1 (versionCode 17)**.
 | Focus home: top bar + orb only, full dashboard behind one button | Live |
 | Chained voice tasks: 8-step plans, waits, CameraX capture, open newest photo | Live |
 | Screen-aware loop: observe → decide → act across apps (accessibility tier, 6 actions max) | Live |
-| Tests: 6 JVM suites over the pure logic, run in CI before the APKs | Live |
+| ~400 phrasings, fuzzy matching, Hinglish, never a dead end | Live |
+| Open anything · message by name · alerts read aloud with reply suggestions | Live |
+| File search, distance by road, offline maths, settings deep links | Live |
+| Health: steps, distance, water, sleep estimate, heart rate | Live |
+| Phone's own lock, lock-screen line, language-aware replies | Live |
+| Tests: 13 JVM suites over the pure logic, run in CI before the APKs | Live |
 | Quick Settings tiles (open JARVIS, torch) | Live |
 | Reminders, screenshot action, subsystem health panel | Live |
 | Privacy lock (PBKDF2 PIN) + fingerprint/face shortcut, floating bubble, home-screen widget | Live |
@@ -126,8 +131,8 @@ ideas are worth more than the code — everything below is a rewrite, not a port
 | — | Voice, memory, focus home, voice chains, screen loop | **Shipped** (2.0.0, 2.1.0) |
 | A | Tests over the pure logic | **Shipped** (2.2.0) |
 | B | Quick Settings tile, reminders, screenshot, diagnostics depth | **Shipped** (2.2.0) |
-| C | Privacy lock, bubble, widget, downloads, translate | **Shipped** (2.3.0) |
-| D | VERIFY, OCR fallback, multi-turn voice, engine choice | **Shipped** (2.3.0) |
+| C | Privacy lock, bubble, widget, downloads, translate | **Shipped** |
+| D | VERIFY, OCR fallback, multi-turn voice, engine choice | **Shipped** |
 | D | On-device Whisper model, longer agent budget, health/weather | Later |
 
 Everything in "Deliberately out of scope" stays out unless the operator asks.

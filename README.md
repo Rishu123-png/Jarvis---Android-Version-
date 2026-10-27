@@ -4,7 +4,7 @@
 camera, app control — on top of a hand-drawn HUD. No account, no JARVIS server, no telemetry. Every AI
 feature runs on a key *you* own, and every permission is requested at the moment it is needed.
 
-`com.jarvis.assistant` · Kotlin + Jetpack Compose + Material 3 · minSdk 29 (Android 10) · **2.3.0**
+`com.jarvis.assistant` · Kotlin + Jetpack Compose + Material 3 · minSdk 29 (Android 10) · **1.0.0**
 
 | | |
 | --- | --- |
@@ -52,7 +52,15 @@ feature runs on a key *you* own, and every permission is requested at the moment
 | Privacy lock, floating bubble, home-screen widget | Working |
 | Quick Settings tiles, reminders, screenshot, downloads | Working |
 | Privileged shell via Shizuku (optional, adb-level, no root) | Working |
-| Automated tests: 6 JVM suites + 1 device smoke test, run in CI before the APK | Working |
+| Understands ~400 phrasings per intent family, fuzzy and Hinglish included | Working |
+| Opens any app, the gallery, files and ~25 settings pages | Working |
+| Message/reply by name, through the notification's own reply action | Working |
+| Reads alerts aloud, judges adverts, suggests replies | Working |
+| File search (All-files access), distance by road, offline maths | Working |
+| Health: steps, distance, water, sleep estimate, heart rate where present | Working |
+| Lock with the phone's own PIN/pattern/fingerprint, line on the lock screen | Working |
+| Answers in the language it was asked in (EN/HI/Hinglish offline) | Working |
+| Automated tests: 13 JVM suites + 1 device smoke test, run in CI before the APK | Working |
 
 Every tile on the HUD is either backed by a real Android API or clearly marked as not built. Nothing
 in the interface imitates a capability the app does not have.
@@ -179,12 +187,22 @@ Secrets live in the Android Keystore (`AES/GCM`), never in the repository and ne
 | Camera | the camera chip | photo capture |
 | Overlay | only if you enable the bubble | floating disc |
 | Biometric | a normal permission, no prompt | fingerprint/face unlock shortcut |
+| Photos and media | a normal runtime dialog | the gallery, your last photo, video |
+| Location | a normal runtime dialog | where am I, distance, directions |
+| Activity / body sensors | a normal runtime dialog | steps, heart rate where present |
+| All files access | a special grant in system settings | finding any file by name |
 | Accessibility | your explicit choice in settings | screen taps, screenshots, OCR |
 | Notification listener | your explicit choice | alerts, media, `VERIFY` |
 
 **The lock** is a numeric PIN over the app itself: PBKDF2-HMAC-SHA256, 120 000 iterations, random salt,
 constant-time compare, no recovery. It re-engages a minute after you leave. The lock screen shows no app
 names, no history and no last command.
+
+**Which lock.** Android will not let an app replace the lock screen, so JARVIS offers two honest
+choices in *Advanced → Which lock*: **your phone's own lock** (the system credential screen — the same
+PIN, pattern or fingerprint you already use; JARVIS learns only pass or fail) or **a JARVIS keypad**
+(a second, app-only gate). A separate switch posts a short line over the lock screen — steps, water,
+unread messages — as a public notification, which is the only form Android allows.
 
 **There is exactly one credential** — the PIN you choose the first time you open *Settings → Advanced →
 Privacy lock*. There is no default, no second password and nothing shipped in the build. Change it by
@@ -232,8 +250,8 @@ Every push runs the full pipeline: unit tests → debug + release APKs → APK s
 verification in the run summary → artifacts. The release artifacts are already named for a release:
 
 ```
-jarvis-2.3.0.apk          (release — use this one)
-jarvis-2.3.0-debug.apk    (debug)
+jarvis-1.0.0.apk          (release — use this one)
+jarvis-1.0.0-debug.apk    (debug)
 ```
 
 ### Android Studio / command line
@@ -253,18 +271,18 @@ different key, uninstall the old app first.
 Step by step, from this repository:
 
 1. **Check the build is green** — Actions tab → latest **Build JARVIS APK** run → all steps passed.
-2. **Download the release APK** — from the run's artifacts, `jarvis-release-apk` → `jarvis-2.3.0.apk`
+2. **Download the release APK** — from the run's artifacts, `jarvis-release-apk` → `jarvis-1.0.0.apk`
    (or from Codemagic: `app/build/outputs/apk/release/app-release.apk`).
 3. **Rename it if you like** — the release pipeline already names it `jarvis-<version>.apk`, which is
-   the name to upload. Keep it exactly like that: `jarvis-2.3.0.apk`.
-4. **Create the GitHub Release** — *Releases → Draft a new release* → tag `v2.3.0` → title
-   `JARVIS 2.3.0` → paste the notes from [CHANGELOG.md](CHANGELOG.md).
-5. **Attach the APK** to that release as an asset (drag `jarvis-2.3.0.apk` into the assets box).
+   the name to upload. Keep it exactly like that: `jarvis-1.0.0.apk`.
+4. **Create the GitHub Release** — *Releases → Draft a new release* → tag `v1.0.0` → title
+   `JARVIS 1.0.0` → paste the notes from [CHANGELOG.md](CHANGELOG.md).
+5. **Attach the APK** to that release as an asset (drag `jarvis-1.0.0.apk` into the assets box).
    Pushing a `v*` tag also does this automatically: the workflow attaches `dist/jarvis-*.apk`.
-6. **Verify**: the release page shows `jarvis-2.3.0.apk` plus *Source code* archives.
+6. **Verify**: the release page shows `jarvis-1.0.0.apk` plus *Source code* archives.
 
-The file you upload is **`jarvis-2.3.0.apk`**; its source on the build machine is
-**`app/build/outputs/apk/release/app-release.apk`**, and in CI **`dist/jarvis-2.3.0.apk`**.
+The file you upload is **`jarvis-1.0.0.apk`**; its source on the build machine is
+**`app/build/outputs/apk/release/app-release.apk`**, and in CI **`dist/jarvis-1.0.0.apk`**.
 
 ---
 

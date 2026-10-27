@@ -66,6 +66,23 @@ enum class ActionType(
     DOWNLOAD("download", "DOWNLOAD", "Save a file to Download/JARVIS, e.g. \"https://host/file|name\"", ParamKind.TEXT, sensitive = true),
     TRANSLATE("translate", "TRANSLATE", "Translate text through your AI key: \"lang|text\"", ParamKind.TEXT, sensitive = true),
 
+    // ---- the whole phone: finding things and knowing things ----
+    OPEN_GALLERY("gallery", "OPEN GALLERY", "Open the gallery, or the newest photo", ParamKind.NONE),
+    MESSAGE("message", "SEND MESSAGE", "Send a chat message: \"app|contact|text\"", ParamKind.TEXT, sensitive = true),
+    MESSAGE_REPLY("reply", "REPLY TO ALERT", "Answer a live notification: \"contact|text\"", ParamKind.TEXT, needsNotificationAccess = true, sensitive = true),
+    READ_NOTIFICATIONS("read_alerts", "READ ALERTS", "Summarise alerts: summary or last", ParamKind.TEXT, needsNotificationAccess = true),
+    SEARCH_FILES("find_files", "FIND FILE", "Search the whole phone by file name", ParamKind.TEXT),
+    OPEN_FILE("open_file", "OPEN FILE", "Open a file by name, or the newest download", ParamKind.TEXT),
+    LOCATION("where", "WHERE AM I", "Read the current location", ParamKind.NONE),
+    DISTANCE("distance", "DISTANCE", "Distance to a place, by road when possible", ParamKind.TEXT),
+    NAVIGATE("navigate", "NAVIGATE", "Open turn-by-turn directions to a place", ParamKind.TEXT, sensitive = true),
+    CALCULATE("calculate", "CALCULATE", "Arithmetic and unit conversion, offline", ParamKind.TEXT),
+    SETTINGS_PAGE("settings_page", "SETTINGS PAGE", "Open a specific system settings page", ParamKind.TEXT),
+    READ_SCREEN("read_screen", "READ SCREEN", "Speak what is on the screen now", ParamKind.NONE, needsAccessibility = true),
+    SHARE_TEXT("share", "SHARE", "Share text through the system share sheet", ParamKind.TEXT, sensitive = true),
+    HEALTH("health", "HEALTH CHECK", "steps, distance, water, sleep or heart", ParamKind.TEXT),
+    WATER_LOG("water_log", "LOG WATER", "Add millilitres of water to today", ParamKind.NUMBER),
+
     // ---- accessibility ----
     GLOBAL_ACTION("global", "SYSTEM GESTURE", "Back, home, recents, shade, quick settings, lock", ParamKind.TEXT, needsAccessibility = true, sensitive = true),
     PRESS_TEXT("press", "PRESS ON SCREEN", "Tap a control with an exact label", ParamKind.TEXT, needsAccessibility = true, sensitive = true),

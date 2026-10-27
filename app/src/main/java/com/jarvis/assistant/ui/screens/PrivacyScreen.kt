@@ -1,5 +1,7 @@
 package com.jarvis.assistant.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,8 +22,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jarvis.assistant.device.Access
 import com.jarvis.assistant.device.Privacy
 import com.jarvis.assistant.ui.components.HudChip
 import com.jarvis.assistant.ui.components.HudDivider
@@ -59,10 +63,26 @@ fun PrivacyScreen(
     biometricStatus: String,
     biometricEnabled: Boolean,
     onToggleBiometric: (Boolean) -> Unit,
+    phoneLockEnabled: Boolean,
+    deviceLockAvailable: Boolean,
+    onSelectLockMode: (Boolean) -> Unit,
+    notifyBrainEnabled: Boolean,
+    onToggleNotifyBrain: (Boolean) -> Unit,
+    roadRoutingEnabled: Boolean,
+    onToggleRoadRouting: (Boolean) -> Unit,
+    lockNoticeEnabled: Boolean,
+    onToggleLockNotice: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     var pinDraft by remember { mutableStateOf("") }
     var pinNote by remember { mutableStateOf<String?>(null) }
+    var accessRefresh by remember { mutableStateOf(0) }
+
+    val context = LocalContext.current
+    val accessRows = remember(accessRefresh) { Access.snapshot(context) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { accessRefresh++ }
 
     ModuleScaffold(
         title = "ADVANCED",
@@ -289,6 +309,183 @@ fun PrivacyScreen(
                 style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
                 color = TextMuted,
             )
+        }
+
+        HudDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+        // ---------------------------------------------------------------- which lock
+        HudPanel(
+            label = "WHICH LOCK",
+            accent = ElectricCyan,
+            trailing = {
+                HudChip(
+                    text = if (phoneLockEnabled) "PHONE LOCK" else "KEYPAD",
+                    accent = ElectricCyan,
+                )
+            },
+        ) {
+            Text(
+                text = "The phone's own lock is the honest choice: JARVIS asks Android to show your " +
+                    "real PIN, pattern or fingerprint screen and learns only pass or fail. The " +
+                    "keypad is a second, app-only gate for phones without a secure lock.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey(if (phoneLockEnabled) "USE KEYPAD" else "USE PHONE LOCK") {
+                    onSelectLockMode(!phoneLockEnabled)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = when {
+                    phoneLockEnabled && !deviceLockAvailable ->
+                        "This phone has no PIN, pattern or fingerprint set, so the keypad stays in charge."
+
+                    phoneLockEnabled ->
+                        "Your fingerprint or PIN is asked for each time JARVIS is opened."
+
+                    else -> "JARVIS's own PIN is used. Change it below."
+                },
+                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+                color = if (phoneLockEnabled && !deviceLockAvailable) Amber else TextMuted,
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        HudPanel(
+            label = "LOCK SCREEN LINE",
+            accent = if (lockNoticeEnabled) StatusGreen else Amber,
+            trailing = {
+                HudChip(
+                    text = if (lockNoticeEnabled) "ON" else "OFF",
+                    accent = if (lockNoticeEnabled) StatusGreen else Amber,
+                )
+            },
+        ) {
+            Text(
+                text = "A short line over your lock screen — steps, water and unread messages. " +
+                    "Android does not let any app replace the lock screen, so this is a " +
+                    "high-priority notification, which is what is actually possible.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey(if (lockNoticeEnabled) "TURN OFF" else "TURN ON") {
+                    onToggleLockNotice(!lockNoticeEnabled)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // ---------------------------------------------------------------- assistant behaviour
+        HudPanel(
+            label = "SPEAK MY ALERTS",
+            accent = if (notifyBrainEnabled) StatusGreen else Amber,
+            trailing = {
+                HudChip(
+                    text = if (notifyBrainEnabled) "ON" else "OFF",
+                    accent = if (notifyBrainEnabled) StatusGreen else Amber,
+                )
+            },
+        ) {
+            Text(
+                text = "JARVIS reads a message out and suggests three replies. Advertisements get " +
+                    "one dry line and are then ignored for the day. Off by default, because an " +
+                    "assistant that speaks unprompted should be invited first.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey(if (notifyBrainEnabled) "TURN OFF" else "TURN ON") {
+                    onToggleNotifyBrain(!notifyBrainEnabled)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        HudPanel(label = "ROAD DISTANCE", accent = ElectricCyan) {
+            Text(
+                text = "Distance by road needs one request to a public router (OSRM). With this " +
+                    "off, JARVIS answers straight-line distance and says so out loud.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey(if (roadRoutingEnabled) "TURN OFF" else "TURN ON") {
+                    onToggleRoadRouting(!roadRoutingEnabled)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // ---------------------------------------------------------------- permissions
+        HudPanel(
+            label = "ACCESS",
+            accent = if (accessRows.any { !it.granted }) Amber else StatusGreen,
+            trailing = {
+                val missing = accessRows.count { !it.granted }
+                HudChip(
+                    text = if (missing == 0) "ALL SET" else "$missing MISSING",
+                    accent = if (missing == 0) StatusGreen else Amber,
+                )
+            },
+        ) {
+            Text(
+                text = "Every capability JARVIS has, and the switch behind it. A feature that " +
+                    "silently lacks its permission is the usual reason an assistant feels broken.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            for (item in accessRows) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = item.label,
+                            style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.4.sp),
+                            color = if (item.granted) StatusGreen else TextPrimary,
+                        )
+                        Text(
+                            text = item.unlocks + " · " + item.note,
+                            style = HudType.label.copy(fontSize = 7.sp, letterSpacing = 0.8.sp),
+                            color = TextMuted,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    if (item.granted) {
+                        HudChip(text = "ON", accent = StatusGreen)
+                    } else {
+                        KeypadKey("GRANT") {
+                            when (item.kind) {
+                                Access.Kind.RUNTIME ->
+                                    permissionLauncher.launch(item.permissions.toTypedArray())
+
+                                else -> Access.settingsIntent(context, item)?.let { intent ->
+                                    try {
+                                        context.startActivity(intent)
+                                    } catch (t: Throwable) {
+                                        // The page does not exist on this phone; nothing to open.
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         HudDivider(modifier = Modifier.padding(vertical = 4.dp))

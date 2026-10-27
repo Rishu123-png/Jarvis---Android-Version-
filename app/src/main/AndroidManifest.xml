@@ -74,6 +74,39 @@
       reaches the app — Android compares in its own secure hardware and returns only a pass/fail.
     -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <!--
+      Everything JARVIS needs to act like a family member instead of a demo.
+
+      Media: the gallery, the last photo, video. On Android 13+ the three READ_MEDIA_* grants
+      replace READ_EXTERNAL_STORAGE, which is kept only for Android 10-12.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!--
+      Find any file by name. This is a *special* permission: it cannot be granted from a dialog, only
+      from system settings, and Google Play does not allow it for most app categories. It is here on
+      purpose: this build is installed by its owner, and "find my aadhaar pdf" is a real request.
+      Without it, file search falls back to what MediaStore indexes.
+    -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <!-- Where am I, how far, and the way there. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Steps, and heart rate on the few phones that have the sensor. -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+
+    <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.heartrate" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!--
@@ -301,6 +334,18 @@
             android:exported="true"
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+        <!--
+          Sleep estimate only: remembers when the screen went off and came back on. No content is
+          read, nothing is logged beyond two timestamps.
+        -->
+        <receiver
+            android:name=".device.ScreenWatchReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.SCREEN_OFF" />
+                <action android:name="android.intent.action.SCREEN_ON" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

@@ -16,12 +16,22 @@ import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
 import com.jarvis.assistant.ai.Translator
+import com.jarvis.assistant.device.Access
+import com.jarvis.assistant.device.AppLaunch
 import com.jarvis.assistant.device.Downloads
+import com.jarvis.assistant.device.Files
 import com.jarvis.assistant.device.Gallery
+import com.jarvis.assistant.device.HealthLog
+import com.jarvis.assistant.device.Messaging
+import com.jarvis.assistant.device.NotifyBrain
+import com.jarvis.assistant.device.Whereabouts
 import com.jarvis.assistant.device.Reminders
 import com.jarvis.assistant.device.QuickCapture
 import com.jarvis.assistant.shell.ShizukuShell
+import com.jarvis.assistant.data.Units
 import com.jarvis.assistant.voice.Contacts
+import com.jarvis.assistant.voice.Language
+import com.jarvis.assistant.voice.SpokenLanguage
 import kotlinx.coroutines.delay
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -94,6 +104,31 @@ object StepExecutor {
         ) {
             warnings.add("Needs accessibility access to type into another app.")
         }
+        if (all.any { it.action == ActionType.SEARCH_FILES || it.action == ActionType.OPEN_FILE } &&
+            !Files.hasAllFiles(context)
+        ) {
+            warnings.add("File search needs \"All files access\" for the whole phone; without it only indexed media is searched.")
+        }
+        if (all.any {
+                it.action == ActionType.LOCATION || it.action == ActionType.DISTANCE ||
+                    it.action == ActionType.NAVIGATE
+            } && !Whereabouts.hasPermission(context)
+        ) {
+            warnings.add("Needs location permission for distance and directions.")
+        }
+        if (all.any { it.action == ActionType.HEALTH || it.action == ActionType.WATER_LOG } &&
+            !HealthLog.hasActivityPermission(context)
+        ) {
+            warnings.add("Step counting needs the Activity permission.")
+        }
+        if (all.any { it.action == ActionType.MESSAGE } && !Contacts.canRead(context)) {
+            warnings.add("Needs contact access to find the person to message.")
+        }
+        if (all.any { it.action == ActionType.MESSAGE_REPLY || it.action == ActionType.READ_NOTIFICATIONS } &&
+            !NotificationRepository.hasAccess(context)
+        ) {
+            warnings.add("Needs notification access to read or reply to alerts.")
+        }
         val unconfigured = all.count { !it.isConfigured }
         if (unconfigured > 0) warnings.add("$unconfigured step(s) have no value set.")
         if (workflow.steps.isEmpty()) warnings.add("This routine has no steps yet.")
@@ -107,6 +142,8 @@ object StepExecutor {
     fun opensSystemSurface(step: WorkflowStep): Boolean = when (step.action) {
         ActionType.OPEN_APP, ActionType.OPEN_URL, ActionType.DEEP_LINK, ActionType.DIAL_NUMBER,
         ActionType.COMPOSE_SMS, ActionType.SET_TIMER, ActionType.SET_ALARM, ActionType.OPEN_PANEL,
+        ActionType.OPEN_GALLERY, ActionType.NAVIGATE, ActionType.SETTINGS_PAGE, ActionType.SHARE_TEXT,
+        ActionType.OPEN_FILE, ActionType.MESSAGE,
         -> true
 
         else -> false
@@ -314,6 +351,144 @@ object StepExecutor {
 
             ActionType.SET_DND -> setDnd(context, step.param)
 
+            // ------------------------------------------------------------------ the whole phone
+            ActionType.OPEN_GALLERY -> openTarget(context, "gallery")
+
+            ActionType.SETTINGS_PAGE -> openTarget(context, step.param.ifBlank { "settings" })
+
+            ActionType.MESSAGE -> {
+                val parts = step.param.split('|')
+                val app = parts.getOrNull(0)?.trim().orEmpty().ifBlank { "whatsapp" }
+                val who = parts.getOrNull(1)?.trim().orEmpty()
+                val body = parts.getOrNull(2)?.trim().orEmpty()
+                if (who.isBlank()) {
+                    Result.Failed("No contact set")
+                } else {
+                    val outcome = Messaging.send(context, who, body, app)
+                    if (outcome.ok) Result.Ok(outcome.detail) else Result.Failed(outcome.detail)
+                }
+            }
+
+            ActionType.MESSAGE_REPLY -> {
+                val parts = step.param.split('|')
+                val who = parts.getOrNull(0)?.trim().orEmpty()
+                val body = parts.getOrNull(1)?.trim().orEmpty()
+                val target = NotifyBrain.findReplyTarget(who)
+                when {
+                    who.isBlank() -> Result.Failed("No contact set")
+                    target == null -> Result.Failed("No live alert from $who to reply to")
+                    NotifyBrain.sendReply(context, target, body) -> Result.Ok("Replied to $who")
+                    else -> Result.Failed("The app refused the reply")
+                }
+            }
+
+            ActionType.READ_NOTIFICATIONS -> readNotifications(context, step.param)
+
+            ActionType.SEARCH_FILES -> searchFiles(context, step.param, openWhenSingle = false)
+
+            ActionType.OPEN_FILE -> searchFiles(context, step.param, openWhenSingle = true)
+
+            ActionType.LOCATION -> {
+                val lang = SpokenLanguage.last(context)
+                val fix = Whereabouts.currentFix(context)
+                when {
+                    !Whereabouts.hasPermission(context) ->
+                        speakAndReport(context, Language.say(lang, "location_permission"))
+
+                    fix == null -> Result.Failed("No location fix — is location turned on?")
+
+                    else -> {
+                        val place = Whereabouts.describe(context, fix)
+                        speakAndReport(
+                            context,
+                            place ?: String.format(
+                                Locale.US,
+                                "%.4f, %.4f",
+                                fix.latitude,
+                                fix.longitude,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            ActionType.DISTANCE -> distanceTo(context, step.param)
+
+            ActionType.NAVIGATE -> {
+                val place = step.param.trim()
+                val lang = SpokenLanguage.last(context)
+                if (place.isBlank()) {
+                    Result.Failed("No destination set")
+                } else {
+                    val coordinates = Whereabouts.geocode(context, place)
+                    when {
+                        coordinates == null -> speakAndReport(
+                            context,
+                            Language.say(lang, "distance_unknown", place),
+                        )
+
+                        else -> {
+                            val problem = Whereabouts.navigate(context, place, coordinates.first, coordinates.second)
+                            if (problem == null) Result.Ok("Navigating to $place") else Result.Failed(problem)
+                        }
+                    }
+                }
+            }
+
+            ActionType.CALCULATE -> {
+                val lang = SpokenLanguage.last(context)
+                val outcome = Units.tryCalculate(step.param)
+                if (outcome == null) {
+                    Result.Failed("That is not something I can work out")
+                } else {
+                    speakAndReport(context, Language.say(lang, "calc", outcome.text))
+                }
+            }
+
+            ActionType.READ_SCREEN -> {
+                if (!AccessibilityStatus.isServiceEnabled(context)) {
+                    Result.Skipped("Accessibility access is off")
+                } else {
+                    val labels = JarvisAccessibilityService.visibleLabels(limit = 24)
+                    if (labels.isEmpty()) {
+                        Result.Failed("Nothing readable on this screen")
+                    } else {
+                        speakAndReport(context, labels.joinToString(", ").take(400))
+                    }
+                }
+            }
+
+            ActionType.SHARE_TEXT -> {
+                val text = step.param.trim()
+                if (text.isBlank()) {
+                    Result.Failed("Nothing to share")
+                } else {
+                    try {
+                        context.startActivity(
+                            Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, text)
+                                },
+                                "Share with",
+                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                        Result.Ok("Share sheet open")
+                    } catch (t: Throwable) {
+                        Result.Failed("No app can share that")
+                    }
+                }
+            }
+
+            ActionType.HEALTH -> healthReport(context, step.param)
+
+            ActionType.WATER_LOG -> {
+                val lang = SpokenLanguage.last(context)
+                val millilitres = step.param.trim().toIntOrNull() ?: 250
+                val total = HealthLog.addWater(context, millilitres)
+                speakAndReport(context, Language.say(lang, "water", total))
+            }
+
             ActionType.SHELL -> runShell(context, step.param)
 
             // ------------------------------------------------------------------ speech + network
@@ -366,9 +541,33 @@ object StepExecutor {
     // Helpers
     // -----------------------------------------------------------------------------------------
 
+    /**
+     * Opens a package (`com.example/com.example.Main`) **or** a name ("gallery", "files", "wifi").
+     *
+     * The second form exists because the operator says "open gallery", not a package name, and
+     * [AppLaunch] knows the system intents and the skin-specific gallery packages. Stored routines
+     * keep their package strings and behave exactly as before.
+     */
     private fun openApp(context: Context, param: String): Result {
-        val pkg = param.substringBefore('/')
-        val activity = param.substringAfter('/', "")
+        val raw = param.trim()
+        if (raw.isBlank()) return Result.Failed("No app chosen")
+
+        val looksLikePackage = raw.contains('.') && !raw.contains(' ')
+        if (!raw.contains('/') && !looksLikePackage) {
+            return when (val outcome = AppLaunch.open(context, raw)) {
+                is AppLaunch.Outcome.Opened -> Result.Ok("Opened ${outcome.label}")
+                is AppLaunch.Outcome.Failed -> Result.Failed(outcome.reason)
+                is AppLaunch.Outcome.Unknown ->
+                    if (outcome.suggestions.isEmpty()) {
+                        Result.Failed("Nothing on this phone is called $raw")
+                    } else {
+                        Result.Ok("Closest: " + outcome.suggestions.joinToString(", "))
+                    }
+            }
+        }
+
+        val pkg = raw.substringBefore('/')
+        val activity = raw.substringAfter('/', "")
         if (pkg.isBlank()) return Result.Failed("No app chosen")
         val intent = try {
             context.packageManager.getLaunchIntentForPackage(pkg)
@@ -562,6 +761,193 @@ object StepExecutor {
                     Result.Ok(if (tail.isBlank()) "Ran · no output" else "Ran · $tail")
                 } else {
                     Result.Failed("exit ${outcome.exitCode}" + if (tail.isBlank()) "" else " · $tail")
+                }
+            }
+        }
+    }
+
+
+    // ---------------------------------------------------------------------------------------------
+    // Whole-phone helpers
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Opens anything JARVIS can name, and reports what actually happened.
+     *
+     * When nothing matches, the closest real names are returned so the caller can offer a choice
+     * instead of a dead "not found".
+     */
+    private fun openTarget(context: Context, target: String): Result =
+        when (val outcome = AppLaunch.open(context, target)) {
+            is AppLaunch.Outcome.Opened -> Result.Ok("Opened ${outcome.label}")
+            is AppLaunch.Outcome.Failed -> Result.Failed(outcome.reason)
+            is AppLaunch.Outcome.Unknown -> {
+                if (outcome.suggestions.isEmpty()) {
+                    Result.Failed("Nothing on this phone is called $target")
+                } else {
+                    Result.Ok("Closest matches: " + outcome.suggestions.joinToString(", "))
+                }
+            }
+        }
+
+    /** Marks the human reply as the outcome, and speaks it. Used by the "answer" actions. */
+    private suspend fun speakAndReport(context: Context, text: String): Result {
+        try {
+            SpeechOut.speak(context, text, timeoutMillis = 15_000L)
+        } catch (t: Throwable) {
+            // Speaking is best-effort; the card still shows the answer.
+        }
+        return Result.Ok(text)
+    }
+
+    private suspend fun readNotifications(context: Context, raw: String): Result {
+        val lang = SpokenLanguage.last(context)
+        val mode = raw.trim().lowercase(Locale.US)
+        val items = NotifyBrain.lastSummary(context, limit = if (mode == "last") 1 else 5)
+        if (items.isEmpty()) {
+            return speakAndReport(context, Language.say(lang, "messages_none"))
+        }
+
+        val lines = items.map { item ->
+            val verdict = NotifyBrain.classify(
+                item.packageName,
+                item.appLabel,
+                item.title,
+                item.text,
+                hasReplyAction = false,
+            )
+            NotifyBrain.announceLine(verdict, item.appLabel, item.title, item.text, lang)
+        }
+        return speakAndReport(context, lines.joinToString(" "))
+    }
+
+    /**
+     * Searches for a file and, when there is exactly one good match, opens it.
+     *
+     * More than one match is deliberately *not* guessed: opening the wrong Aadhaar PDF or the wrong
+     * photo is worse than showing a list.
+     */
+    private suspend fun searchFiles(context: Context, raw: String, openWhenSingle: Boolean): Result {
+        val lang = SpokenLanguage.last(context)
+        val query = raw.trim()
+        if (query.isBlank()) return Result.Failed("No file name set")
+
+        val found = Files.search(context, query)
+        if (found.isEmpty()) {
+            return if (Files.hasAllFiles(context) || Access.hasAll(context, Access.MEDIA_PERMISSIONS)) {
+                speakAndReport(context, Language.say(lang, "file_none", query))
+            } else {
+                speakAndReport(context, Language.say(lang, "file_permission"))
+            }
+        }
+
+        val first = found.first()
+        if (found.size == 1 || openWhenSingle) {
+            val problem = Files.open(context, first.uri, first.name)
+            return if (problem == null) {
+                speakAndReport(context, Language.say(lang, "file_found", 1, first.name))
+            } else {
+                Result.Failed(problem)
+            }
+        }
+
+        val listing = found.joinToString(" · ") { it.name }
+        return Result.Ok("$listing")
+    }
+
+    private suspend fun distanceTo(context: Context, raw: String): Result {
+        val lang = SpokenLanguage.last(context)
+        val place = raw.trim()
+        if (place.isBlank()) return Result.Failed("No destination set")
+        if (!Whereabouts.hasPermission(context)) {
+            return speakAndReport(context, Language.say(lang, "location_permission"))
+        }
+
+        val fix = Whereabouts.currentFix(context)
+            ?: return Result.Failed("No location fix — is location turned on?")
+
+        val destination = parseCoordinates(place) ?: Whereabouts.geocode(context, place)
+        if (destination == null) {
+            return speakAndReport(context, Language.say(lang, "distance_unknown", place))
+        }
+
+        val road = if (Whereabouts.roadRoutingEnabled(context)) {
+            Whereabouts.roadKm(fix, destination)
+        } else {
+            null
+        }
+        val km = road ?: Whereabouts.haversineKm(
+            fix.latitude,
+            fix.longitude,
+            destination.first,
+            destination.second,
+        )
+        val spoken = if (road != null) {
+            Language.say(lang, "distance_road", place, Whereabouts.formatKm(km))
+        } else {
+            Language.say(lang, "distance_line", place, Whereabouts.formatKm(km))
+        }
+        return speakAndReport(context, spoken)
+    }
+
+    private fun parseCoordinates(raw: String): Pair<Double, Double>? {
+        val match = Regex("^(-?\\d+(?:\\.\\d+)?)\\s*[, ]\\s*(-?\\d+(?:\\.\\d+)?)$").find(raw.trim())
+            ?: return null
+        val lat = match.groupValues[1].toDoubleOrNull() ?: return null
+        val lon = match.groupValues[2].toDoubleOrNull() ?: return null
+        if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return null
+        return lat to lon
+    }
+
+    private suspend fun healthReport(context: Context, raw: String): Result {
+        val lang = SpokenLanguage.last(context)
+        val what = raw.trim().lowercase(Locale.US).ifBlank { "steps" }
+
+        return when (what) {
+            "water" -> speakAndReport(context, Language.say(lang, "water", HealthLog.waterToday(context)))
+
+            "heart" -> {
+                if (!HealthLog.hasHeartSensor(context)) {
+                    speakAndReport(context, Language.say(lang, "heart_none"))
+                } else {
+                    val bpm = HealthLog.heartRate(context)
+                    if (bpm == null) {
+                        Result.Failed("The heart rate sensor did not report")
+                    } else {
+                        speakAndReport(context, Language.say(lang, "heart", bpm))
+                    }
+                }
+            }
+
+            "sleep" -> {
+                val minutes = HealthLog.sleepLastNight(context)
+                if (minutes == null) {
+                    Result.Failed("No night recorded yet")
+                } else {
+                    val hours = String.format(Locale.US, "%.1f hours", minutes / 60.0)
+                    speakAndReport(context, Language.say(lang, "sleep", hours))
+                }
+            }
+
+            "distance" -> {
+                val steps = HealthLog.stepsToday(context)
+                if (steps == null) {
+                    speakAndReport(context, Language.say(lang, "steps_none"))
+                } else {
+                    val km = HealthLog.distanceKm(steps)
+                    speakAndReport(
+                        context,
+                        String.format(Locale.US, "%.2f kilometres walked, about %d steps.", km, steps),
+                    )
+                }
+            }
+
+            else -> {
+                val steps = HealthLog.stepsToday(context)
+                if (steps == null) {
+                    speakAndReport(context, Language.say(lang, "steps_none"))
+                } else {
+                    speakAndReport(context, Language.say(lang, "steps", steps))
                 }
             }
         }
