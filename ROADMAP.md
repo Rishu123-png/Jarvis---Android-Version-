@@ -29,7 +29,7 @@ Last updated with **2.3.1 (versionCode 17)**.
 | Focus home: top bar + orb only, full dashboard behind one button | Live |
 | Chained voice tasks: 8-step plans, waits, CameraX capture, open newest photo | Live |
 | Screen-aware loop: observe → decide → act across apps (accessibility tier, 6 actions max) | Live |
-| Tests: 5 JVM suites over the pure logic, run in CI before the APKs | Live |
+| Tests: 6 JVM suites over the pure logic, run in CI before the APKs | Live |
 | Quick Settings tiles (open JARVIS, torch) | Live |
 | Reminders, screenshot action, subsystem health panel | Live |
 | Privacy lock (PBKDF2 PIN) + fingerprint/face shortcut, floating bubble, home-screen widget | Live |

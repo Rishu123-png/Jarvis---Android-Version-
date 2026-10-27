@@ -52,7 +52,7 @@ feature runs on a key *you* own, and every permission is requested at the moment
 | Privacy lock, floating bubble, home-screen widget | Working |
 | Quick Settings tiles, reminders, screenshot, downloads | Working |
 | Privileged shell via Shizuku (optional, adb-level, no root) | Working |
-| Automated tests: 5 JVM suites + 1 device smoke test, run in CI before the APK | Working |
+| Automated tests: 6 JVM suites + 1 device smoke test, run in CI before the APK | Working |
 
 Every tile on the HUD is either backed by a real Android API or clearly marked as not built. Nothing
 in the interface imitates a capability the app does not have.
@@ -343,7 +343,8 @@ app/src/main/java/com/jarvis/assistant/
 ├── ui/                          JarvisApp · components · screens · theme
 └── voice/                       VoiceController · IntentRouter · Ears/Whisper · LocalSpeech
                                  ScreenAgent · Ocr · VoiceMemory · VoiceParsing · Wav
-app/src/test/                    JVM suites (parsers, JSON, WAV, workflow, time)
+app/src/test/                    JVM suites (parsers, JSON, WAV, workflow, time,
+                                 biometric policy)
 app/src/androidTest/             launch smoke test
 ```
 
