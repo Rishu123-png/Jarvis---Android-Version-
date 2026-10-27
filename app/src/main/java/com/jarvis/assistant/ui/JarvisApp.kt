@@ -86,7 +86,6 @@ import com.jarvis.assistant.ui.screens.PrivacyScreen
 import com.jarvis.assistant.ui.screens.PowerScreen
 import com.jarvis.assistant.ui.screens.LockScreen
 import com.jarvis.assistant.ui.screens.TerminalScreen
-import com.jarvis.assistant.ui.screens.VoiceScreen
 import com.jarvis.assistant.ui.theme.Amber
 import com.jarvis.assistant.ui.theme.ElectricCyan
 import com.jarvis.assistant.ui.theme.IceBlue
@@ -148,6 +147,8 @@ fun JarvisApp(
 
     // ---- privacy lock ----
     var locked by remember { mutableStateOf(Privacy.isEnabled(context)) }
+    var pinChecking by remember { mutableStateOf(false) }
+    var pinError by remember { mutableStateOf<String?>(null) }
     var leftAt by remember { mutableLongStateOf(0L) }
     var pinEnabled by remember { mutableStateOf(Privacy.isEnabled(context)) }
     var bubbleEnabled by remember { mutableStateOf(Bubble.isEnabled(context)) }
@@ -214,7 +215,14 @@ fun JarvisApp(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> leftAt = System.currentTimeMillis()
+                Lifecycle.Event.ON_STOP -> {
+                    leftAt = System.currentTimeMillis()
+                    // A recording that outlives the visible app is both a battery cost and a privacy
+                    // problem; the operator can simply tap the orb again on return.
+                    if (VoiceController.state.value.phase == com.jarvis.assistant.voice.VoicePhase.LISTENING) {
+                        VoiceController.cancel()
+                    }
+                }
                 Lifecycle.Event.ON_RESUME -> {
                     bubbleAllowed = Bubble.canDraw(context)
                     if (Privacy.isEnabled(context) && leftAt > 0 &&
@@ -473,9 +481,12 @@ fun JarvisApp(
                     bubbleAllowed = bubbleAllowed,
                     speechRoute = speechRoute,
                     onSetPin = { pin ->
-                        if (Privacy.setPin(context, pin) == null) {
-                            pinEnabled = true
-                            locked = false
+                        scope.launch {
+                            val failure = withContext(Dispatchers.Default) { Privacy.setPin(context, pin) }
+                            if (failure == null) {
+                                pinEnabled = true
+                                locked = false
+                            }
                         }
                     },
                     onClearPin = {
@@ -813,12 +824,23 @@ fun JarvisApp(
                     .windowInsetsPadding(WindowInsets.systemBars),
             ) {
                 LockScreen(
-                    onUnlock = { pin ->
-                        if (Privacy.verify(context, pin)) {
-                            locked = false
-                            true
-                        } else {
-                            false
+                    verifying = pinChecking,
+                    error = pinError,
+                    onSubmit = { pin ->
+                        if (!pinChecking) {
+                            pinChecking = true
+                            pinError = null
+                            scope.launch {
+                                // PBKDF2 at 120k iterations belongs nowhere near the main thread.
+                                val ok = withContext(Dispatchers.Default) { Privacy.verify(context, pin) }
+                                pinChecking = false
+                                if (ok) {
+                                    pinError = null
+                                    locked = false
+                                } else {
+                                    pinError = "Wrong PIN"
+                                }
+                            }
                         }
                     },
                 )

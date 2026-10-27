@@ -9,7 +9,7 @@ feature runs on a key *you* own, and every permission is requested at the moment
 | | |
 | --- | --- |
 | **Voice** | Tap the orb, speak, tap again. Whisper through your key, or the phone's own recognizer |
-| **Actions** | 27 typed device actions + calls, messages, camera capture, screenshots, downloads, reminders |
+| **Actions** | 33 typed actions — calls, messages, camera, screenshots, downloads, reminders, translation |
 | **Chains** | “open camera, capture, show me” — up to 8 steps with waits between app hand-offs |
 | **Screen agent** | Observe → decide → act inside apps it has never seen, one tap at a time |
 | **Memory** | Last 50 commands, contact nicknames, app aliases — on device only |
@@ -52,7 +52,7 @@ feature runs on a key *you* own, and every permission is requested at the moment
 | Privacy lock, floating bubble, home-screen widget | Working |
 | Quick Settings tiles, reminders, screenshot, downloads | Working |
 | Privileged shell via Shizuku (optional, adb-level, no root) | Working |
-| Automated tests: 6 JVM suites, run in CI before the APK | Working |
+| Automated tests: 5 JVM suites + 1 device smoke test, run in CI before the APK | Working |
 
 Every tile on the HUD is either backed by a real Android API or clearly marked as not built. Nothing
 in the interface imitates a capability the app does not have.
@@ -71,7 +71,7 @@ in the interface imitates a capability the app does not have.
 │ VoiceController — one turn at a time, every stage bounded                  │
 │   MicRecorder ─► Whisper (your key)  │  LocalSpeech (device / offline)     │
 │   IntentRouter ─► AI plan (no canned command list) │ local parser fallback │
-│   StepExecutor ─► 29 typed actions │ ScreenAgent (observe→decide→act)      │
+│   StepExecutor ─► 33 typed actions │ ScreenAgent (observe→decide→act)      │
 │   SpeechOut ── spoken reply                    VoiceMemory ── recents      │
 └───────────────────────────────┬────────────────────────────────────────────┘
                                 │
@@ -146,7 +146,8 @@ off” resolve without repeating yourself.
 
 ## Automation
 
-- **29 typed actions**, 12 conditions, 10 triggers, `IF` / `REPEAT` / `WAIT UNTIL` blocks.
+- **37 action types** — 33 executable actions plus `IF` / `REPEAT` / `WAIT UNTIL` / `STOP_ROUTINE`
+  control-flow blocks — with 12 conditions and 10 triggers.
 - **`VERIFY` step**: `app:com.whatsapp`, `screen:Send`, `notif:hi`, `battery<20`, `charging`, `wifi`.
   A routine can now check that something happened instead of trusting a step's own report.
 - **AI authoring**: describe a routine in a sentence; the planner returns a validated workflow, and the
@@ -249,7 +250,7 @@ Step by step, from this repository:
    `JARVIS 2.3.0` → paste the notes from [CHANGELOG.md](CHANGELOG.md).
 5. **Attach the APK** to that release as an asset (drag `jarvis-2.3.0.apk` into the assets box).
    Pushing a `v*` tag also does this automatically: the workflow attaches `dist/jarvis-*.apk`.
-6. **Verify**: the release page should show `jarvis-2.3.0.apk` (≈ 16–18 MB) plus *Source code*.
+6. **Verify**: the release page shows `jarvis-2.3.0.apk` plus *Source code* archives.
 
 The file you upload is **`jarvis-2.3.0.apk`**; its source on the build machine is
 **`app/build/outputs/apk/release/app-release.apk`**, and in CI **`dist/jarvis-2.3.0.apk`**.

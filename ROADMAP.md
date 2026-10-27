@@ -17,7 +17,7 @@ Last updated with **2.3.0 (versionCode 16)**.
 | Notifications (listener, alerts panel, media) | Live |
 | Controls: torch, volume, media transport, system panels | Live |
 | Do Not Disturb — direct control after one grant | Live |
-| Automation: 27 actions, 12 conditions, 10 triggers, IF/REPEAT/WAIT UNTIL, AI authoring, run history, foreground watcher | Live |
+| Automation: 37 action types (33 actions + 4 control-flow), 12 conditions, 10 triggers, VERIFY, AI authoring, run history, foreground watcher | Live |
 | Intelligence: bring-your-own AI key, three wire formats, model discovery | Live |
 | Terminal: ~22 commands, offline where possible | Live |
 | Instagram creator analytics, views-first + AI briefing | Live |
