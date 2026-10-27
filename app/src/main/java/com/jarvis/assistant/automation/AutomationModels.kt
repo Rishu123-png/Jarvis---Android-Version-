@@ -34,6 +34,10 @@ enum class ActionType(
     // ---- capture (JARVIS takes the frame itself; no shutter to press) ----
     CAPTURE_PHOTO("capture_photo", "TAKE PHOTO", "Take one photo and save it to Pictures/JARVIS", ParamKind.NONE, sensitive = true),
     OPEN_LAST_PHOTO("last_photo", "SHOW LAST PHOTO", "Open the newest photo in a gallery app", ParamKind.NONE),
+    SCREENSHOT("screenshot", "SCREENSHOT", "Capture the screen to Pictures/JARVIS", ParamKind.NONE, needsAccessibility = true),
+
+    // ---- reminders ----
+    REMINDER("reminder", "REMIND ME", "Post a reminder: \"seconds|HH:mm|text\"", ParamKind.TEXT),
 
     // ---- device ----
     TORCH_ON("torch_on", "TORCH ON", "Turn the flashlight on", ParamKind.NONE),

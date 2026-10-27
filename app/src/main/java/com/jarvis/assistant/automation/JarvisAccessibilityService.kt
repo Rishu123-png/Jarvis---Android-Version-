@@ -2,13 +2,22 @@ package com.jarvis.assistant.automation
 
 import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.provider.Settings
 import android.text.TextUtils
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Accessibility service used **only** for two narrow automation primitives:
@@ -134,6 +143,92 @@ class JarvisAccessibilityService : AccessibilityService() {
                     root.recycle()
                 } catch (t: Throwable) {
                     // Best-effort on modern API levels.
+                }
+            }
+        }
+
+        /**
+         * Captures the screen to Pictures/JARVIS.
+         *
+         * Uses the accessibility screenshot API (Android 11+), which produces the real screen rather
+         * than a view the app can see. Nothing is stored anywhere else and the buffer is closed as
+         * soon as the PNG is written.
+         */
+        suspend fun screenshot(context: Context): Pair<Uri?, String?> {
+            val service = instance
+                ?: return null to "Screen control is off, so I cannot capture the screen."
+            if (Build.VERSION.SDK_INT < 30) {
+                return null to "Screenshots need Android 11 or newer."
+            }
+
+            val done = CompletableDeferred<Pair<Uri?, String?>>()
+            try {
+                service.takeScreenshot(
+                    Display.DEFAULT_DISPLAY,
+                    ContextCompat.getMainExecutor(context),
+                    object : AccessibilityService.TakeScreenshotCallback {
+                        override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
+                            if (!done.isCompleted) done.complete(saveScreenshot(context, result))
+                        }
+
+                        override fun onFailure(errorCode: Int) {
+                            if (!done.isCompleted) {
+                                done.complete(null to "The screen could not be captured (code $errorCode).")
+                            }
+                        }
+                    },
+                )
+            } catch (t: Throwable) {
+                return null to "The screen could not be captured."
+            }
+
+            return withTimeoutOrNull(8_000L) { done.await() }
+                ?: (null to "The screenshot timed out.")
+        }
+
+        private fun saveScreenshot(
+            context: Context,
+            result: AccessibilityService.ScreenshotResult,
+        ): Pair<Uri?, String?> {
+            val buffer = result.hardwareBuffer
+            var bitmap: Bitmap? = null
+            return try {
+                bitmap = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
+                    ?.copy(Bitmap.Config.ARGB_8888, false)
+                val shot = bitmap ?: return null to "The screenshot was empty."
+
+                val values = ContentValues().apply {
+                    put(
+                        MediaStore.Images.Media.DISPLAY_NAME,
+                        "JARVIS_SCREEN_" + System.currentTimeMillis() + ".png",
+                    )
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/JARVIS")
+                }
+                val uri = context.contentResolver
+                    .insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: return null to "The screenshot could not be saved."
+
+                val written = try {
+                    context.contentResolver.openOutputStream(uri)?.use { stream ->
+                        shot.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                    } ?: false
+                } catch (t: Throwable) {
+                    false
+                }
+                if (!written) null to "The screenshot could not be written." else uri to null
+            } catch (t: Throwable) {
+                null to "The screenshot could not be saved."
+            } finally {
+                try {
+                    buffer.close()
+                } catch (t: Throwable) {
+                    // Already closed.
+                }
+                try {
+                    bitmap?.recycle()
+                } catch (t: Throwable) {
+                    // Already recycled.
                 }
             }
         }

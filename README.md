@@ -25,6 +25,11 @@ Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · minSdk 29 (Androi
 | Voice: tap-to-speak, Whisper or on-device, spoken replies | Working |
 | Voice commands: call a contact, message on WhatsApp, open apps, torch, alarms | Working |
 | Voice chains: camera capture → gallery, multi-app sequences, screen-aware tapping | Working |
+| Reminders: "remind me in 10 minutes to call dad" — a real notification | Working |
+| Quick Settings tiles: open JARVIS, torch | Working |
+| Screenshot action (Android 11+, accessibility tier) | Working |
+| Subsystem health panel in DIAGNOSTICS | Working |
+| Automated tests: 5 JVM suites, run in CI before the APK is built | Working |
 
 Every tile on the HUD is either backed by a real Android API or clearly marked as not built. Nothing
 in the interface imitates a capability the app does not have.
@@ -331,6 +336,47 @@ started by a trigger or by you. A step that failed is recorded with the executor
 - **Package visibility** — the manifest declares a `<queries>` block. Without it, `queryIntentActivities`
   returns an empty list on Android 11+ and the drawer silently appears broken. That is the single most
   common launcher bug, which is why CI verifies the APK's intent filters.
+
+---
+
+## Reminders, screenshot, tiles
+
+**Reminders** are real notifications at a real time, not clock alarms. "Remind me in 10 minutes to
+call dad" or "remind me at 18:30 to leave" — the words are yours, they survive the process being
+killed, they are re-armed after a reboot, and they use exact alarms when Android allows it and say so
+when it does not.
+
+**Screenshot** uses the accessibility screenshot API (Android 11+), writes a PNG to
+`Pictures/JARVIS`, and needs the accessibility service switched on.
+
+**Quick Settings** has two tiles: one opens JARVIS from the shade, one toggles the torch without
+launching anything. There is deliberately no "listening" tile — there is no always-on microphone to
+lie about.
+
+**DIAGNOSTICS** now ends with a SUBSYSTEMS panel that answers "will this actually work": microphone,
+contacts, calls, camera, screen control, screen taps, notification listener, DND access, exact
+alarms, Shizuku, voice engine, AI provider, pending reminders. Amber means degraded, not broken.
+
+---
+
+## Tests
+
+```bash
+./gradlew testDebugUnitTest          # JVM, no device, runs in CI before the APKs are built
+./gradlew connectedDebugAndroidTest  # one launch smoke test, needs a device or emulator
+```
+
+The unit suites cover the pure logic that used to be unreachable inside Android classes:
+
+| Suite | What it pins |
+| --- | --- |
+| `VoiceParsingTest` | message / call / volume / alarm / timer / camera / reminder phrasing, and what must **not** match |
+| `JsonReplyTest` | code fences, prose around the object, braces inside strings, invalid objects |
+| `WavTest` | RIFF header sizes and format fields against the payload |
+| `WorkflowJsonTest` | routine → JSON → routine, nested blocks, conditions, time parsing, unique action ids |
+
+Those parsers were extracted into `voice/VoiceParsing.kt` and `ai/JsonReply.kt` precisely so they
+could be tested without a phone. A regression there is silent — it looks like JARVIS ignoring you.
 
 ---
 

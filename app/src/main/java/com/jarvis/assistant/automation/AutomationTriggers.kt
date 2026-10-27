@@ -227,5 +227,11 @@ class AutomationBootReceiver : BroadcastReceiver() {
             // If the service cannot be touched, the alarms are still re-armed below.
         }
         AutomationTriggers.sync(context)
+        // Reminders live in the same AlarmManager bucket and need the same treatment.
+        try {
+            com.jarvis.assistant.device.Reminders.rearm(context)
+        } catch (t: Throwable) {
+            // A reminder that cannot be re-armed is dropped on its next read.
+        }
     }
 }

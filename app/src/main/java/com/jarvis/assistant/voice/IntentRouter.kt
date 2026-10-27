@@ -5,6 +5,7 @@ import com.jarvis.assistant.ai.AiClient
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.ai.AiMessage
 import com.jarvis.assistant.ai.AiResult
+import com.jarvis.assistant.ai.JsonReply
 import com.jarvis.assistant.automation.AccessibilityStatus
 import com.jarvis.assistant.automation.ActionType
 import com.jarvis.assistant.automation.ParamKind
@@ -96,7 +97,7 @@ object IntentRouter {
             is AiResult.Ok -> result.text
         }
 
-        val json = extractJson(reply) ?: return null
+        val json = JsonReply.extractObject(reply) ?: return null
         val title = json.optString("title").trim().uppercase(Locale.US).take(28).ifBlank { "COMMAND" }
         val say = json.optString("say").trim().take(MAX_SPOKEN)
 
@@ -190,6 +191,9 @@ object IntentRouter {
             - Chained requests become several steps, in the order spoken: "open camera, capture, show me"
               is capture_photo, wait 1, last_photo. Put a wait (2 seconds) between steps that hand over
               to another app, and before pressing a control in it.
+            - To remind the operator use reminder with param "seconds|HH:mm|text", leaving the part
+              that does not apply empty. Example: "600||call dad" or "0|18:30|leave for the station".
+            - To capture the screen use screenshot.
             - Take a photo with capture_photo — JARVIS has its own capture surface, so there is no
               shutter to press. Show the newest photo with last_photo.
             - For anything that needs finding your way around inside another app (a switch on a
@@ -218,18 +222,6 @@ object IntentRouter {
             .joinToString("\n") { "- ${it.label} — ${it.packageName}" }
     } catch (t: Throwable) {
         "- unavailable"
-    }
-
-    private fun extractJson(reply: String): JSONObject? {
-        val trimmed = reply.trim()
-        val start = trimmed.indexOf('{')
-        val end = trimmed.lastIndexOf('}')
-        if (start < 0 || end <= start) return null
-        return try {
-            JSONObject(trimmed.substring(start, end + 1))
-        } catch (t: Throwable) {
-            null
-        }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -310,26 +302,14 @@ object IntentRouter {
     // ---------------------------------------------------------------------------------------------
 
     private suspend fun localPlan(context: Context, heard: String): VoicePlan {
-        val clean = heard.lowercase(Locale.US)
-            .replace(Regex("[^a-z0-9 :+@./'%-]"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        fun answer(
+            title: String,
+            say: String,
+            steps: List<PlannedStep> = emptyList(),
+            subtitle: String = "",
+        ) = VoicePlan(title, subtitle, steps, say, "LOCAL")
 
-        fun answer(title: String, say: String, steps: List<PlannedStep> = emptyList(), subtitle: String = "") =
-            VoicePlan(title, subtitle, steps, say, "LOCAL")
-
-        // People speak in chains: "open whatsapp, open chat with Divik and say hi". Flatten the
-        // sentence before parsing so the message parser sees "chat with divik say hi".
-        val spoken = clean
-            .replace("open chat with", "chat with")
-            .replace("open the chat with", "chat with")
-            .replace("open chat", "chat")
-            .replace("and say", "say")
-            .replace("and tell", "say")
-            .replace("and message", "say")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-
+        val clean = VoiceParsing.normalise(heard)
         if (clean.isBlank()) return answer("NO INPUT", "I did not hear anything.")
 
         if (clean == "cancel" || clean == "stop" || clean == "never mind" || clean == "nevermind") {
@@ -343,15 +323,14 @@ object IntentRouter {
             return localPlan(context, previous)
         }
 
-        // Messaging first: "whatsapp divik hi" would otherwise be read as "open whatsapp".
-        parseMessage(spoken)?.let { (app, contact, text) ->
+        // People speak in chains; flatten before parsing.
+        val spoken = VoiceParsing.flatten(clean)
+
+        // Messaging first: "whatsapp divik hi" would otherwise read as "open whatsapp".
+        VoiceParsing.parseMessage(spoken)?.let { (app, contact, text) ->
             val steps = sendSteps(context, "$app|$contact|$text", "MESSAGE")
-            val say = if (text.isBlank()) {
-                "Opening the chat with $contact."
-            } else {
-                "Writing to $contact."
-            }
-            return answer("MESSAGE · $contact".take(28).uppercase(Locale.US), say, steps, "LOCAL")
+            val say = if (text.isBlank()) "Opening the chat with $contact." else "Writing to $contact."
+            return answer("MESSAGE \u00B7 $contact".take(28).uppercase(Locale.US), say, steps, "LOCAL")
         }
 
         // Calling.
@@ -360,31 +339,41 @@ object IntentRouter {
             return answer(
                 "CALL",
                 "Calling $who.",
-                listOf(PlannedStep(ActionType.CALL_CONTACT, who, "CALL $who".take(28).uppercase(Locale.US))),
+                listOf(PlannedStep(ActionType.CALL_CONTACT, who, "CALL ${who.take(22).uppercase(Locale.US)}")),
+            )
+        }
+
+        // Reminders.
+        VoiceParsing.parseReminder(clean)?.let { ask ->
+            val payload = "${ask.inSeconds ?: 0}|${ask.atClock.orEmpty()}|${ask.text}"
+            return answer(
+                "REMINDER",
+                "Reminder noted.",
+                listOf(PlannedStep(ActionType.REMINDER, payload, "SET REMINDER")),
             )
         }
 
         // Camera chain: "open camera, capture, show me". Works with no key at all.
-        if (clean.contains("camera") || clean.contains("selfie") || clean.contains("photo")) {
-            val capture = clean.contains("capture") || clean.contains("take") ||
-                clean.contains("photo") || clean.contains("picture") || clean.contains("tasveer") ||
-                clean.contains("selfie") || clean.contains("snap")
-            val showIt = clean.contains("gallery") || clean.contains("show") ||
-                clean.contains("open it") || clean.contains("dikha")
-            if (capture) {
-                val steps = mutableListOf(
-                    PlannedStep(ActionType.CAPTURE_PHOTO, "", "TAKE PHOTO"),
-                )
-                if (showIt) {
-                    steps.add(PlannedStep(ActionType.WAIT, "1", "WAIT"))
-                    steps.add(PlannedStep(ActionType.OPEN_LAST_PHOTO, "", "SHOW PHOTO"))
-                }
-                return answer(
-                    if (showIt) "PHOTO \u00B7 SHOW" else "PHOTO",
-                    if (showIt) "Taking a photo and opening it." else "Taking a photo.",
-                    steps,
-                )
+        VoiceParsing.cameraAsk(clean)?.let { ask ->
+            val steps = mutableListOf(PlannedStep(ActionType.CAPTURE_PHOTO, "", "TAKE PHOTO"))
+            if (ask.showNewest) {
+                steps.add(PlannedStep(ActionType.WAIT, "1", "WAIT"))
+                steps.add(PlannedStep(ActionType.OPEN_LAST_PHOTO, "", "SHOW PHOTO"))
             }
+            return answer(
+                if (ask.showNewest) "PHOTO \u00B7 SHOW" else "PHOTO",
+                if (ask.showNewest) "Taking a photo and opening it." else "Taking a photo.",
+                steps,
+            )
+        }
+
+        // Screenshot.
+        if (clean.contains("screenshot") || clean.contains("screen shot") || clean.contains("screen grab")) {
+            return answer(
+                "SCREENSHOT",
+                "Capturing the screen.",
+                listOf(PlannedStep(ActionType.SCREENSHOT, "", "SCREENSHOT")),
+            )
         }
 
         // Torch.
@@ -410,8 +399,7 @@ object IntentRouter {
         }
 
         // Volume.
-        Regex("volume\\D{0,12}(\\d{1,3})").find(clean)?.let { match ->
-            val level = match.groupValues[1].toIntOrNull()?.coerceIn(0, 100) ?: return@let
+        VoiceParsing.parseVolume(clean)?.let { level ->
             return answer(
                 "VOLUME $level",
                 "Volume $level.",
@@ -432,16 +420,18 @@ object IntentRouter {
                 return answer(
                     "PANEL",
                     "Opening $key.",
-                    listOf(PlannedStep(ActionType.OPEN_PANEL, key, "PANEL · ${key.uppercase(Locale.US)}".take(28))),
+                    listOf(
+                        PlannedStep(
+                            ActionType.OPEN_PANEL,
+                            key,
+                            "PANEL \u00B7 ${key.uppercase(Locale.US)}".take(28),
+                        ),
+                    ),
                 )
             }
 
         // Alarm.
-        Regex("alarm\\D{0,12}(\\d{1,2})[:. ]?(\\d{2})?\\s*(am|pm)?").find(clean)?.let { match ->
-            val hour = match.groupValues[1].toIntOrNull() ?: return@let
-            val minute = match.groupValues[2].toIntOrNull() ?: 0
-            if (hour !in 0..23 || minute !in 0..59) return@let
-            val clock = String.format(Locale.US, "%02d:%02d", hour, minute)
+        VoiceParsing.parseAlarm(clean)?.let { clock ->
             return answer(
                 "ALARM $clock",
                 "Alarm set for $clock.",
@@ -450,19 +440,11 @@ object IntentRouter {
         }
 
         // Timer.
-        Regex("timer\\D{0,12}(\\d{1,3})\\s*(second|sec|minute|min|hour|ghanta|minat)").find(clean)?.let { match ->
-            val value = match.groupValues[1].toIntOrNull() ?: return@let
-            val unit = match.groupValues[2]
-            val seconds = when {
-                unit.startsWith("hour") || unit == "ghanta" -> value * 3_600
-                unit.startsWith("sec") -> value
-                else -> value * 60
-            }
-            if (seconds <= 0) return@let
+        VoiceParsing.parseTimerSeconds(clean)?.let { seconds ->
             return answer(
                 "TIMER",
                 "Timer set.",
-                listOf(PlannedStep(ActionType.SET_TIMER, seconds.toString(), "TIMER ${value}${unit.take(1).uppercase(Locale.US)}")),
+                listOf(PlannedStep(ActionType.SET_TIMER, seconds.toString(), "TIMER")),
             )
         }
 
@@ -491,58 +473,15 @@ object IntentRouter {
                     ),
                 )
             }
-            return answer(
-                "APP NOT FOUND",
-                "I could not find an app called $target.",
-            )
+            return answer("APP NOT FOUND", "I could not find an app called $target.")
         }
 
         val hint = if (aiReady(context)) {
             "The AI did not answer, and that phrase is not one I match locally."
         } else {
-            "Add a key in Settings → Intelligence so I understand free speech. Locally I handle call, message, open, torch, DND, volume, alarm and timer."
+            "Add a key in Settings \u2192 Intelligence so I understand free speech. Locally I handle call, message, open, torch, DND, volume, alarm, timer, photo and reminders."
         }
         return answer("NOT UNDERSTOOD", hint)
-    }
-
-    /** Returns (app, contact, text) for the phrasings people actually use. */
-    private fun parseMessage(clean: String): Triple<String, String, String>? {
-        val app = when {
-            clean.contains("telegram") -> "telegram"
-            clean.contains("sms") || clean.contains("text message") -> "sms"
-            else -> "whatsapp"
-        }
-
-        val commandish = Regex(
-            "^(?:open\\s+)?(?:send|message|msg|text|chat|whatsapp|telegram|wa|sms|dm|write)\\b",
-        ).containsMatchIn(clean)
-        if (!commandish) return null
-
-        val body = clean
-            .replace(Regex("\\b(?:whatsapp|telegram|sms|wa|dm)\\b"), " ")
-            .replace(Regex("\\b(?:send|message|msg|text|write|open|chat|to|with)\\b"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-
-        if (body.isEmpty()) return null
-
-        // "<contact> say <text>" / "<contact> saying <text>" / "<contact> that <text>"
-        Regex("^(.+?)\\s+(?:say|saying|that|bol|ki|likh)\\s+(.+)$").find(body)?.let { match ->
-            val contact = match.groupValues[1].trim()
-            val text = match.groupValues[2].trim()
-            if (contact.isNotBlank() && text.isNotBlank()) return Triple(app, contact, text)
-        }
-
-        // "<contact>: <text>"
-        val colon = body.split(":").map { it.trim() }
-        if (colon.size >= 2 && colon[0].isNotBlank() && colon[1].isNotBlank()) {
-            return Triple(app, colon[0], colon.drop(1).joinToString(": "))
-        }
-
-        // Just a name: open the chat without writing anything.
-        if (body.split(' ').size <= 4) return Triple(app, body, "")
-
-        return null
     }
 
     private suspend fun matchApp(context: Context, target: String): InstalledApp? {

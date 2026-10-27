@@ -33,10 +33,11 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 14
-        versionName = "2.1.0"
+        versionCode = 15
+        versionName = "2.2.0"
 
         vectorDrawables { useSupportLibrary = true }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -124,6 +125,21 @@ dependencies {
 
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
+
+    /*
+     * Tests.
+     *
+     * The unit tests cover the pure logic — parsers, JSON round-trips, the WAV container, time
+     * handling — and run on the JVM with no device, which is why so much of it was extracted out of
+     * the Android-bound classes. `org.json` is the real implementation: the android.jar stub throws
+     * on the unit-test classpath, and stubbing it out would make the round-trip tests meaningless.
+     */
+    testImplementation(libs.junit)
+    testImplementation(libs.org.json)
+
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.core.ktx)
+    androidTestImplementation(libs.androidx.test.runner)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

@@ -175,6 +175,43 @@
             </intent-filter>
         </receiver>
 
+        <!--
+          Quick Settings tiles: open JARVIS, and the torch.
+
+          `BIND_QUICK_SETTINGS_TILE` is a system-only permission, so nothing else can bind to these,
+          and each tile does one thing with no hidden state.
+        -->
+        <service
+            android:name=".device.JarvisTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="JARVIS"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".device.TorchTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="JARVIS Torch"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- One-shot reminders. Not exported: only the AlarmManager fires this. -->
+        <receiver
+            android:name=".device.ReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.jarvis.assistant.action.FIRE_REMINDER" />
+            </intent-filter>
+        </receiver>
+
         <!-- Re-arms alarms and the watcher after a reboot or an app update. -->
         <receiver
             android:name=".automation.AutomationBootReceiver"

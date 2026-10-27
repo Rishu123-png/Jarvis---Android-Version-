@@ -183,7 +183,7 @@ object Whisper {
 
         val model = modelFor(config.provider)
         val boundary = "----jarvis" + System.currentTimeMillis()
-        val body = buildBody(boundary, model, wav(pcm))
+        val body = buildBody(boundary, model, Wav.wrapPcm(pcm, MicRecorder.SAMPLE_RATE))
 
         val url = "${baseUrl(config.provider, config.baseUrl)}/audio/transcriptions"
         val connection = try {
@@ -261,43 +261,6 @@ object Whisper {
         write("--$boundary\r\n")
         write("Content-Disposition: form-data; name=\"response_format\"\r\n\r\njson\r\n")
         write("--$boundary--\r\n")
-        return out.toByteArray()
-    }
-
-    /** 44-byte RIFF header — providers accept WAV, and building it costs nothing. */
-    private fun wav(pcm: ByteArray): ByteArray {
-        val sampleRate = MicRecorder.SAMPLE_RATE
-        val channels = 1
-        val bits = 16
-        val byteRate = sampleRate * channels * bits / 8
-        val out = ByteArrayOutputStream(44 + pcm.size)
-
-        fun le32(value: Int) {
-            out.write(value and 0xFF)
-            out.write((value shr 8) and 0xFF)
-            out.write((value shr 16) and 0xFF)
-            out.write((value shr 24) and 0xFF)
-        }
-
-        fun le16(value: Int) {
-            out.write(value and 0xFF)
-            out.write((value shr 8) and 0xFF)
-        }
-
-        out.write("RIFF".toByteArray(Charsets.US_ASCII))
-        le32(36 + pcm.size)
-        out.write("WAVE".toByteArray(Charsets.US_ASCII))
-        out.write("fmt ".toByteArray(Charsets.US_ASCII))
-        le32(16)
-        le16(1)
-        le16(channels)
-        le32(sampleRate)
-        le32(byteRate)
-        le16(channels * bits / 8)
-        le16(bits)
-        out.write("data".toByteArray(Charsets.US_ASCII))
-        le32(pcm.size)
-        out.write(pcm)
         return out.toByteArray()
     }
 

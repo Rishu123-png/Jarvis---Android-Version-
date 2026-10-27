@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.device.DeviceInfo
+import com.jarvis.assistant.device.SystemHealth
 import com.jarvis.assistant.device.StorageStatus
 import com.jarvis.assistant.device.SystemStatus
 import com.jarvis.assistant.ui.components.ClockSnapshot
@@ -25,6 +28,7 @@ import com.jarvis.assistant.ui.components.HudPanel
 import com.jarvis.assistant.ui.components.PulseDot
 import com.jarvis.assistant.ui.components.ReadoutRow
 import com.jarvis.assistant.ui.theme.AlertRed
+import com.jarvis.assistant.ui.theme.Amber
 import com.jarvis.assistant.ui.theme.ElectricCyan
 import com.jarvis.assistant.ui.theme.HudType
 import com.jarvis.assistant.ui.theme.IceBlue
@@ -281,6 +285,33 @@ fun DiagnosticsScreen(
             value = aiLabel?.let { "LINKED · ${it.uppercase(Locale.US)}" } ?: "NO KEY",
             valueColor = if (aiLabel != null) StatusGreen else TextMuted,
         )
-        ReadoutRow(label = "VOICE", value = "NOT BUILT", valueColor = TextMuted)
+        ReadoutRow(label = "VOICE", value = "LIVE \u00B7 TAP THE ORB", valueColor = StatusGreen)
+        ReadoutRow(label = "VOICE CHAINS", value = "LIVE \u00B7 UP TO 8 STEPS", valueColor = StatusGreen)
+        ReadoutRow(label = "SCREEN AGENT", value = "LIVE \u00B7 6 ACTIONS", valueColor = StatusGreen)
+        ReadoutRow(label = "REMINDERS", value = "LIVE", valueColor = StatusGreen)
+        ReadoutRow(label = "SCREENSHOT", value = "ANDROID 11+", valueColor = StatusGreen)
+    }
+
+    // Computed live: a permission revoked outside the app must show up here immediately.
+    val context = LocalContext.current
+    val health = remember(aiLabel) { SystemHealth.rows(context, aiLabel) }
+
+    HudPanel(
+        label = "SUBSYSTEMS",
+        accent = if (health.all { it.ok }) StatusGreen else Amber,
+        trailing = {
+            HudChip(
+                text = "${health.count { it.ok }}/${health.size}",
+                accent = if (health.all { it.ok }) StatusGreen else Amber,
+            )
+        },
+    ) {
+        health.forEach { row ->
+            ReadoutRow(
+                label = row.label,
+                value = row.value,
+                valueColor = if (row.ok) StatusGreen else Amber,
+            )
+        }
     }
 }
