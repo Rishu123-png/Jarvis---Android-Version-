@@ -1,7 +1,7 @@
 package com.jarvis.assistant.voice
 
 import android.content.Context
-import com.jarvis.assistant.data.PhraseBook
+import java.util.Locale
 import org.json.JSONObject
 
 /**
@@ -67,9 +67,18 @@ object FollowUp {
      * Only patterns whose meaning is unambiguous are rewritten. Anything else is left alone, because
      * inventing a subject is worse than asking again.
      */
+    /**
+     * Lowercased and tidy, but **keeping colons and digits**: a time like "8:30" must survive, and
+     * `PhraseBook.clean` turns it into "8 30", which is not a time any more.
+     */
+    private fun loose(text: String): String = text.lowercase(Locale.US)
+        .replace(Regex("[^\\p{L}\\p{N} :+\\-]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
     fun rewritten(last: Turn?, heard: String): String? {
         if (last == null || last.heard.isBlank()) return null
-        val clean = PhraseBook.clean(heard)
+        val clean = loose(heard)
         if (clean.isBlank()) return null
 
         // "for Amit" / "amit ko bhi" — same request, different person.
@@ -78,10 +87,15 @@ object FollowUp {
         val person = forMatch?.groupValues?.getOrNull(1)?.trim()
 
         if (!person.isNullOrBlank()) {
+            // Keep the name exactly as it was spoken: "Khushi" is a name, not a keyword.
+            val spokenName = Regex("(?i)(?:for\\s+(\\S+)|(\\S+)\\s+ko\\s+bhi)")
+                .find(heard)?.let { match -> match.groupValues[1].ifBlank { match.groupValues[2] } }
+                ?: heard.trim().removePrefix("for ").trim()
+            val name = spokenName.ifBlank { person }
             val body = messageBodyOf(last.heard)
             if (last.title.startsWith("MESSAGE") || body != null) {
                 val text = body ?: last.slot
-                return if (text.isBlank()) "message $person" else "message $person $text"
+                return if (text.isBlank()) "message $name" else "message $name $text"
             }
             return null
         }
@@ -111,21 +125,38 @@ object FollowUp {
         return null
     }
 
-    /** The message text out of "message amit saying hi", if the last turn was a message. */
-    private fun messageBodyOf(heard: String): String? {
-        val clean = PhraseBook.clean(heard)
-        val marker = Regex("\\b(?:saying|say|that|bolo|ki|with)\\b")
-        val parts = marker.split(clean, limit = 2)
-        if (parts.size < 2) return null
-        val body = parts[1].trim()
-        return body.ifBlank { null } ?: null
+    /**
+     * Splits a message command into the person and the words to send.
+     *
+     * Two word orders have to work, because people use both: English puts the body after a marker
+     * ("message amit saying I will be late"), Hindi puts it *before* the verb ("message amit hi
+     * bolo"). The case of the body and the name is preserved — it is going to be sent as typed.
+     */
+    private fun messageParts(heard: String): Pair<String?, String> {
+        val prefix = Regex(
+            "^(?i)(?:open\\s+)?(?:send\\s+)?(?:message|msg|text|whatsapp|telegram|sms|write\\s+to|chat\\s+with)\\s+",
+        )
+        val rest = heard.trim().replace(prefix, "").trim()
+        if (rest.isBlank()) return null to ""
+
+        val marker = Regex("(?i)\\b(saying|say|that|bolo|bol|ki|likh)\\b")
+        val found = marker.find(rest)
+        if (found == null) {
+            return rest.substringBefore(' ').trim().takeIf { it.isNotBlank() } to ""
+        }
+
+        val before = rest.substring(0, found.range.first).trim().removeSuffix("ko").trim()
+        val after = rest.substring(found.range.last + 1).trim()
+        val person = before.substringBefore(' ').trim().takeIf { it.isNotBlank() }
+        val leftover = before.substringAfter(' ', "").trim()
+        val body = if (after.isNotBlank()) after else leftover
+        return person to body
     }
 
+    /** The message text out of "message amit saying hi", if the last turn was a message. */
+    private fun messageBodyOf(heard: String): String? =
+        messageParts(heard).second.takeIf { it.isNotBlank() }
+
     /** The name a message command was addressed to, for "reply the same thing". */
-    fun personOf(heard: String): String? {
-        val clean = PhraseBook.clean(heard)
-        val match = Regex("^(?:message|msg|text|whatsapp|send message|write to)\\s+(.+?)(?:\\s+(?:saying|say|that|bolo)\\b|$)")
-            .find(clean) ?: return null
-        return match.groupValues.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
-    }
+    fun personOf(heard: String): String? = messageParts(heard).first
 }

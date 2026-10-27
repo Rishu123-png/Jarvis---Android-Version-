@@ -18,7 +18,7 @@ class FollowUpTest {
     @Test
     fun doThatForSomeoneReusesTheMessage() {
         val last = turn("message amit saying I will be late", "MESSAGE · AMIT")
-        assertEquals("message khushi I will be late", FollowUp.rewritten(last, "for Khushi"))
+        assertEquals("message Khushi I will be late", FollowUp.rewritten(last, "for Khushi"))
     }
 
     @Test
