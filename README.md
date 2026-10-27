@@ -1,10 +1,36 @@
 # J.A.R.V.I.S.
 
-A native Android HUD — *Just A Rather Very Intelligent System*. Dark, high-contrast, drawn with
-Compose Canvas rather than stock Material cards. It can be set as your Home app, so the HUD replaces
-the launcher instead of sitting behind it.
+**A native Android assistant that actually does things.** Voice in, real actions out — calls, messages,
+camera, app control — on top of a hand-drawn HUD. No account, no JARVIS server, no telemetry. Every AI
+feature runs on a key *you* own, and every permission is requested at the moment it is needed.
 
-Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · minSdk 29 (Android 10) · targetSdk 34
+`com.jarvis.assistant` · Kotlin + Jetpack Compose + Material 3 · minSdk 29 (Android 10) · **2.3.0**
+
+| | |
+| --- | --- |
+| **Voice** | Tap the orb, speak, tap again. Whisper through your key, or the phone's own recognizer |
+| **Actions** | 27 typed device actions + calls, messages, camera capture, screenshots, downloads, reminders |
+| **Chains** | “open camera, capture, show me” — up to 8 steps with waits between app hand-offs |
+| **Screen agent** | Observe → decide → act inside apps it has never seen, one tap at a time |
+| **Memory** | Last 50 commands, contact nicknames, app aliases — on device only |
+| **Privacy** | PBKDF2 PIN lock, local-only keys, nothing leaves the phone unless you send it |
+
+---
+
+## Table of contents
+
+1. [What works right now](#what-works-right-now)
+2. [Architecture](#architecture)
+3. [Voice](#voice)
+4. [Automation](#automation)
+5. [Connections and analytics](#connections-and-analytics)
+6. [Privacy, permissions and the lock](#privacy-permissions-and-the-lock)
+7. [Install it](#install-it)
+8. [Release it](#release-it)
+9. [Tests](#tests)
+10. [Stability and honest limits](#stability-and-honest-limits)
+11. [Design system](#design-system)
+12. [Project layout](#project-layout)
 
 ---
 
@@ -12,446 +38,262 @@ Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · minSdk 29 (Androi
 
 | Area | State |
 | --- | --- |
-| HUD, arc reactor, live telemetry, clock | Working |
-| Home app role, app drawer, launching apps | Working |
-| Notifications, torch, volume, media, system panels | Working |
-| Do Not Disturb — direct control, after one grant | Working |
-| Editable dock, storage telemetry | Working |
-| Automation: control flow, triggers, AI-authored routines | Working |
-| Privileged shell via Shizuku (optional, adb-level, no root) | Working |
-| Instagram creator analytics, views-first (your own account) | Working |
-| Account linking: Instagram login, Google Drive + Gmail | Working |
-| Intelligence: your own AI key, any supported provider | Working |
+| HUD · arc reactor · live telemetry · 12-hour clock | Working |
+| Home app role, app drawer, editable dock | Working |
+| Notifications, torch, volume, media, DND, system panels | Working |
+| Automation: control flow, triggers, AI authoring, run history | Working |
 | Voice: tap-to-speak, Whisper or on-device, spoken replies | Working |
-| Voice commands: call a contact, message on WhatsApp, open apps, torch, alarms | Working |
-| Voice chains: camera capture → gallery, multi-app sequences, screen-aware tapping | Working |
-| Reminders: "remind me in 10 minutes to call dad" — a real notification | Working |
-| Quick Settings tiles: open JARVIS, torch | Working |
-| Screenshot action (Android 11+, accessibility tier) | Working |
-| Subsystem health panel in DIAGNOSTICS | Working |
-| Automated tests: 5 JVM suites, run in CI before the APK is built | Working |
+| Voice commands: contacts, calls, WhatsApp messages, apps, reminders | Working |
+| Voice chains: camera capture → gallery, multi-app, screen-aware tapping | Working |
+| Screen agent with OCR fallback for custom-drawn apps | Working |
+| Instagram creator analytics, views-first (your own account) | Working |
+| Connections: Instagram login, Google Drive + Gmail (read-only) | Working |
+| Intelligence: your own AI key, any supported provider | Working |
+| Privacy lock, floating bubble, home-screen widget | Working |
+| Quick Settings tiles, reminders, screenshot, downloads | Working |
+| Privileged shell via Shizuku (optional, adb-level, no root) | Working |
+| Automated tests: 6 JVM suites, run in CI before the APK | Working |
 
 Every tile on the HUD is either backed by a real Android API or clearly marked as not built. Nothing
 in the interface imitates a capability the app does not have.
 
-What is still missing, and what comes next, is tracked in **[ROADMAP.md](ROADMAP.md)**.
-
 ---
 
-## Intelligence — bring your own key
+## Architecture
 
-There is **no JARVIS server**. You paste your own provider key in *Settings → INTELLIGENCE*, and
-requests go from the phone straight to that provider.
+```
+┌─────────────────────────────── UI (Compose) ───────────────────────────────┐
+│  HomeScreen  ── orb + top bar            DashboardScreen  ── tiles, dock  │
+│  VoiceTaskCard ── what is happening      LockScreen / PrivacyScreen        │
+└───────────────────────────────┬────────────────────────────────────────────┘
+                                │ state (StateFlow)
+┌───────────────────────────────▼────────────────────────────────────────────┐
+│ VoiceController — one turn at a time, every stage bounded                  │
+│   MicRecorder ─► Whisper (your key)  │  LocalSpeech (device / offline)     │
+│   IntentRouter ─► AI plan (no canned command list) │ local parser fallback │
+│   StepExecutor ─► 29 typed actions │ ScreenAgent (observe→decide→act)      │
+│   SpeechOut ── spoken reply                    VoiceMemory ── recents      │
+└───────────────────────────────┬────────────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼────────────────────────────────────────────┐
+│ Android surfaces: intents · MediaStore · CameraX · AccessibilityService     │
+│ AlarmManager · Quick Settings · AppWidget · NotificationListener · Shizuku  │
+└────────────────────────────────────────────────────────────────────────────┘
+```
 
-**Supported:** OpenAI · Anthropic · Google Gemini · Groq · xAI · OpenRouter · Mistral · any
-OpenAI-compatible endpoint (self-hosted, proxy, or a provider not listed).
+Three rules hold the whole thing together:
 
-The provider is inferred from the key's prefix, so pasting `sk-ant-…` selects Anthropic and
-`AIza…` selects Gemini automatically. The picker stays available if the guess is wrong, models are
-editable, and custom endpoints take a base URL.
-
-**Handling.** The key is encrypted with the Android Keystore (AES-256-GCM) before it touches disk;
-only a masked `••••1234` is ever displayed. It is never logged, never written to the repo, and
-exists in plaintext only for the duration of a request. Uninstalling the app or clearing its data
-destroys the encryption key with it.
-
-**Model names are the fragile part.** Providers retire model ids without warning, so no name is
-trusted: **FETCH MODELS** asks the provider what your key can actually reach and lists it, and a
-model rejection (HTTP 404) makes the client walk the provider's known alternatives, then remember
-the one that answered. A retired model cannot silently break a working setup. **Failure is explicit.** A bad key, a missing model, a rate limit, a timeout or a dead network each
-produce a sentence you can act on. Connect and read timeouts are fixed, one request is in flight at
-a time, and the request is cancelled when you leave the screen — a slow provider cannot leave the
-panel stuck.
+1. **Nothing blocks the main thread.** Recording, transcription, planning, each step and each screen
+   action run off it, with a timeout on all of them.
+2. **One turn at a time.** Every turn carries an id; a late coroutine from a cancelled turn can never
+   write over what you are looking at.
+3. **Honest outcomes.** A failed step stops the turn and says why. There is no fake success anywhere.
 
 ---
 
 ## Voice
 
-Home is now one orb with a top bar. Tap the orb, speak, tap again — JARVIS transcribes, plans, shows
-each step on a card over the orb, does it, and says the result out loud. The old dashboard (tiles,
-telemetry, dock, log) still exists behind the grid button in the top bar.
+**Tap the orb, speak, tap again.** Home is a top bar and one orb — the tiles and telemetry are one tap
+away behind the grid button, so nothing competes with the thing you actually press.
 
-**Two ears, picked automatically:**
+### Ears — four routes, chosen in Advanced settings
 
-| Situation | Engine | Where the audio goes |
+| Route | Engine | Audio goes to |
 | --- | --- | --- |
-| An OpenAI, Groq or OpenAI-compatible key is stored | Whisper through that provider | That provider only, then discarded |
-| No key, or a provider without a speech endpoint | The device recognizer | Nowhere — it never leaves the phone |
+| `AUTO` (default) | Whisper if a key is stored, else the device recognizer | as chosen |
+| `WHISPER` | Your provider's transcription endpoint | that provider only, then discarded |
+| `DEVICE` | Android `SpeechRecognizer` | the platform recognizer |
+| `DEVICE OFFLINE` | `SpeechRecognizer` with `EXTRA_PREFER_OFFLINE` | nothing, when an on-device model exists |
 
-Nothing is bundled and nothing is downloaded: no 60 MB model in the APK, no extra app to install.
-The Whisper key is the same key you already use for Intelligence, and switching engines is automatic.
+No model is bundled and none is downloaded: the Whisper path uploads a 16 kHz WAV built in-process
+(RTF 44-byte header, unit-tested) and works with any OpenAI-compatible key. A provider without a
+speech endpoint falls back to the device recognizer instead of breaking voice.
 
-**Two brains:**
+### Brain — no command list to memorise
 
-- **With a key** — the sentence goes to the model with the list of things this phone can actually
-  do. Sloppy speech, half-sentences and mixed Hindi/English are fine; there is no command list in
-  the UI to memorise. The model can only choose capabilities that exist, and anything it invents is
-  dropped before execution.
-- **Without a key** — a small silent parser handles the real-world phrasings (`call dad`,
-  `open whatsapp`, `torch on`, `alarm 7:30`, `timer 10 minutes`, `volume 40`, `again`).
+With a key, the raw sentence goes to the model along with the list of capabilities this phone actually
+has. Sloppy speech, half-sentences and mixed Hindi–English are fine. The model may only choose ids that
+exist; anything it invents is dropped before execution. **There is no canned-command menu in the UI.**
 
-**What voice can do**
+Without a key, a silent parser covers the phrasings people really use — and it is covered by 21 tests,
+including the negatives that matter (“show me my photos” must not fire the camera).
 
-| Say | What happens |
-| --- | --- |
-| "call dad" | Resolves the contact and calls. Without phone permission it opens the dialer and says so |
-| "whatsapp Divik say hi" | Opens the chat with the text written; presses Send if accessibility is on |
-| "open instagram" | Fuzzy-matches the installed app, remembers the alias for next time |
-| "open camera, capture, show me in gallery" | Takes the photo itself (no shutter to press), then opens the newest one |
-| "open instagram, then search for Divik" | Falls into the screen-aware loop: one tap at a time, each step shown |
-| "torch on", "do not disturb on", "volume 40" | Direct device control |
-| "alarm 7:30", "timer 10 minutes" | Alarm and timer intents |
-| "again" | Re-runs the previous command |
-| anything else | Answered by the AI, or an honest "I cannot do that" — never a fake success |
+### Chains
 
-**Chains, not single commands.** A sentence can carry several actions: the planner returns an
-ordered list (up to eight steps, waits included) and JARVIS walks it, showing each step as it runs.
-"Open camera, capture the image, show me in gallery" is three steps, and the middle one does not
-need you to press anything — JARVIS opens its own capture surface, takes one frame with CameraX,
-writes it to `Pictures/JARVIS` and gets out of the way.
+A sentence can carry several actions: up to 8 steps with waits between app hand-offs.
 
-**When the app is one it cannot predict**, the plan ends with a *screen task*: a bounded
-observe → decide → act loop. It reads the labels on screen, the model picks exactly one action
-(press / type / system gesture / open / wait), JARVIS performs it, and looks again — at most six
-actions, each displayed on the card, each stoppable. It only ever taps a label that was on screen in
-the observation the decision was made from. Without accessibility the loop refuses to start rather
-than guessing.
+> “open camera, capture the image and show me in gallery”
 
-**Memory** is local and small: the last 50 commands, contact nicknames you used, and app aliases.
-No account, no sync, no backup.
+→ `TAKE PHOTO ✓` → `WAIT ✓` → `SHOW PHOTO ✓`
 
-**Honest limits.** Instagram and Telegram have no link that writes a message to a contact, so those
-stay open-the-app only. Sending needs the accessibility service plus the "press on screen" tier
-switched on; without it JARVIS writes the message and asks you to tap Send. Everything voice does
-runs with a hard timeout, and a failed step stops the turn and says why.
+The middle step does not need you to press anything: JARVIS opens its own capture surface, takes one
+frame with CameraX, writes it to `Pictures/JARVIS` and closes.
 
----
+### Screen agent
 
-## Connections — log in, don't paste tokens
+For anything buried inside another app — a switch on a settings page, a chat behind a search box — the
+plan ends with a **screen task**: read what is on screen, ask the model for exactly one action, do it,
+look again. At most six actions, each shown on the card, each cancellable, each verified against a label
+that was actually on screen. When the accessibility tree is empty (custom-drawn apps), it falls back to
+a screenshot plus **bundled on-device OCR**, so pixels are readable too.
 
-*HUD → CONNECTIONS* links accounts the way any other app does: you approve access on the provider's
-**own login page** in the browser.
+### Follow-ups
 
-**The part that matters for honesty.** An OAuth client id and secret belong to whoever registered the
-app, so a secret shipped in a public repository is a leaked secret. JARVIS therefore asks you to
-register a free app with each provider once and paste *your* id and secret in; they are encrypted with
-the Android Keystore and never leave the phone. Nothing secret lives in this repository.
-
-**Why a code is pasted instead of a link caught by the app.** Meta only accepts `https` redirect URIs
-and Google requires a pre-registered one, so a self-hosted app cannot receive the redirect directly.
-So: tap *OPEN LOGIN PAGE* → approve on the real site → copy the short-lived `code` from the address bar
-→ paste → JARVIS exchanges it with the provider on the device. That is a genuine authorization-code
-exchange, with no server in the middle and no deep-link surface other apps could poke.
-
-| Service | What works | Notes |
-| --- | --- | --- |
-| **Instagram** | Profile, posts, views, reach, insights → the whole analytics module | Login path refreshes to 60 days; the module can extend it |
-| **Google Drive** | Newest files (name, type, modified date) | `drive.metadata.readonly` |
-| **Gmail** | Unread estimate + recent subjects | `gmail.readonly` |
-| **WhatsApp** | Opening WhatsApp only | There is no API for a personal account — see below |
-
-**No Facebook account? You do not need one for Instagram inside JARVIS.** The Instagram path logs in
-with Instagram credentials and needs no Facebook Page. Meta still asks for a Facebook login in *its own
-developer dashboard*, which is where the app keys are created — that is Meta's requirement, not
-JARVIS's. For a single account you do not even need the OAuth flow: in the dashboard open *Instagram →
-API setup with Instagram Login → Add account → log in with Instagram → Generate token*, then paste that
-token into *HUD → INSTAGRAM → CONNECT*. It lasts 60 days and can be renewed from the module.
-
-**WhatsApp is listed on purpose.** It is the connection people ask for first and the one that cannot
-be done: WhatsApp Business Cloud API belongs to a business number you register, not your chats, and
-"linked devices" pairing is a private protocol whose libraries break on WhatsApp's schedule. Doing it
-would put the whole app's stability at risk and violate the ToS, so JARVIS says no on the same screen
-rather than hiding it.
-
----
-
-## Instagram analytics
-
-A creator module, built on Meta's official API and nothing else.
-
-- **Connect once.** Paste an access token for your own professional (Creator or Business) account
-  in *HUD → INSTAGRAM*. Two sources are supported: **Business Login for Instagram**
-  (`graph.instagram.com`, refreshable to 60 days from the screen) and **Facebook Login for Business**
-  (`graph.facebook.com`, for a Page-linked account).
-- **Reads:** profile and counts, the newest 25 posts with likes/comments, per-post insights
-  (reach, saves, shares, total interactions) for the newest 12, and account reach / profile views for
-  the window Meta reports. About 16 requests per sync against a limit of 4,800 × impressions.
-- **Computed on device:** engagement rate per post and per format, average interactions, interaction
-  rate on reached audience, format ranking, best posting day and hour (only when two posts share the
-  bucket), cadence, days since last post, and follower change since the first sync.
-- **Views first.** The module optimises **views, not followers**: view totals, average views per post
-  and views as a share of reach lead the screen, formats are ranked by average views, timing is
-  chosen from the highest-view bucket, and a *NEXT POST* panel states the next format, hour and hook
-  to try — all from your own numbers.
-- **AI briefing.** *ANALYSE WITH AI* sends that compact table to **your** AI key and returns a short
-  plan: what drives views, what wastes effort, the exact next post (format, angle, hook line), the
-  publishing time, and one change to the first second. The prompt is explicitly views-first and
-  forbids inventing metrics, competitors or demographics.
-- **Honest by construction.** A metric Meta refuses is listed under *MISSING METRICS*, never
-  rendered as zero. The age of every reading is on screen, so a cached count is never mistaken for a
-  live one. The module states plainly that DMs, other accounts, demographics, hashtag trends and ad
-  spend are not available.
-
-The token is encrypted with the Android Keystore, sent only to Meta, and revocable from
-Instagram → Settings → Apps and websites. Disconnecting deletes the token, the cache and the growth
-series.
-
-### If a connection does not work
-
-The Instagram panel has **DIAGNOSE CONNECTION**, which runs six tiny probes and prints the exact
-failure — no guessing, no server logs to hunt for:
-
-| Probe | What a failure means |
-| --- | --- |
-| ACCESS TOKEN | nothing stored, or the paste contains a space / is truncated |
-| PROFILE (`/me`) | token invalid, expired, or minted for a different app |
-| COUNTS | token lacks `instagram_business_basic` |
-| POSTS | the account is still **personal** — switch it to Creator |
-| ACCOUNT INSIGHTS | `instagram_business_manage_insights` was not enabled *before* the token was generated |
-| POST INSIGHTS | per-post metrics refused for that post type; the module falls back to `reach` |
-
-**Neither Meta nor Google asks for verification for your own account.** Meta: Standard Access works
-while the app is in development mode for accounts with a role on the app. Google: keep the consent
-screen in *Testing* and add your own address under *Test users*. App Review, business verification and
-Google's verification review only apply when you serve *other people's* accounts.
-
-The most common Meta failure by far is the order of two clicks in the dashboard: the insights
-permission must be added **before** the token is generated, otherwise the token silently lacks it and
-only likes and comments come back.
-
----
-
-## Terminal — real commands
-
-The console runs real work against real Android APIs. It is not a shell emulator, and it does not
-print scripted text.
-
-```
-status      battery     network    storage     apps       alerts [clear]
-torch [on|off]          volume [0-100|up|down]          time
-panel wifi|bt|dnd|display|volume|notification|battery
-dnd [status|on|off|priority|alarms|silent]
-shizuku                 shell <command>          insta          connect
-routines    run <name>  stop       modules    ai         help
-```
-
-Anything that is not a local command is offered to your AI key instead. When the model suggests a
-local action, it appears as a chip you have to tap — the model never executes anything by itself.
-
-History is capped, so a long session cannot grow the list without bound.
+The previous command is handed to the planner, so “again, but quieter”, “do that for Divik” and “turn it
+off” resolve without repeating yourself.
 
 ---
 
 ## Automation
 
-Routines are ordered step lists stored as JSON on the device. They run top to bottom, with a
-60-step budget per run, three levels of nesting, and one routine at a time.
+- **29 typed actions**, 12 conditions, 10 triggers, `IF` / `REPEAT` / `WAIT UNTIL` blocks.
+- **`VERIFY` step**: `app:com.whatsapp`, `screen:Send`, `notif:hi`, `battery<20`, `charging`, `wifi`.
+  A routine can now check that something happened instead of trusting a step's own report.
+- **AI authoring**: describe a routine in a sentence; the planner returns a validated workflow, and the
+  model can only choose actions and conditions that exist.
+- **Safety tiers**: sensitive actions are marked, confirmed before a run, and cannot be produced by the
+  planner in a way that skips the gate.
+- **Run history** with per-step outcomes, so a failure is inspectable rather than mysterious.
 
-### Control flow
+---
 
-A routine can now decide things. **IF / ELSE** branches on twelve live conditions (battery level,
-charging, Wi-Fi, mobile data, media playing, time window, alert count, app installed, screen state),
-**REPEAT** runs a block 1–10 times, **WAIT UNTIL** holds until a condition becomes true or times out,
-and **STOP ROUTINE** ends the run early. Every step carries its own timeout, optional retries, and a
-failure policy: continue (the default) or halt the routine.
+## Connections and analytics
 
-### Triggers
+- **Instagram**: Instagram Login (no Facebook Page needed), token exchange on device; views-first
+  analytics, `NEXT POST` suggestions, and a six-probe `diagnose()` that says exactly which step fails.
+- **Google**: Drive and Gmail, read-only, through your own OAuth client — nothing is proxied.
+- **WhatsApp**: stated plainly — there is no third-party account-linking API. JARVIS opens a chat with
+  the text written; sending needs the accessibility tier.
 
-One switch arms everything. Each routine picks its own trigger: a time (daily or weekdays), charger
-connected or removed, Wi-Fi coming up, battery dropping below a level, after a reboot, an alert from a
-chosen app, or an unlock while JARVIS is running.
+Secrets live in the Android Keystore (`AES/GCM`), never in the repository and never in a server.
 
-| Cost | Detail |
-| --- | --- |
-| A persistent notification | Armed triggers run in a foreground service, which Android requires to be visible. Disarming removes the service and the notification. |
-| A cooldown | The same routine will not re-fire within five minutes, so a flapping state cannot spam it. |
-| Approximate times by default | Time triggers fire exactly only if you allow "Alarms & reminders"; otherwise they use an inexact alarm and the screen says `APPROXIMATE`. |
+---
 
-A trigger never bypasses a gate. If a triggered routine reaches a sensitive step it waits for you,
-and declines itself after five minutes rather than hanging.
+## Privacy, permissions and the lock
 
-### Actions
-
-open app · open link · deep link · dial (dialer only, never calls) · compose SMS (never sends) ·
-set timer · set alarm · torch on/off · set media volume · play/pause/next/previous · clear alerts ·
-notify me · speak text · webhook (GET/POST, web schemes only) · open a system panel · do not
-disturb (off/priority/alarms/silent) · shell command (needs Shizuku) · wait · system gesture ·
-press a labelled control · IF · REPEAT · WAIT UNTIL · STOP.
-
-### Compose with AI
-
-Describe the routine in a sentence — *"every night at 11 turn the torch off and set volume to 20"* —
-and the model proposes a plan. It may only choose action and condition ids that already exist; every
-value is clamped, unknown actions are dropped and listed, depth and step counts are capped, and the
-result is previewed before anything is saved. Sensitive steps stay sensitive, because the model has
-no way to say otherwise.
-
-### The safety model
-
-| Tier | Requires | Grants |
+| Permission | Requested when | Needed for |
 | --- | --- | --- |
-| Nothing | — | apps, links, dialer, SMS composer, timer, alarm, torch, volume, panels, speech |
-| Notification access | system switch | media transport, clearing alerts |
-| Do Not Disturb access | system switch | setting the interruption filter directly |
-| Shizuku | separate app, adb-level service | shell steps (`shell`, `pm`, `cmd`, …) |
-| Accessibility service | system switch | navigation gestures |
-| Screen pressing | separate in-app opt-in | pressing one labelled control |
-| Webhook | confirmation each run | calling a URL you own |
+| Microphone | first orb tap | voice |
+| Contacts / Phone | the chips on home | “call dad”, messages |
+| Camera | the camera chip | photo capture |
+| Overlay | only if you enable the bubble | floating disc |
+| Accessibility | your explicit choice in settings | screen taps, screenshots, OCR |
+| Notification listener | your explicit choice | alerts, media, `VERIFY` |
 
-Every sensitive step suspends the routine until you approve it. The accessibility service's
-`onAccessibilityEvent` is intentionally empty: JARVIS never reads screen content in the background.
+**The lock** is a numeric PIN over the app itself: PBKDF2-HMAC-SHA256, 120 000 iterations, random salt,
+constant-time compare, no recovery. It re-engages a minute after you leave. The lock screen shows no app
+names, no history and no last command.
 
-### What automation deliberately cannot do
-
-It will not place a call, send a message, flip Wi-Fi, or move money. Those steps open the relevant
-screen so the final action stays yours.
-
-Do Not Disturb is the exception, and only because Android has a grant for exactly that: with
-*Do Not Disturb access* the step sets the interruption filter for real (`dnd silent`). Without the
-grant the step is skipped with the reason "Do Not Disturb access is not granted", and the screen
-offers the one system page that can grant it. Nothing claims to have worked when it did not. It cannot run while the app has been force-stopped,
-and it cannot fire on a state Android never reports to a background app.
-
-### Run history
-
-The last 50 runs are kept on device: what fired, when, how many steps passed, and whether it was
-started by a trigger or by you. A step that failed is recorded with the executor's own reason.
+There is **no JARVIS backend**. No account, no sync, no analytics, no crash reporting. The only network
+traffic is a request to the provider whose key you pasted, a connector you set up, or a URL you asked
+for.
 
 ---
 
-## Launcher
+## Install it
 
-- **Selectable as the Home app.** `MainActivity` declares `HOME` + `DEFAULT` alongside `LAUNCHER`, with
-  `stateNotNeeded`, `launchMode=singleTask` and `excludeFromRecents` — the combination a Home app needs.
-  JARVIS never switches the Home app itself: you tap *Set JARVIS as home* and Android shows its own
-  confirmation dialog.
-- **App drawer** — every launchable activity from `PackageManager`, alphabetical section headers, live
-  search over label and package name, and a refresh control. Icons load off the main thread into an LRU
-  cache, seeded synchronously so scrolling never flashes placeholders.
-- **App launching** — explicit `MAIN`/`LAUNCHER` component intent with `FLAG_ACTIVITY_NEW_TASK`, falling
-  back to `getLaunchIntentForPackage`, then a toast if the app cannot be opened.
-- **Dock** — five slots filled from recognised system apps (dialer, messaging, browser, camera,
-  settings), topped up from installed apps so it is never empty on any device. Long-press a slot to
-  change it.
-- **Package visibility** — the manifest declares a `<queries>` block. Without it, `queryIntentActivities`
-  returns an empty list on Android 11+ and the drawer silently appears broken. That is the single most
-  common launcher bug, which is why CI verifies the APK's intent filters.
+Requires **Android 10 (API 29) or newer**. One package only (`com.jarvis.assistant`), so new builds
+update in place.
+
+### Codemagic (zero setup)
+
+1. Add this repository in Codemagic and select **codemagic.yaml**.
+2. Run **JARVIS · debug APK**, then download from the build artifacts:
+
+   ```
+   app/build/outputs/apk/debug/app-debug.apk
+   ```
+
+3. For a stable signature (so updates never conflict), add a keystore under *Code signing identities →
+   Android keystore* as `keystore_credentials`, then use **JARVIS · release APK**:
+
+   ```
+   app/build/outputs/apk/release/app-release.apk
+   ```
+
+> Codemagic's free tier only includes macOS machines, so both workflows use `instance_type:
+> mac_mini_m2`. `linux_x2` needs billing enabled and fails before the build starts on a free account.
+
+### GitHub Actions
+
+Every push runs the full pipeline: unit tests → debug + release APKs → APK signature and intent-filter
+verification in the run summary → artifacts. The release artifacts are already named for a release:
+
+```
+jarvis-2.3.0.apk          (release — use this one)
+jarvis-2.3.0-debug.apk    (debug)
+```
+
+### Android Studio / command line
+
+```bash
+./gradlew assembleRelease    # app/build/outputs/apk/release/app-release.apk
+./gradlew installDebug       # with a device connected over adb
+```
+
+Play Protect warns about any self-signed app — choose *Install anyway*. If a build was signed with a
+different key, uninstall the old app first.
 
 ---
 
-## Reminders, screenshot, tiles
+## Release it
 
-**Reminders** are real notifications at a real time, not clock alarms. "Remind me in 10 minutes to
-call dad" or "remind me at 18:30 to leave" — the words are yours, they survive the process being
-killed, they are re-armed after a reboot, and they use exact alarms when Android allows it and say so
-when it does not.
+Step by step, from this repository:
 
-**Screenshot** uses the accessibility screenshot API (Android 11+), writes a PNG to
-`Pictures/JARVIS`, and needs the accessibility service switched on.
+1. **Check the build is green** — Actions tab → latest **Build JARVIS APK** run → all steps passed.
+2. **Download the release APK** — from the run's artifacts, `jarvis-release-apk` → `jarvis-2.3.0.apk`
+   (or from Codemagic: `app/build/outputs/apk/release/app-release.apk`).
+3. **Rename it if you like** — the release pipeline already names it `jarvis-<version>.apk`, which is
+   the name to upload. Keep it exactly like that: `jarvis-2.3.0.apk`.
+4. **Create the GitHub Release** — *Releases → Draft a new release* → tag `v2.3.0` → title
+   `JARVIS 2.3.0` → paste the notes from [CHANGELOG.md](CHANGELOG.md).
+5. **Attach the APK** to that release as an asset (drag `jarvis-2.3.0.apk` into the assets box).
+   Pushing a `v*` tag also does this automatically: the workflow attaches `dist/jarvis-*.apk`.
+6. **Verify**: the release page should show `jarvis-2.3.0.apk` (≈ 16–18 MB) plus *Source code*.
 
-**Quick Settings** has two tiles: one opens JARVIS from the shade, one toggles the torch without
-launching anything. There is deliberately no "listening" tile — there is no always-on microphone to
-lie about.
-
-**DIAGNOSTICS** now ends with a SUBSYSTEMS panel that answers "will this actually work": microphone,
-contacts, calls, camera, screen control, screen taps, notification listener, DND access, exact
-alarms, Shizuku, voice engine, AI provider, pending reminders. Amber means degraded, not broken.
+The file you upload is **`jarvis-2.3.0.apk`**; its source on the build machine is
+**`app/build/outputs/apk/release/app-release.apk`**, and in CI **`dist/jarvis-2.3.0.apk`**.
 
 ---
 
 ## Tests
 
 ```bash
-./gradlew testDebugUnitTest          # JVM, no device, runs in CI before the APKs are built
+./gradlew testDebugUnitTest          # JVM, no device — runs in CI before the APKs are built
 ./gradlew connectedDebugAndroidTest  # one launch smoke test, needs a device or emulator
 ```
-
-The unit suites cover the pure logic that used to be unreachable inside Android classes:
 
 | Suite | What it pins |
 | --- | --- |
 | `VoiceParsingTest` | message / call / volume / alarm / timer / camera / reminder phrasing, and what must **not** match |
 | `JsonReplyTest` | code fences, prose around the object, braces inside strings, invalid objects |
 | `WavTest` | RIFF header sizes and format fields against the payload |
-| `WorkflowJsonTest` | routine → JSON → routine, nested blocks, conditions, time parsing, unique action ids |
+| `WorkflowJsonTest` | routine → JSON → routine, nested blocks, conditions, time windows, unique action ids |
+| `TimeFormatTest` | 12-hour conversion, midnight and noon, stored `HH:mm` → `6:30 PM` |
+| `AppLaunchTest` (androidTest) | the shell inflates and the HUD draws |
 
-Those parsers were extracted into `voice/VoiceParsing.kt` and `ai/JsonReply.kt` precisely so they
-could be tested without a phone. A regression there is silent — it looks like JARVIS ignoring you.
-
----
-
-## Stability
-
-The HUD is a live surface, so the failure mode to design against is a janky or frozen screen:
-
-- Periodic work (clock, telemetry, media polling) parks while the app is in the background.
-- Automation steps, including the bounded accessibility-tree walk, run on a background dispatcher —
-  never on the main thread.
-- Overlapping app refreshes on resume are gated, so rapid foreground passes cannot queue up work.
-- The live notification list and terminal history are both capped.
-- Every network call has explicit connect and read timeouts and is cancellable.
-- Anything that can throw (package manager, keystore, accessibility tree, provider JSON) is wrapped
-  and degraded to a readable state rather than a crash.
+A failing test fails the build before an APK exists, and the run summary lists every suite.
 
 ---
 
-## Build it
+## Stability and honest limits
 
-### Option A — Codemagic (recommended for installing on your phone)
+**Designed against:** background work parks when the app is not visible; the accessibility tree walk is
+depth- and count-limited; network calls all carry connect/read timeouts; the notification list and
+terminal history are capped; every engine release is off the main thread.
 
-`codemagic.yaml` at the repository root defines two workflows:
+**What the app will not do, and says so:**
 
-| Workflow | Setup needed | Use |
-| --- | --- | --- |
-| **JARVIS · debug APK** | none | download and install right away |
-| **JARVIS · release APK** | a keystore in Codemagic | stable signature so updates install over each other |
+- Always-on wake word — battery, privacy, and a microphone held open behind your back.
+- A cloud backend, accounts or sync.
+- Auto-sending SMS, call guarding or SOS.
+- Scraped and unofficial APIs (WhatsApp linked-device, Instagram private endpoints).
+- Claiming a call was placed when only the dialer opened, or a message sent when only the text was
+  written.
 
-1. Add the repository in Codemagic and select **codemagic.yaml** as the configuration source.
-2. Run **JARVIS · debug APK**, then download `app-debug.apk` from the build's artifacts.
-
-> **Free plan note.** Codemagic's free tier only includes macOS machines, so both workflows use
-> `instance_type: mac_mini_m2`. Using `linux_x2` on a free account fails *before the build starts*
-> with "The selected instance type is not available with the current billing plan". Android builds
-> work perfectly on the Mac machine; switch to `linux_x2` only if you enable billing. macOS builds
-> can queue for a while on the free plan.
-
-3. Optional but recommended: add a keystore under *Team settings → Code signing identities → Android
-   keystore* (the group `keystore_credentials`), then use **JARVIS · release APK** from then on.
-
-Both workflows tolerate a missing SDK package or keystore: they warn and continue rather than failing.
-CI validates `codemagic.yaml` on every push — YAML syntax, every script step through `sh -n`, and a
-check that no workflow requests a billing-gated instance type.
-
-**Install notes**
-
-- One package only: `com.jarvis.assistant`. New builds update the installed app instead of creating a
-  second icon.
-- Uninstall the old app first if the signing key changed between builds — Android refuses an update
-  signed by a different key. A Codemagic keystore keeps the key stable forever.
-- Play Protect warns about any self-signed app. Choose *Install anyway*.
-- Requires Android 10 (API 29) or newer.
-
-### Option B — GitHub Actions (no local toolchain needed)
-
-Every push and pull request runs `.github/workflows/build.yml`, which installs JDK 17 + the Android
-SDK, runs `./gradlew assembleDebug assembleRelease`, validates `codemagic.yaml`, verifies the APK's
-signature and intent filters into the run summary, and uploads the APKs.
-
-1. Open the **Actions** tab → latest **Build JARVIS APK** run.
-2. Download `jarvis-debug-apk`, unzip it, install `app-debug.apk` (allow "install unknown apps" when
-   prompted).
-
-### Option C — Android Studio
-
-Open the repository folder, let Gradle sync, press Run. Requires JDK 17 and the Android 14 (API 34)
-SDK.
-
-### Option D — command line
-
-```bash
-./gradlew assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
-./gradlew installDebug           # with a device connected over adb
-```
+**Best-effort by nature:** the screen agent reads labels and pixels, so a fully custom-drawn app can
+still defeat it; six actions is a hard ceiling and it gives up out loud. Telegram and Instagram have no
+“message this contact” link, so those stay open-the-app only.
 
 ---
 
@@ -467,12 +309,9 @@ SDK.
 | Alert Red | `#FF465C` | Critical states only |
 | Amber | `#FFC24B` | Caution / needs attention |
 
-Type is two families: **monospace** for every telemetry readout (numbers do not jitter, and it sells
-the instrument-panel feel), and the **platform sans** for headings and prose. Small labels are
-wide-tracked small caps.
-
-Shapes are `ChamferedShape` — a rectangle with 45° cut corners, configurable per corner, so panels and
-tiles never read as stock rounded cards.
+Monospace for every readout (numbers do not jitter), a light serif-flavoured display face for headings,
+chamfered corners, hairline gradient borders and machined corner brackets on every panel. Red is used
+sparingly, and only where something is genuinely wrong.
 
 ---
 
@@ -481,184 +320,20 @@ tiles never read as stock rounded cards.
 ```
 app/src/main/java/com/jarvis/assistant/
 ├── MainActivity.kt              single-activity host
-├── ai/
-│   ├── AiProvider.kt            provider table, wire formats, key detection
-│   ├── AiKeyStore.kt            Keystore-encrypted key storage
-│   └── AiClient.kt              HTTP client for the three wire formats
-├── automation/
-│   ├── AutomationModels.kt      actions, steps, workflows, JSON
-│   ├── AutomationStore.kt       persistence + presets
-│   ├── StepExecutor.kt          one step, against real APIs
-│   ├── AutomationEngine.kt      interpreter: blocks, timeouts, retries, confirmation gate
-│   ├── AutomationConditions.kt  live condition + trigger evaluation
-│   ├── AutomationTriggers.kt    arming switch, exact alarms, boot re-arm
-│   ├── AutomationService.kt     foreground watcher while armed
-│   ├── SpeechOut.kt             text-to-speech for SAY
-│   ├── StepExecutor.kt          one leaf step, against real APIs
-│   └── JarvisAccessibilityService.kt
-├── device/
-│   ├── SystemStatus.kt          battery / network / memory / uptime / build info
-│   ├── LauncherStatus.kt        home role, role request, app launching
-│   ├── Notifications.kt         listener repository + access checks
-│   ├── QuickControls.kt         torch, volume, media session, system panels
-│   ├── DndControl.kt            real interruption filter + the access check behind it
-│   └── StorageStatus.kt         StatFs telemetry
-├── shell/
-│   ├── ShizukuShell.kt          optional adb-level shell: status, permission, timeouts
-│   └── ShellUserService.kt      runs in the Shizuku process as shell/root, one command at a time
-│   (app/src/main/aidl/…/IShellService.aidl  the one-method interface between the two)
-├── connect/
-│   ├── Connectors.kt            connector state + Keystore-encrypted credentials and tokens
-│   ├── OAuthFlows.kt            Instagram and Google authorization-code exchanges, PKCE-free
-│   ├── GoogleData.kt            read-only Drive list and Gmail summary
-│   └── Web.kt                   bounded HTTP with provider error translation
-├── social/
-│   ├── InstagramModels.kt       profile, media, snapshot, growth point + JSON
-│   ├── InstagramStore.kt        Keystore-encrypted token, cached snapshot, growth series
-│   ├── InstagramClient.kt       Meta API reads, per-metric tolerance, request budget
-│   └── InstagramAnalytics.kt    pure on-device maths + the AI briefing prompt
-├── data/
-│   ├── HudModules.kt            shortcut tile registry
-│   ├── CommandRegistry.kt       terminal commands + AI system prompt
-│   ├── BootSequence.kt          boot log + rotating status notes
-│   ├── DockPrefs.kt             persisted dock
-│   └── InstalledApps.kt         PackageManager index, icon LRU cache
-└── ui/
-    ├── JarvisApp.kt             shell + string-route navigation
-    ├── theme/                   Color, Type, Shape (ChamferedShape), Theme
-    ├── components/              ArcReactor, HudSurface, HudText, Tiles, AppIcons, Lifecycle
-    └── screens/
-        ├── DashboardScreen.kt   the home HUD
-        ├── ModuleScaffold.kt    shared module frame
-        ├── TelemetryScreens.kt  Power, Network, Diagnostics
-        ├── AppDrawerScreen.kt   installed apps, search, sections
-        ├── AutomationScreen.kt  routines, run state, log
-        ├── AutomationEditorScreen.kt
-        ├── ComposeScreen.kt     describe a routine in a sentence
-        ├── AiSettingsScreen.kt  provider, model, key
-        ├── TerminalScreen.kt    device console
-        └── …
+├── ai/                          AiClient · AiPlanner · JsonReply · Translator · key store
+├── automation/                  AutomationEngine · StepExecutor · Verify · triggers · conditions
+├── connect/                     OAuth flows · Drive/Gmail · connector store
+├── data/                        app registry · dock · command registry · HUD module list
+├── device/                      status · controls · notifications · bubble · widget · privacy
+│                                reminders · downloads · quick tiles · capture · health
+├── shell/                       Shizuku user service
+├── social/                      Instagram client, analytics, store
+├── ui/                          JarvisApp · components · screens · theme
+└── voice/                       VoiceController · IntentRouter · Ears/Whisper · LocalSpeech
+                                 ScreenAgent · Ocr · VoiceMemory · VoiceParsing · Wav
+app/src/test/                    JVM suites (parsers, JSON, WAV, workflow, time)
+app/src/androidTest/             launch smoke test
 ```
 
-The split is deliberate: `device/` owns Android APIs, `ai/` owns provider traffic, `data/` owns the
-model, `ui/components/` owns the visual language, and `ui/screens/` only composes them.
-
----
-
-## Review checklists
-
-**Intelligence**
-
-- [ ] Paste a key in Settings → INTELLIGENCE; the detected provider matches the key.
-- [ ] TEST CONNECTION reports the provider and model, or a specific error.
-- [ ] Ask a question in the terminal and get a reply attributed to the provider.
-- [ ] A suggested `RUN:` chip only runs after you tap it.
-- [ ] FORGET KEY removes it and the terminal falls back to local-only.
-
-**Automation**
-
-- [ ] Compose with AI returns a plan; unknown actions are dropped and listed.
-- [ ] Arm triggers, allow exact alarms, then set a routine one minute ahead — it fires.
-- [ ] A triggered routine that hits a sensitive step waits for you, then declines after 5 min.
-- [ ] Disarming removes the persistent notification.
-- [ ] Reboot with triggers armed: the routine still fires afterwards.
-- [ ] IF/ELSE branches on real state; REPEAT and WAIT UNTIL behave.
-- [ ] Presets run with no special access (torch, volume, timer, clear alerts).
-- [ ] A gesture step asks for approval, and Decline halts the run.
-- [ ] STOP halts a running routine and the log shows HALTED.
-- [ ] Accessibility status reflects the real system state after you change it in settings.
-- [ ] Screen pressing stays blocked until you allow it separately.
-- [ ] Editor: add → configure → reorder → save → run.
-- [ ] A failing step is logged and the run continues.
-- [ ] `dnd silent` says "access not granted" until you grant Do Not Disturb access, then really goes
-      silent; `dnd off` restores normal interruptions.
-- [ ] With Shizuku stopped, a `shell` step is skipped with a plain reason and the routine continues.
-- [ ] With Shizuku connected and authorised, `shell pm list packages -3` returns real package names.
-- [ ] Killing Shizuku mid-session does not crash JARVIS; the next shell attempt reports it is not
-      running.
-
-**Instagram**
-
-- [ ] With no token, the module shows the connect panel and *WHAT THIS CANNOT SEE*; nothing crashes.
-- [ ] A bad token fails with Meta's own message plus a usable hint, and saves nothing.
-- [ ] A valid token syncs profile, posts and insights; the reading age shows *JUST NOW*.
-- [ ] Re-opening the module paints from cache instantly and only refreshes when the reading is stale.
-- [ ] *MISSING METRICS* lists anything Meta refused instead of showing zeros.
-- [ ] `insta` in the terminal answers from cache without touching the network.
-- [ ] *ANALYSE WITH AI* returns a plan, and with no AI key says so instead of failing silently.
-- [ ] *EXTEND TOKEN* works for an Instagram Login token and is disabled for a Facebook Login token.
-- [ ] DISCONNECT removes the token; re-opening shows the connect panel again.
-
-**Connections**
-
-- [ ] With no credentials, both providers show *NOT LINKED* and nothing crashes.
-- [ ] *OPEN LOGIN PAGE* opens the provider's real login in the browser.
-- [ ] A pasted redirect URL is accepted; a pasted bare code is accepted; garbage fails with a
-      sentence, not a crash.
-- [ ] Instagram: after the exchange the module fills itself and the token shows as `••••`.
-- [ ] Google: after the exchange the email shows, *READ DRIVE* lists recent files and *READ GMAIL*
-      shows an unread estimate with recent subjects.
-- [ ] An expired Google access token refreshes silently on the next read.
-- [ ] `connect` lists every connector's state offline.
-- [ ] The WhatsApp panel explains the limits and never pretends to connect.
-
-**Launcher**
-
-- [ ] Settings shows *not the home app*; *Set JARVIS as home* opens Android's dialog.
-- [ ] After choosing JARVIS, pressing Home opens the dashboard.
-- [ ] The drawer lists real apps with real icons, grouped A–Z; search filters as you type.
-- [ ] Every dock slot launches.
-- [ ] Pressing Home inside another app returns to the HUD, not a blank screen.
-
-**HUD**
-
-- [ ] The reactor animates and the clock ticks.
-- [ ] Battery matches the system indicator; telemetry panels show plausible live values.
-- [ ] System log types itself out; `help` lists commands.
-- [ ] Back from any module returns to the HUD.
-- [ ] Layout survives a small screen without clipping.
-
----
-
-## Security and privacy posture
-
-- No JARVIS backend, no analytics, no crash reporting, no third-party SDKs.
-- `INTERNET` exists for one reason: sending your prompt to the provider whose key you stored. With no
-  key configured, the app makes no network request at all.
-- The AI key is encrypted with the Android Keystore and sent only to that provider.
-- No microphone permission is requested. Notification access, accessibility and Do Not Disturb access
-  are optional, off by default, revoked by a system switch you control.
-- The Instagram access token is encrypted with the Android Keystore, sent only to Meta, and can be
-  revoked from the Instagram app at any time. No Instagram credential is ever stored in this
-  repository.
-- OAuth client secrets for Instagram and Google are entered by the operator, encrypted with the
-  Android Keystore, and used only to exchange a code on the device. Google scopes are read-only
-  (`drive.metadata.readonly`, `gmail.readonly`); JARVIS never writes, deletes or sends.
-- Shizuku is entirely optional. If it is not installed, its manifest provider never answers and every
-  privileged path reports "not available"; nothing binds, nothing waits, nothing crashes. No root is
-  required — Shizuku is started once over adb or wireless debugging.
-- Secrets never belong in the repository — `.gitignore` excludes `secrets.properties`, `*.jks`,
-  `keystore.properties` and `.env`.
-
----
-
-## Honest limits
-
-Choosing JARVIS as the launcher will not replace Android. The lock screen, permission dialogs, system
-navigation and protected screens stay with the OS. It is a regular app: no root, no kernel access, no
-monitor mode, no access to another app's sandbox. The one privileged path is opt-in: if you install
-and authorise Shizuku, routine steps and the `shell` command run as the shell user, which is exactly
-the identity `adb shell` already has — no more, and no root. Where a capability is impossible, the
-interface says so rather than pretending.
-
-Voice input is not built in this version.
-
-The Instagram module reads **your own** professional account through Meta's API. There is no API that
-grants "all access" to Instagram — DMs, other people's accounts, audience demographics, hashtag trends
-and ad spend are either separate APIs or not exposed at all, and anything claiming otherwise is
-scraping. Personal accounts have no API; the account must be Creator or Business.
-
-WhatsApp cannot be linked for reading. There is no official API for a personal account, and the
-unofficial route (pairing as a linked device) is a private protocol that breaks without warning — the
-kind of dependency that would take this app's stability down with it. The connections screen offers to
-open WhatsApp and says why that is all it can do.
+What is left, and in what order, is tracked in **[ROADMAP.md](ROADMAP.md)**. Release notes live in
+**[CHANGELOG.md](CHANGELOG.md)**.
