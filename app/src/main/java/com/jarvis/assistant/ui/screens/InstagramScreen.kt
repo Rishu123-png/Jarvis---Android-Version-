@@ -636,13 +636,34 @@ private fun ConnectPanel(
         )
     }
 
+    HudPanel(label = "NO FACEBOOK ACCOUNT? READ THIS", accent = StatusGreen) {
+        Text(
+            text = "You never log in with Facebook inside JARVIS. The Instagram path uses your " +
+                "Instagram credentials and needs no Facebook Page.",
+            style = HudType.terminal.copy(fontSize = 10.sp),
+            color = TextSecondary,
+        )
+        HudDivider(modifier = Modifier.padding(vertical = 8.dp))
+        Text(
+            text = "The one place Meta still asks for a Facebook login is its developer dashboard, " +
+                "where the app that holds your keys is created. That is Meta's rule, not JARVIS's. " +
+                "If your Instagram is already in Meta Accounts Center, try signing in there with " +
+                "it first; if Meta insists, a fresh empty account used only to own the app is enough " +
+                "— it is never linked to your Instagram and never used for posting.",
+            style = HudType.terminal.copy(fontSize = 9.sp),
+            color = TextMuted,
+        )
+    }
+
     HudPanel(label = "HOW TO GET A TOKEN", accent = IceBlue) {
         Text(
-            text = "1 · Switch the account to Creator or Business in the Instagram app.\n" +
-                "2 · Create a free app at developers.facebook.com and add the Instagram product.\n" +
-                "3 · Request instagram_business_basic and instagram_business_manage_insights.\n" +
-                "4 · Generate a long-lived token for your own account and paste it above.\n\n" +
-                "A quick personal alternative: Graph API Explorer can mint a short-lived token in seconds, which JARVIS can then extend to 60 days.",
+            text = "YOUR OWN ACCOUNT · NO LOGIN FLOW NEEDED\n" +
+                "1 · Instagram app → Settings → Account type and tools → switch to Creator (free).\n" +
+                "2 · developers.facebook.com → create a Business app → add the Instagram product.\n" +
+                "3 · Pick “API setup with Instagram Login” — not the Facebook Login one.\n" +
+                "4 · Instagram → API setup with Instagram Login → Add account → log in with Instagram.\n" +
+                "5 · Generate token → copy it → paste it in CONNECT above.\n\n" +
+                "That token lasts 60 days; EXTEND TOKEN renews it from here, so you rarely repeat this.",
             style = HudType.terminal.copy(fontSize = 10.sp),
             color = TextSecondary,
         )

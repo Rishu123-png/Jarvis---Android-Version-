@@ -22,13 +22,13 @@ enum class IgPlatform(
         id = "instagram_login",
         label = "INSTAGRAM LOGIN",
         host = "https://graph.instagram.com",
-        note = "Business Login for Instagram. No Facebook Page needed; token lasts 60 days and can be refreshed here.",
+        note = "No Facebook account and no Facebook Page needed — you log in with Instagram. Token lasts 60 days and can be extended here.",
     ),
     FACEBOOK_LOGIN(
         id = "facebook_login",
         label = "FACEBOOK LOGIN",
         host = "https://graph.facebook.com/v23.0",
-        note = "Facebook Login for Business. Works for a professional account linked to a Facebook Page.",
+        note = "Needs a Facebook account and a Page linked to the account. Skip this if you only use Instagram.",
     ),
     ;
 
