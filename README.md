@@ -79,6 +79,13 @@ exchange, with no server in the middle and no deep-link surface other apps could
 | **Gmail** | Unread estimate + recent subjects | `gmail.readonly` |
 | **WhatsApp** | Opening WhatsApp only | There is no API for a personal account — see below |
 
+**No Facebook account? You do not need one for Instagram inside JARVIS.** The Instagram path logs in
+with Instagram credentials and needs no Facebook Page. Meta still asks for a Facebook login in *its own
+developer dashboard*, which is where the app keys are created — that is Meta's requirement, not
+JARVIS's. For a single account you do not even need the OAuth flow: in the dashboard open *Instagram →
+API setup with Instagram Login → Add account → log in with Instagram → Generate token*, then paste that
+token into *HUD → INSTAGRAM → CONNECT*. It lasts 60 days and can be renewed from the module.
+
 **WhatsApp is listed on purpose.** It is the connection people ask for first and the one that cannot
 be done: WhatsApp Business Cloud API belongs to a business number you register, not your chats, and
 "linked devices" pairing is a private protocol whose libraries break on WhatsApp's schedule. Doing it

@@ -154,6 +154,21 @@ fun ConnectorsScreen(onBack: () -> Unit) {
                 style = HudType.terminal.copy(fontSize = 9.sp),
                 color = TextMuted,
             )
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Link,
+                    contentDescription = null,
+                    tint = StatusGreen,
+                    modifier = Modifier.size(13.dp),
+                )
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    text = "No Facebook account needed for Instagram here — you log in with Instagram. Meta asks for a Facebook login only in its developer dashboard, where the app keys are created.",
+                    style = HudType.terminal.copy(fontSize = 9.sp),
+                    color = TextSecondary,
+                )
+            }
         }
 
         // ------------------------------------------------------------------ Instagram
