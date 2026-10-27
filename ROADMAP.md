@@ -35,62 +35,65 @@ Last updated with **2.1.0 (versionCode 14)**.
 
 ## 2 · What is left
 
-### 2.1 Voice — the last missing module
+Voice, memory and voice chains all shipped in 2.0.0 / 2.1.0, so the list below is what remains after
+them. Four phases, in the order I would do them.
 
-This is the only tile still marked STAGED on the HUD.
+### Phase A — Tests (recommended next)
 
-- Push-to-talk: microphone permission requested **only** when the module is opened, released the
-  moment the utterance ends. Never at launch.
-- `SpeechRecognizer` first, with `EXTRA_PREFER_OFFLINE`; fall back to the keyboard on any error, no
-  spinner left running (the recogniser has a hard ~10 s window — respect it).
-- Transcript goes to `CommandRegistry` (local commands) and then to the AI core, exactly like typed
-  input. Replies are spoken with the existing `SpeechOut` TTS.
-- No always-on wake word in this pass: it needs a foreground mic service, costs battery and is the
-  single most common cause of "assistant drains my phone". Revisit only if asked.
+The single largest risk in this project is that nothing is verified except by compiling. Every bug
+so far was found by CI or by you, never by a test.
 
-### 2.2 Memory — an assistant that remembers
+- **JVM tests, no device needed** over the pure logic: `InstagramAnalytics.buildNextMoves`, condition
+  evaluation, `ActionType`/`Workflow` JSON round-trips, the voice local parser (`IntentRouter`),
+  `VoiceMemory` alias matching, `Contacts` name normalisation, WAV header generation.
+- **A fake-AI harness** so `AiPlanner` / `IntentRouter` prompt→JSON validation can be tested without
+  a key or a network.
+- **One instrumentation smoke test** that opens the app and confirms Home renders.
+- CI already runs Gradle, so this costs about one pass and then pays for itself every release.
 
-- Local store: facts, notes, pinned items, and a short conversation digest.
-- A compact memory brief is prepended to the AI system prompt, so answers carry context.
-- Fully wipeable from Settings; nothing leaves the device except in the prompt the operator sends.
-
-### 2.3 Small, high-value additions
+### Phase B — Small additions (one pass, they belong together)
 
 | Item | Why it matters | Risk |
 | --- | --- | --- |
-| Quick Settings tile | Torch / DND / open HUD from the shade | Low |
+| Quick Settings tile | Torch / DND / voice from the shade, no app launch | Low |
 | Reminders | "remind me at 6 to call X" — a real notification, not a clock alarm | Low |
 | Screenshot action | `AccessibilityService.takeScreenshot()` on API 30+, saved and shareable | Low |
-| Widget | Reactor + three paddles on the home screen | Low |
-| Diagnostics depth | FPS, memory, AI latency, battery gate (FRIDAY has this; JARVIS has battery/storage only) | Low |
+| Diagnostics depth | FPS, AI latency, per-subsystem health instead of battery/storage only | Low |
 
-### 2.4 Medium
+### Phase C — Medium (one pass each)
 
 | Item | Note |
 | --- | --- |
+| Home-screen widget | Reactor + three paddles; `Glance` or a remote-views layout |
 | Floating assistant bubble | `SYSTEM_ALERT_WINDOW`, opt-in, foreground service — the one place an ANR could hide, so it must be dismissible and non-blocking |
-| App lock / privacy PIN | Gates automation and the AI history; never stores a plaintext PIN |
+| App lock / privacy PIN | Gates automation and AI history; never stores a plaintext PIN |
 | Downloads worker | WorkManager + progress notification; pairs with the Shizuku tier |
-| Translate | Through the operator's own AI key first, on-device ML Kit only if size allows |
-| Health Connect / steps, weather, geofences | Each adds a permission; each must degrade to a hidden row when absent |
+| Translate | Through the operator's own AI key first |
 
-### 2.5 Deliberately out of scope
+### Phase D — Depth, only if the above feel solid
 
-- **Always-on wake word** — battery, privacy, and the mic held open behind the user's back.
-- **A JARVIS backend** — the app is the product; no server to run, no account, no sync.
-- **Telegram / MQTT bridges** — they require an account and a server token, which is the opposite of
-  the current privacy posture.
-- **Auto-sending SMS or calls** (SOS, call guard) — needs SMS permission and cannot be tested safely
-  from here; dialing and the SMS composer stay as they are.
+- **Offline Whisper** so voice works with no key and no network (40–75 MB of model weight — the
+  reason it was deferred; the engine is already pluggable).
+- **VERIFY step type** in automation, plus a plan → check → run preview for AI-authored routines.
+- **Screen-loop improvements**: OCR fallback for custom-drawn apps that expose no labels, and a
+  longer action budget behind an explicit opt-in.
+- **Multi-turn voice**: "do it again but louder" — the memory layer already stores enough context.
+- Health Connect / weather / geofences — each adds a permission and must degrade to a hidden row.
+
+### Deliberately out of scope
+
+- **Always-on wake word** — battery, privacy, and the mic held open behind the operator's back.
+- **A JARVIS backend** — the app is the product; no server, no account, no sync.
+- **Telegram / MQTT bridges** — they need an account and a server token.
+- **Auto-sending SMS or calls** (SOS, call guard) — needs SMS permission and cannot be tested safely.
 - **Scraped or unofficial APIs** (WhatsApp linked-device, Instagram private endpoints) — they break on
-  someone else's schedule and would take the app's stability with them.
+  someone else's schedule and take the app's stability with them.
 
-### 2.6 Engineering debt worth paying
+### Engineering debt
 
-- **No automated tests at all.** The analytics maths, condition evaluation, JSON schema round-trips
-  and the action parser are pure Kotlin and testable on the JVM with no device. FRIDAY OS ships ~400
-  tests; a dozen here would have caught the last three compile-time mistakes before CI did.
-- Version and release notes live in the README; a `CHANGELOG.md` would be cheaper to maintain.
+- ~~No automated tests at all~~ — still true, and Phase A exists to fix it.
+- Version notes live in the README; a `CHANGELOG.md` would be cheaper to maintain.
+- `VoiceController` and `ScreenAgent` have grown into the two files most worth covering with tests.
 
 ---
 
@@ -115,9 +118,12 @@ ideas are worth more than the code — everything below is a rewrite, not a port
 
 ## 4 · Order of work
 
-1. **Voice** — the last staged tile.
-2. **Memory** — makes the AI core feel like an assistant rather than a chat box.
-3. **Tests** — a dozen JVM tests over the pure logic, so stability stops depending on CI luck.
-4. Quick Settings tile + reminders + screenshot (one pass, they are small).
-5. Widget, bubble, app lock, downloads.
-6. Everything in 2.5 stays out unless the operator asks.
+| Phase | Contents | State |
+| --- | --- | --- |
+| — | Voice, memory, focus home, voice chains, screen loop | **Shipped** (2.0.0, 2.1.0) |
+| A | Tests over the pure logic + fake-AI harness | Next |
+| B | Quick Settings tile, reminders, screenshot, diagnostics depth | Queued |
+| C | Widget, bubble, app lock, downloads, translate | Queued |
+| D | Offline Whisper, VERIFY step, OCR fallback, multi-turn voice | Later |
+
+Everything in "Deliberately out of scope" stays out unless the operator asks.
