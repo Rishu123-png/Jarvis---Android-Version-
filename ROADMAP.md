@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **1.0.0 (versionCode 20)**.
+Last updated with **1.0.0 (versionCode 21)**.
 
 ---
 
@@ -27,6 +27,8 @@ Last updated with **1.0.0 (versionCode 20)**.
 | Voice commands: contacts, calls, WhatsApp messages, apps, device control, alarms, timers | Live |
 | Memory: last 50 commands, contact nicknames, app aliases (on device) | Live |
 | Knowledge shelf: keyless lookups (Wikipedia + dictionary), on-device summariser, ask-first dial, cards that answer offline | Live |
+| Sight: one on-demand photo, decode-time subsampling, answered by the configured model, refuses to guess | Live |
+| Continuity: whole memory exported to one JSON file, imported additively, AI key excluded | Live |
 | Focus home: top bar + orb only, full dashboard behind one button | Live |
 | Chained voice tasks: 8-step plans, waits, CameraX capture, open newest photo | Live |
 | Screen-aware loop: observe → decide → act across apps (accessibility tier, 6 actions max) | Live |

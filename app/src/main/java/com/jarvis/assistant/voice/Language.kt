@@ -198,6 +198,10 @@ object Language {
         "timer" to "Timer set.",
         "reminder" to "I will remind you.",
         "location_permission" to "I need location access for that.",
+        "sight_needs_key" to "Looking at a photo needs the brain switched on — add a key in " +
+            "Advanced → AI, and I will tell you what I see.",
+        "sight_needs_camera" to "Camera access is off, so I cannot see anything. Turn it on " +
+            "and say it again.",
         "dont_know" to "I did not get that. Try “open gallery”, “how many steps”, or “what did I miss”.",
         "permission" to "That needs %s. I have put the switch in Advanced.",
         "locked" to "Locked.",
@@ -256,6 +260,9 @@ object Language {
         "timer" to "टाइमर लगा दिया।",
         "reminder" to "मैं याद दिला दूँगा।",
         "location_permission" to "इसके लिए लोकेशन की अनुमति चाहिए।",
+        "sight_needs_key" to "तस्वीर देखने के लिए दिमाग़ चालू होना चाहिए — एडवांस्ड → AI में चाबी " +
+            "डालिए, फिर बताऊँगा कि क्या दिख रहा है।",
+        "sight_needs_camera" to "कैमरा बंद है, इसलिए कुछ दिख नहीं रहा। चालू कीजिए और फिर कहिए।",
         "dont_know" to "समझ नहीं पाया। “गैलरी खोलो”, “कितने कदम”, या “क्या मिस किया” कहिए।",
         "permission" to "इसके लिए %s चाहिए। एडवांस्ड में स्विच रखा है।",
         "locked" to "लॉक हो गया।",
@@ -314,6 +321,10 @@ object Language {
         "timer" to "Timer laga diya.",
         "reminder" to "Main yaad dila dunga.",
         "location_permission" to "Iske liye location chahiye.",
+        "sight_needs_key" to "Tasveer dekhne ke liye dimaag chalu hona chahiye — Advanced → AI " +
+            "mein chaabi daaliye, phir bataunga kya dikh raha hai.",
+        "sight_needs_camera" to "Camera band hai, isliye kuch dikh nahi raha. Chalu kijiye aur " +
+            "phir kahiye.",
         "dont_know" to "Samajh nahi paya. “Gallery kholo”, “kitne steps”, ya “kya miss kiya” boliye.",
         "permission" to "Iske liye %s chahiye. Advanced mein switch rakha hai.",
         "locked" to "Lock ho gaya.",

@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-20%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-22%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -88,6 +88,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [What he actually is](#what-he-actually-is)
 - [The brain](#the-brain)
 - [The curiosity](#the-curiosity)
+- [The eyes](#the-eyes)
 - [What he can do](#what-he-can-do)
 - [The lock, honestly](#the-lock-honestly)
 - [Install the APK](#install-the-apk)
@@ -206,6 +207,24 @@ person can speak.
 
 With an AI key stored, the model still answers general conversation — the shelf is the part that
 works with nothing configured at all, and the part that makes the next identical question free.
+
+---
+
+## The eyes
+
+He can look at something and tell you about it — on demand, never in the background.
+
+Say *"look at this"*, *"read this for me"*, *"what is this"*, *"yeh kya hai"* or *"इसे पढ़ो"* and he opens
+his capture surface for a second, takes one frame, shrinks it, and answers the question you actually
+asked. A menu, a sign, a medicine strip, a bill, a page of homework, a plant that is dying.
+
+| | |
+| --- | --- |
+| **Only when asked** | A sentence has to ask for it. No camera runs in the background, no sensor is held open, no extra service. A photo you did not ask for is a photo he never takes. |
+| **Small on purpose** | A 4000×3000 frame is subsampled by powers of two *at decode time* — the full-size bitmap is never in memory — then capped at 1024 px and re-encoded. One second on mobile data instead of ten. |
+| **It refuses to guess** | Blurry photo, dark room, unreadable label: he says so and asks for another, instead of inventing a dosage or a name. That instruction is in the prompt, in as many words. |
+| **Your key, your bill** | This uses the AI provider you already configured. Nothing new to sign up for, nothing extra to pay. |
+| **The photo stays yours** | The frame is written to your gallery by the capture surface, as every photo he takes is. Nothing is kept for later, and nothing is uploaded anywhere except that one image to your own provider. |
 
 ---
 
@@ -350,7 +369,7 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 20 JVM suites
+./gradlew :app:testDebugUnitTest    # 22 JVM suites
 ```
 
 Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
@@ -371,7 +390,7 @@ no assistant.
 | Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
 | Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |
 
-**Verified by CI:** compilation, 20 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 22 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -441,7 +460,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-20 JVM suites, run before every APK in CI.
+22 JVM suites, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|

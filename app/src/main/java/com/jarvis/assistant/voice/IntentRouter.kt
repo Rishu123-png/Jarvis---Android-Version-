@@ -24,7 +24,9 @@ import com.jarvis.assistant.device.Files
 import com.jarvis.assistant.device.HealthLog
 import com.jarvis.assistant.device.Messaging
 import com.jarvis.assistant.device.NotificationRepository
+import com.jarvis.assistant.device.QuickCapture
 import com.jarvis.assistant.device.Research
+import com.jarvis.assistant.device.Vision
 import com.jarvis.assistant.device.NotifyBrain
 import com.jarvis.assistant.device.VoiceNotes
 import com.jarvis.assistant.device.Whereabouts
@@ -120,6 +122,13 @@ object IntentRouter {
         // A short follow-up ("do that for Amit", "and tomorrow") only means something next to the
         // previous turn, so it is completed before anything else looks at it.
         val completed = FollowUp.rewritten(FollowUp.last(context), spoken) ?: spoken
+
+        // Looking is decided before anything else: "read this" with a camera up is a picture
+        // question, and treating it as a lookup would send the words to Wikipedia and photograph
+        // nothing.
+        if (Sight.looksLikeLookAt(completed)) {
+            return sight(context, completed, Language.detect(completed))
+        }
 
         // The two things that must be decided before a model sees the sentence: an explicit request
         // to go and find something out ("look up X") and the answer to a permission question he
@@ -1165,6 +1174,62 @@ object IntentRouter {
                 }
             }
         }
+
+    // ---------------------------------------------------------------------------------------------
+    // Sight — one photo, on demand, never in the background
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Takes a photo and answers a question about it.
+     *
+     * Nothing is cached and nothing is retained: the frame is written to the gallery by the capture
+     * surface (so the operator keeps their photo), the shrunk copy goes to the model, and that is
+     * the end of it. No camera is held open, no image is stored for later.
+     */
+    private suspend fun sight(context: Context, heard: String, lang: Lang): VoicePlan {
+        if (!aiReady(context)) {
+            return VoicePlan(
+                title = "NO EYES",
+                subtitle = "SIGHT",
+                steps = emptyList(),
+                say = Language.say(lang, "sight_needs_key"),
+                source = "LOCAL",
+            )
+        }
+        if (!QuickCapture.hasPermission(context)) {
+            return VoicePlan(
+                title = "CAMERA OFF",
+                subtitle = "SIGHT",
+                steps = emptyList(),
+                say = Language.say(lang, "sight_needs_camera"),
+                source = "LOCAL",
+            )
+        }
+
+        val question = Sight.question(heard, lang)
+        val outcome = try {
+            Vision.look(context, question, Sight.prompt(lang))
+        } catch (t: Throwable) {
+            Vision.Outcome.Failed("I could not use the camera.")
+        }
+        return when (outcome) {
+            is Vision.Outcome.Seen -> VoicePlan(
+                title = "SAW IT",
+                subtitle = "SIGHT",
+                steps = emptyList(),
+                say = outcome.answer,
+                source = "AI",
+            )
+
+            is Vision.Outcome.Failed -> VoicePlan(
+                title = "COULD NOT SEE",
+                subtitle = "SIGHT",
+                steps = emptyList(),
+                say = outcome.message,
+                source = "LOCAL",
+            )
+        }
+    }
 
     // ---------------------------------------------------------------------------------------------
     // Research — the only path that uses the internet, and the only one that asks first

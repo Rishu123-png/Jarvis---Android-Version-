@@ -12,10 +12,26 @@ import java.net.URLEncoder
 import java.net.UnknownHostException
 import java.net.URL
 
-data class AiMessage(val role: String, val content: String) {
+/**
+ * One turn, optionally with pictures.
+ *
+ * [images] holds base64 JPEG — no `data:` prefix, no mime type — because the three wire formats
+ * want the same bytes inside three different envelopes, and building those envelopes is the job of
+ * [AiClient], not of whoever took the photo. The list is empty for every ordinary turn, so nothing
+ * about the text path changes.
+ */
+data class AiMessage(
+    val role: String,
+    val content: String,
+    val images: List<String> = emptyList(),
+) {
     companion object {
         fun user(text: String) = AiMessage("user", text)
         fun assistant(text: String) = AiMessage("assistant", text)
+
+        /** Text plus one or more base64 JPEGs, for the providers that can see. */
+        fun looking(text: String, images: List<String>) =
+            AiMessage("user", text, images.filter { it.isNotBlank() })
     }
 }
 
@@ -341,7 +357,11 @@ object AiClient {
                     array.put(JSONObject().put("role", "system").put("content", system))
                 }
                 messages.forEach { message ->
-                    array.put(JSONObject().put("role", message.role).put("content", message.content))
+                    array.put(
+                        JSONObject()
+                            .put("role", message.role)
+                            .put("content", openAiContent(message)),
+                    )
                 }
                 val body = JSONObject()
                     .put("model", model)
@@ -355,7 +375,11 @@ object AiClient {
             AiWire.ANTHROPIC -> {
                 val array = JSONArray()
                 messages.forEach { message ->
-                    array.put(JSONObject().put("role", message.role).put("content", message.content))
+                    array.put(
+                        JSONObject()
+                            .put("role", message.role)
+                            .put("content", anthropicContent(message)),
+                    )
                 }
                 val body = JSONObject()
                     .put("model", model)
@@ -380,10 +404,7 @@ object AiClient {
                     array.put(
                         JSONObject()
                             .put("role", if (message.role == "assistant") "model" else "user")
-                            .put(
-                                "parts",
-                                JSONArray().put(JSONObject().put("text", message.content)),
-                            )
+                            .put("parts", geminiParts(message)),
                     )
                 }
                 val root = JSONObject()
@@ -411,6 +432,74 @@ object AiClient {
                 )
             }
         }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Content envelopes — text stays a plain string, pictures become the provider's own shape
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * OpenAI-style: `content` is a string, or an array of parts when there is an image. Keeping the
+     * plain string for text-only turns matters — some OpenAI-compatible servers reject the array
+     * form, and every text turn must keep working on them.
+     */
+    private fun openAiContent(message: AiMessage): Any {
+        if (message.images.isEmpty()) return message.content
+        val parts = JSONArray()
+        if (message.content.isNotBlank()) {
+            parts.put(JSONObject().put("type", "text").put("text", message.content))
+        }
+        message.images.forEach { image ->
+            parts.put(
+                JSONObject()
+                    .put("type", "image_url")
+                    .put(
+                        "image_url",
+                        JSONObject().put("url", "data:image/jpeg;base64,$image"),
+                    ),
+            )
+        }
+        return parts
+    }
+
+    /** Anthropic: the image is a base64 source block, and it comes before the text. */
+    private fun anthropicContent(message: AiMessage): Any {
+        if (message.images.isEmpty()) return message.content
+        val parts = JSONArray()
+        message.images.forEach { image ->
+            parts.put(
+                JSONObject()
+                    .put("type", "image")
+                    .put(
+                        "source",
+                        JSONObject()
+                            .put("type", "base64")
+                            .put("media_type", "image/jpeg")
+                            .put("data", image),
+                    ),
+            )
+        }
+        if (message.content.isNotBlank()) {
+            parts.put(JSONObject().put("type", "text").put("text", message.content))
+        }
+        return parts
+    }
+
+    /** Gemini: `inline_data` per part, then the words. */
+    private fun geminiParts(message: AiMessage): JSONArray {
+        val parts = JSONArray()
+        message.images.forEach { image ->
+            parts.put(
+                JSONObject().put(
+                    "inline_data",
+                    JSONObject().put("mime_type", "image/jpeg").put("data", image),
+                ),
+            )
+        }
+        if (message.content.isNotBlank()) {
+            parts.put(JSONObject().put("text", message.content))
+        }
+        return parts
     }
 
     private fun post(request: Request): Pair<Int, String> = send(request, "POST")
