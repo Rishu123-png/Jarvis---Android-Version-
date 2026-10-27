@@ -1,6 +1,7 @@
 package com.jarvis.assistant.voice
 
 import android.content.Context
+import com.jarvis.assistant.data.PhraseBook
 import com.jarvis.assistant.data.When
 import com.jarvis.assistant.device.CalendarBridge
 import com.jarvis.assistant.device.HealthLog
@@ -323,9 +324,10 @@ object Brain {
             }
             if (unread > 0) lines.add("Unread messages: $unread")
 
-            val recent = NotifyBrain.lastSummary(context, limit = 3).mapNotNull { item ->
-                NotifyBrain.senderOf(item.packageName).take(24).ifBlank { item.title }.take(24)
-            }.filter { it.isNotBlank() }
+            // Who is around: the sender of the newest alerts, from the app that posted them.
+            val recent = NotifyBrain.lastSummary(context, limit = 3)
+                .map { item -> item.title.ifBlank { item.appLabel }.take(24) }
+                .filter { it.isNotBlank() }
             if (recent.isNotEmpty()) lines.add("Recently from: " + recent.joinToString(", "))
         }
 
