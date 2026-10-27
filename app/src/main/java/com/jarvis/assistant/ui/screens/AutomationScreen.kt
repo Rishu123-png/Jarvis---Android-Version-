@@ -13,12 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -27,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jarvis.assistant.automation.RunRecord
 import com.jarvis.assistant.automation.RunState
 import com.jarvis.assistant.automation.Workflow
 import com.jarvis.assistant.ui.components.HudChip
@@ -47,12 +42,16 @@ import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextPrimary
 import com.jarvis.assistant.ui.theme.TextSecondary
 import com.jarvis.assistant.ui.theme.TileShape
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Automation control surface.
  *
- * Three concerns kept visually separate: what access is granted (and its cost), the routines you can
- * run, and the live run log. Sensitive steps always stop here for a decision before they act.
+ * Four concerns kept visually separate: the grant tiers (and their cost), whether triggers are
+ * armed, the routines themselves with their own trigger and last result, and what actually ran.
+ * Sensitive steps always stop for a decision before they act — including triggered runs.
  */
 @Composable
 fun AutomationScreen(
@@ -61,25 +60,123 @@ fun AutomationScreen(
     accessibilityEnabled: Boolean,
     screenPressAllowed: Boolean,
     notificationAccess: Boolean,
+    armed: Boolean,
+    exactAlarmsAllowed: Boolean,
+    notificationsAllowed: Boolean,
+    history: List<RunRecord>,
     onRun: (Workflow) -> Unit,
     onStop: () -> Unit,
     onDismissFinished: () -> Unit,
     onEdit: (Workflow) -> Unit,
     onNew: () -> Unit,
     onDelete: (Workflow) -> Unit,
+    onToggleEnabled: (Workflow, Boolean) -> Unit,
+    onArm: (Boolean) -> Unit,
+    onRequestExactAlarms: () -> Unit,
+    onRequestNotificationPermission: () -> Unit,
+    onCompose: () -> Unit,
+    onClearHistory: () -> Unit,
     onOpenAccessibility: () -> Unit,
     onToggleScreenPress: (Boolean) -> Unit,
     onOpenNotificationAccess: () -> Unit,
     onActivateAll: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val armedCount = workflows.count { it.isArmed }
+    val busy = runState is RunState.Running || runState is RunState.AwaitingConfirmation
+
     ModuleScaffold(
         title = "AUTOMATION",
-        subtitle = "routine control",
+        subtitle = "routines · triggers · control flow",
         accent = AlertRed,
-        statusLabel = "LIVE",
+        statusLabel = if (armed) "ARMED" else "SAFE",
         onBack = onBack,
     ) {
+        // ---------------- authoring ----------------
+        HudPanel(label = "COMPOSE WITH AI", accent = IceBlue) {
+            Text(
+                text = "Describe the routine in a sentence. The model proposes a plan; JARVIS " +
+                    "checks every action against what it can actually do, then shows it to you " +
+                    "before anything is saved.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextSecondary,
+            )
+            Spacer(Modifier.height(10.dp))
+            ActionPill(
+                label = "DESCRIBE A ROUTINE",
+                accent = IceBlue,
+                filled = true,
+                onClick = onCompose,
+            )
+        }
+
+        // ---------------- triggers ----------------
+        HudPanel(
+            label = "TRIGGERS",
+            accent = if (armed) StatusGreen else TextMuted,
+            trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PulseDot(color = if (armed) StatusGreen else TextMuted, diameter = 4)
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        text = if (armed) "ARMED" else "OFF",
+                        style = HudType.label,
+                        color = if (armed) StatusGreen else TextMuted,
+                    )
+                }
+            },
+        ) {
+            ActionPill(
+                label = if (armed) "DISARM ALL TRIGGERS" else "ARM TRIGGERS",
+                accent = if (armed) AlertRed else StatusGreen,
+                filled = !armed,
+                onClick = { onArm(!armed) },
+            )
+            Spacer(Modifier.height(8.dp))
+            ReadoutRow(
+                label = "ROUTINES WITH A TRIGGER",
+                value = "$armedCount OF ${workflows.size}",
+                valueColor = if (armedCount == 0) TextMuted else TextPrimary,
+            )
+            ReadoutRow(
+                label = "TIME ACCURACY",
+                value = if (exactAlarmsAllowed) "EXACT" else "APPROXIMATE",
+                valueColor = if (exactAlarmsAllowed) StatusGreen else Amber,
+            )
+            if (!exactAlarmsAllowed) {
+                Spacer(Modifier.height(8.dp))
+                ActionPill(
+                    label = "ALLOW EXACT ALARMS",
+                    accent = Amber,
+                    filled = false,
+                    onClick = onRequestExactAlarms,
+                )
+            }
+            ReadoutRow(
+                label = "BACKGROUND NOTIFICATION",
+                value = if (notificationsAllowed) "ALLOWED" else "BLOCKED",
+                valueColor = if (notificationsAllowed) StatusGreen else Amber,
+            )
+            if (!notificationsAllowed) {
+                Spacer(Modifier.height(8.dp))
+                ActionPill(
+                    label = "ALLOW NOTIFICATIONS",
+                    accent = Amber,
+                    filled = false,
+                    onClick = onRequestNotificationPermission,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "Armed triggers need a background service, and Android requires a quiet " +
+                    "persistent notification while it runs — that is what you see in the shade. " +
+                    "Time triggers can drift a few minutes inside Doze unless exact alarms are " +
+                    "allowed above. Disarming removes the service and the notification.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted,
+            )
+        }
+
         // ---------------- access ----------------
         HudPanel(
             label = "AUTOMATION ACCESS",
@@ -116,8 +213,6 @@ fun AutomationScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // Activates everything JARVIS is allowed to activate itself, then hands the one
-            // remaining system switch to the operator with the right page already open.
             val allGranted = accessibilityEnabled && screenPressAllowed && notificationAccess
             ActionPill(
                 label = when {
@@ -135,7 +230,7 @@ fun AutomationScreen(
                 ActionPill(
                     label = "ENABLE IN SYSTEM SETTINGS",
                     accent = Amber,
-                    filled = true,
+                    filled = false,
                     onClick = onOpenAccessibility,
                 )
                 Spacer(Modifier.height(8.dp))
@@ -161,28 +256,6 @@ fun AutomationScreen(
                     onClick = onOpenNotificationAccess,
                 )
             }
-
-            if (!allGranted) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "JARVIS switches on the in-app grants itself. The accessibility and " +
-                        "notification switches belong to Android, so those open the exact system " +
-                        "page — Android will not let any app flip them silently, and that is the " +
-                        "protection working as intended.",
-                    style = HudType.terminal.copy(fontSize = 10.sp),
-                    color = TextMuted,
-                )
-            }
-
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = "Accessibility access is a powerful grant. JARVIS uses it only for navigation " +
-                    "gestures and for pressing a control whose exact label you typed in your own " +
-                    "routine — always after a confirmation prompt. It never reads your screen in " +
-                    "the background and never records input.",
-                style = HudType.terminal.copy(fontSize = 10.sp),
-                color = TextMuted,
-            )
         }
 
         // ---------------- live run ----------------
@@ -197,7 +270,7 @@ fun AutomationScreen(
                         PulseDot(color = ElectricCyan, diameter = 4)
                         Spacer(Modifier.width(5.dp))
                         Text(
-                            text = "${state.stepIndex + 1}/${state.stepCount}",
+                            text = "${state.stepIndex}/${state.stepCount}",
                             style = HudType.label.copy(fontSize = 8.sp),
                             color = ElectricCyan,
                         )
@@ -211,18 +284,26 @@ fun AutomationScreen(
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    text = state.currentAction,
+                    text = if (state.depth > 0) {
+                        "${state.currentAction} · nested level ${state.depth}"
+                    } else {
+                        state.currentAction
+                    },
                     style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.4.sp),
                     color = IceBlue,
                 )
                 Spacer(Modifier.height(10.dp))
                 HudMeter(
-                    progress = (state.stepIndex + 1).toFloat() / state.stepCount,
+                    progress = if (state.stepCount == 0) {
+                        0f
+                    } else {
+                        (state.stepIndex.toFloat() / state.stepCount).coerceIn(0f, 1f)
+                    },
                     accent = ElectricCyan,
                     height = 5.dp,
                 )
                 Spacer(Modifier.height(12.dp))
-                RunLog(log = state.log, maxLines = 6)
+                RunLog(log = state.log, maxLines = 8)
                 Spacer(Modifier.height(12.dp))
                 ActionPill(label = "STOP ROUTINE", accent = AlertRed, filled = true, onClick = onStop)
             }
@@ -260,7 +341,6 @@ fun AutomationScreen(
                     color = TextMuted,
                 )
                 Spacer(Modifier.height(12.dp))
-                // Answered on the shell's confirmation card, which stays reachable from any screen.
                 Text(
                     text = "Approve or decline on the confirmation card.",
                     style = HudType.terminal.copy(fontSize = 10.sp),
@@ -287,86 +367,135 @@ fun AutomationScreen(
                     }
                 },
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = state.workflowName,
-                        style = HudType.value.copy(fontSize = 13.sp),
-                        color = TextPrimary,
-                        modifier = Modifier.weight(1f),
-                    )
-                    HudChip(
-                        text = if (state.stopped) "HALTED" else "DONE",
-                        accent = if (state.stopped) AlertRed else StatusGreen,
-                        filled = true,
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                ReadoutRow(label = "SUCCEEDED", value = "${state.succeeded}", valueColor = StatusGreen)
-                ReadoutRow(label = "FAILED", value = "${state.failed}", valueColor = AlertRed)
-                ReadoutRow(label = "SKIPPED", value = "${state.skipped}", valueColor = Amber)
-                if (state.log.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    HudDivider(accent = ElectricCyan)
-                    Spacer(Modifier.height(8.dp))
-                    RunLog(log = state.log, maxLines = 10)
-                }
+                Text(
+                    text = state.workflowName,
+                    style = HudType.value.copy(fontSize = 13.sp),
+                    color = TextPrimary,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = buildString {
+                        append("${state.succeeded} ok · ${state.failed} failed")
+                        if (state.skipped > 0) append(" · ${state.skipped} skipped")
+                        if (state.stopped) append(" · halted")
+                    },
+                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+                    color = if (state.stopped || state.failed > 0) AlertRed else StatusGreen,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Started by: ${state.triggerLabel}",
+                    style = HudType.terminal.copy(fontSize = 10.sp),
+                    color = TextMuted,
+                )
+                Spacer(Modifier.height(12.dp))
+                RunLog(log = state.log, maxLines = 10)
             }
         }
 
         // ---------------- routines ----------------
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "ROUTINES",
-                style = HudType.sectionTitle,
-                color = ElectricCyan.copy(alpha = 0.9f),
-            )
-            Spacer(Modifier.weight(1f))
-            Row(
-                modifier = Modifier
-                    .background(ElectricCyan.copy(alpha = 0.10f), ChipShape)
-                    .border(1.dp, ElectricCyan.copy(alpha = 0.35f), ChipShape)
-                    .clickable(onClick = onNew)
-                    .padding(horizontal = 9.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Add,
-                    contentDescription = null,
-                    tint = ElectricCyan,
-                    modifier = Modifier.size(12.dp),
-                )
-                Spacer(Modifier.width(5.dp))
+        HudPanel(label = "ROUTINES · ${workflows.size}", accent = IceBlue) {
+            if (workflows.isEmpty()) {
                 Text(
-                    text = "NEW",
-                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.4.sp),
-                    color = ElectricCyan,
+                    text = "No routines yet. Describe one above, or build it by hand.",
+                    style = HudType.terminal.copy(fontSize = 10.sp),
+                    color = TextMuted,
                 )
+            }
+            workflows.forEach { workflow ->
+                RoutineCard(
+                    workflow = workflow,
+                    busy = busy,
+                    lastRun = history.firstOrNull { it.workflowId == workflow.id },
+                    onRun = { onRun(workflow) },
+                    onEdit = { onEdit(workflow) },
+                    onDelete = { onDelete(workflow) },
+                    onToggleEnabled = { enabled -> onToggleEnabled(workflow, enabled) },
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+
+            ActionPill(
+                label = "+ NEW ROUTINE",
+                accent = ElectricCyan,
+                filled = false,
+                onClick = onNew,
+            )
+        }
+
+        // ---------------- history ----------------
+        HudPanel(
+            label = "RUN HISTORY · ${history.size}",
+            accent = TextMuted,
+            trailing = if (history.isEmpty()) {
+                null
+            } else {
+                {
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFF0B1929), ChipShape)
+                            .border(1.dp, TextMuted.copy(alpha = 0.4f), ChipShape)
+                            .clickable(onClick = onClearHistory)
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
+                    ) {
+                        Text(
+                            text = "CLEAR",
+                            style = HudType.label.copy(fontSize = 8.sp),
+                            color = TextMuted,
+                        )
+                    }
+                }
+            },
+        ) {
+            if (history.isEmpty()) {
+                Text(
+                    text = "Nothing has run yet. History is kept for the last 50 runs, whether " +
+                        "they were started by you or by a trigger.",
+                    style = HudType.terminal.copy(fontSize = 10.sp),
+                    color = TextMuted,
+                )
+            } else {
+                history.take(8).forEach { record ->
+                    Row(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Text(
+                            text = if (record.ok) "OK" else "FAIL",
+                            style = HudType.label.copy(fontSize = 8.sp),
+                            color = if (record.ok) StatusGreen else AlertRed,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = record.workflowName,
+                                style = HudType.value.copy(fontSize = 11.sp),
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = "${stamp(record.at)} · ${record.triggerLabel} · " +
+                                    "${record.succeeded} ok / ${record.failed} failed",
+                                style = HudType.terminal.copy(fontSize = 9.sp),
+                                color = TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
         }
 
-        workflows.forEach { workflow ->
-            WorkflowCard(
-                workflow = workflow,
-                busy = runState is RunState.Running || runState is RunState.AwaitingConfirmation,
-                onRun = { onRun(workflow) },
-                onEdit = { onEdit(workflow) },
-                onDelete = { onDelete(workflow) },
-            )
-        }
-
         HudPanel(label = "SCOPE", accent = TextMuted) {
-            ReadoutRow(label = "ROUTINE LIMIT", value = "20 STEPS")
+            ReadoutRow(label = "PER RUN", value = "60 STEPS · 3 NESTING LEVELS")
             ReadoutRow(label = "CONCURRENCY", value = "ONE AT A TIME")
-            ReadoutRow(label = "SENSITIVE STEPS", value = "ALWAYS CONFIRMED", valueColor = Amber)
-            ReadoutRow(label = "STORAGE", value = "ON DEVICE ONLY", valueColor = StatusGreen)
+            ReadoutRow(label = "COOLDOWN", value = "5 MIN PER ROUTINE")
             HudDivider(modifier = Modifier.padding(vertical = 8.dp))
             Text(
-                text = "Automation can only use what Android exposes. Calls are never placed, " +
-                    "messages are never sent, and payments are impossible — those steps open the " +
-                    "relevant screen so you stay in control of the final action.",
+                text = "A trigger never skips a confirmation. If a triggered routine reaches a " +
+                    "sensitive step, it waits for you and declines itself after five minutes.",
                 style = HudType.terminal.copy(fontSize = 10.sp),
                 color = TextMuted,
             )
@@ -374,193 +503,180 @@ fun AutomationScreen(
     }
 }
 
-@Composable
-private fun AccessRow(title: String, value: String, ok: Boolean, caption: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(PanelNavy.copy(alpha = 0.6f), ChipShape)
-            .border(1.dp, (if (ok) StatusGreen else Amber).copy(alpha = 0.22f), ChipShape)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        PulseDot(color = if (ok) StatusGreen else Amber, diameter = 5)
-        Spacer(Modifier.width(9.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.3.sp),
-                color = TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = caption,
-                style = HudType.terminal.copy(fontSize = 9.sp),
-                color = TextMuted,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = value,
-            style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.1.sp),
-            color = if (ok) StatusGreen else Amber,
-            maxLines = 1,
-        )
-    }
-}
+private fun stamp(at: Long): String =
+    SimpleDateFormat("d MMM HH:mm", Locale.US).format(Date(at))
 
 @Composable
-private fun WorkflowCard(
+private fun RoutineCard(
     workflow: Workflow,
     busy: Boolean,
+    lastRun: RunRecord?,
     onRun: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                androidx.compose.ui.graphics.Brush.verticalGradient(listOf(PanelNavy, Color(0xFF091421))),
+            .background(PanelNavy.copy(alpha = 0.65f), TileShape)
+            .border(
+                1.dp,
+                when {
+                    !workflow.enabled -> TextMuted.copy(alpha = 0.25f)
+                    workflow.trigger.kind.isSilent -> ElectricCyan.copy(alpha = 0.18f)
+                    else -> StatusGreen.copy(alpha = 0.28f)
+                },
                 TileShape,
             )
-            .border(1.dp, ElectricCyan.copy(alpha = 0.16f), TileShape)
-            .padding(horizontal = 12.dp, vertical = 11.dp),
+            .padding(11.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = workflow.name,
-                    style = HudType.value.copy(fontSize = 13.sp, letterSpacing = 0.8.sp),
-                    color = TextPrimary,
+                    style = HudType.value.copy(fontSize = 13.sp),
+                    color = if (workflow.enabled) TextPrimary else TextMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "${workflow.steps.size} STEPS" +
-                        if (workflow.sensitiveCount > 0) " · ${workflow.sensitiveCount} SENSITIVE" else "",
-                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.1.sp),
-                    color = if (workflow.sensitiveCount > 0) Amber else TextMuted,
+                    text = buildString {
+                        append(workflow.trigger.display)
+                        append(" · ${workflow.totalSteps} steps")
+                        if (workflow.sensitiveCount > 0) append(" · ${workflow.sensitiveCount} confirm")
+                    },
+                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 0.6.sp),
+                    color = if (workflow.isArmed) StatusGreen else TextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                IconButtonBox(
-                    icon = Icons.Outlined.PlayArrow,
-                    tint = if (busy) TextMuted else StatusGreen,
-                    enabled = !busy && workflow.steps.isNotEmpty(),
-                    onClick = onRun,
-                )
-                IconButtonBox(
-                    icon = Icons.Outlined.Edit,
-                    tint = ElectricCyan,
-                    enabled = true,
-                    onClick = onEdit,
-                )
-                if (!workflow.builtIn) {
-                    IconButtonBox(
-                        icon = Icons.Outlined.Delete,
-                        tint = AlertRed.copy(alpha = 0.85f),
-                        enabled = true,
-                        onClick = onDelete,
-                    )
-                }
+            if (workflow.sensitiveCount > 0) {
+                HudChip(text = "GATED", accent = Amber)
+                Spacer(Modifier.width(6.dp))
             }
+            HudChip(
+                text = if (workflow.enabled) "ON" else "OFF",
+                accent = if (workflow.enabled) StatusGreen else TextMuted,
+                filled = workflow.enabled,
+            )
         }
 
-        if (workflow.steps.isNotEmpty()) {
-            Spacer(Modifier.height(9.dp))
+        if (lastRun != null) {
+            Spacer(Modifier.height(6.dp))
             Text(
-                text = workflow.steps.joinToString("  ›  ") { it.action.label },
+                text = "last ${stamp(lastRun.at)} · ${if (lastRun.ok) "ok" else "failed"} · ${lastRun.triggerLabel}",
                 style = HudType.terminal.copy(fontSize = 9.sp),
-                color = TextMuted,
-                maxLines = 2,
+                color = if (lastRun.ok) TextMuted else Color(0xFFFF8A98),
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
 
-        if (workflow.requiresAccessibility) {
-            Spacer(Modifier.height(7.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(4.dp)
-                        .background(Amber),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = "REQUIRES ACCESSIBILITY",
-                    style = HudType.label.copy(fontSize = 7.sp, letterSpacing = 1.2.sp),
-                    color = Amber,
-                )
-            }
+        Spacer(Modifier.height(9.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            SmallAction("RUN", StatusGreen, enabled = !busy, onClick = onRun)
+            SmallAction("EDIT", ElectricCyan, enabled = true, onClick = onEdit)
+            SmallAction(
+                if (workflow.enabled) "DISABLE" else "ENABLE",
+                if (workflow.enabled) TextMuted else StatusGreen,
+                enabled = true,
+                onClick = { onToggleEnabled(!workflow.enabled) },
+            )
+            SmallAction("DELETE", AlertRed, enabled = true, onClick = onDelete)
         }
     }
 }
 
 @Composable
-private fun RunLog(
-    log: List<com.jarvis.assistant.automation.RunLogEntry>,
-    maxLines: Int,
-) {
-    Column {
-        log.takeLast(maxLines).forEach { entry ->
-            Row(modifier = Modifier.padding(vertical = 2.dp)) {
-                Text(
-                    text = entry.timeLabel,
-                    style = HudType.terminal.copy(fontSize = 9.sp),
-                    color = TextMuted.copy(alpha = 0.8f),
-                )
-                Spacer(Modifier.width(7.dp))
-                Box(
-                    modifier = Modifier
-                        .padding(top = 5.dp)
-                        .size(4.dp)
-                        .background(if (entry.ok) StatusGreen else AlertRed),
-                )
-                Spacer(Modifier.width(7.dp))
-                Column {
-                    Text(
-                        text = entry.actionLabel,
-                        style = HudType.terminal.copy(fontSize = 9.sp),
-                        color = TextSecondary,
-                    )
-                    Text(
-                        text = entry.outcome,
-                        style = HudType.terminal.copy(fontSize = 9.sp),
-                        color = if (entry.ok) TextMuted else AlertRed.copy(alpha = 0.9f),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun IconButtonBox(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    tint: Color,
+private fun SmallAction(
+    label: String,
+    accent: Color,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
-            .size(30.dp)
-            .background(if (enabled) tint.copy(alpha = 0.10f) else Color(0xFF0A1520), ChipShape)
-            .border(1.dp, tint.copy(alpha = if (enabled) 0.35f else 0.12f), ChipShape)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
+            .background(accent.copy(alpha = if (enabled) 0.10f else 0.04f), ChipShape)
+            .border(1.dp, accent.copy(alpha = if (enabled) 0.35f else 0.12f), ChipShape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 5.dp),
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(15.dp),
+        Text(
+            text = label,
+            style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.sp),
+            color = if (enabled) accent else TextMuted,
         )
+    }
+}
+
+@Composable
+private fun AccessRow(
+    title: String,
+    value: String,
+    ok: Boolean,
+    caption: String,
+) {
+    val accent = if (ok) StatusGreen else Amber
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(5.dp)
+                .background(accent),
+        )
+        Spacer(Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = HudType.value.copy(fontSize = 11.sp),
+                color = TextPrimary,
+            )
+            Text(
+                text = caption,
+                style = HudType.terminal.copy(fontSize = 9.sp),
+                color = TextMuted,
+            )
+        }
+        Text(
+            text = value,
+            style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.sp),
+            color = accent,
+        )
+    }
+}
+
+@Composable
+private fun RunLog(log: List<com.jarvis.assistant.automation.RunLogEntry>, maxLines: Int) {
+    if (log.isEmpty()) {
+        Text(
+            text = "waiting for the first step…",
+            style = HudType.terminal.copy(fontSize = 10.sp),
+            color = TextMuted,
+        )
+        return
+    }
+    log.takeLast(maxLines).forEach { entry ->
+        Row(modifier = Modifier.padding(vertical = 1.dp)) {
+            Text(
+                text = entry.timeLabel,
+                style = HudType.terminal.copy(fontSize = 9.sp),
+                color = TextMuted,
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = if (entry.ok) "·" else "×",
+                style = HudType.terminal.copy(fontSize = 9.sp),
+                color = if (entry.ok) StatusGreen else AlertRed,
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "${entry.actionLabel}: ${entry.outcome}",
+                style = HudType.terminal.copy(fontSize = 9.sp),
+                color = if (entry.ok) TextSecondary else Color(0xFFFF8A98),
+            )
+        }
     }
 }
 
@@ -574,13 +690,10 @@ private fun ActionPill(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                if (filled) accent.copy(alpha = 0.16f) else Color.Transparent,
-                ChipShape,
-            )
-            .border(1.dp, accent.copy(alpha = if (filled) 0.6f else 0.32f), ChipShape)
+            .background(accent.copy(alpha = if (filled) 0.16f else 0.07f), ChipShape)
+            .border(1.dp, accent.copy(alpha = if (filled) 0.5f else 0.3f), ChipShape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(

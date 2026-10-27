@@ -1,6 +1,12 @@
 package com.jarvis.assistant.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -32,6 +38,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.jarvis.assistant.automation.AccessibilityStatus
 import com.jarvis.assistant.automation.AutomationEngine
 import com.jarvis.assistant.automation.AutomationStore
+import com.jarvis.assistant.automation.AutomationTriggers
+import com.jarvis.assistant.automation.RunRecord
 import com.jarvis.assistant.automation.RunState
 import com.jarvis.assistant.automation.Workflow
 import com.jarvis.assistant.ai.AiKeyStore
@@ -54,6 +62,7 @@ import com.jarvis.assistant.ui.screens.AiSettingsScreen
 import com.jarvis.assistant.ui.screens.AppDrawerScreen
 import com.jarvis.assistant.ui.screens.AutomationEditorScreen
 import com.jarvis.assistant.ui.screens.AutomationScreen
+import com.jarvis.assistant.ui.screens.ComposeScreen
 import com.jarvis.assistant.ui.screens.ControlsScreen
 import com.jarvis.assistant.ui.screens.DashboardScreen
 import com.jarvis.assistant.ui.screens.DiagnosticsScreen
@@ -82,6 +91,18 @@ private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_DOCK = "dock"
 private const val ROUTE_ROUTINE = "routine"
 private const val ROUTE_AI = "ai"
+private const val ROUTE_COMPOSE = "compose"
+
+/** True when JARVIS may post its own notifications (always true below Android 13). */
+private fun canPostNotifications(context: android.content.Context): Boolean =
+    if (Build.VERSION.SDK_INT < 33) {
+        true
+    } else {
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 
 /**
  * Application shell.
@@ -127,7 +148,24 @@ fun JarvisApp() {
     var editingWorkflow by remember { mutableStateOf<Workflow?>(null) }
     var accessibilityEnabled by remember { mutableStateOf(false) }
     var screenPressAllowed by remember { mutableStateOf(false) }
+    var armed by remember { mutableStateOf(AutomationTriggers.isArmed(context)) }
+    var exactAlarmsAllowed by remember { mutableStateOf(AutomationTriggers.canScheduleExact(context)) }
+    var notificationsAllowed by remember { mutableStateOf(canPostNotifications(context)) }
+    var history by remember { mutableStateOf<List<RunRecord>>(emptyList()) }
     val runState by AutomationEngine.state.collectAsState()
+
+    // Android 13+ gates our own notifications; armed automation needs it for the foreground chip.
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> notificationsAllowed = granted }
+
+    fun reloadAutomation() {
+        workflows = AutomationStore.load(context)
+        history = AutomationStore.history(context)
+        armed = AutomationTriggers.isArmed(context)
+        exactAlarmsAllowed = AutomationTriggers.canScheduleExact(context)
+        notificationsAllowed = canPostNotifications(context)
+    }
 
     // ---- intelligence ----
     var aiConfig by remember { mutableStateOf(AiKeyStore.config(context)) }
@@ -168,6 +206,8 @@ fun JarvisApp() {
         accessibilityEnabled = AccessibilityStatus.isServiceEnabled(context)
         screenPressAllowed = AccessibilityStatus.isScreenPressAllowed(context)
         aiConfig = withContext(Dispatchers.IO) { AiKeyStore.config(context) }
+        history = AutomationStore.history(context)
+        notificationsAllowed = canPostNotifications(context)
     }
 
     // Refresh on every foreground pass: apps change, access can be revoked, media comes and goes.
@@ -179,6 +219,11 @@ fun JarvisApp() {
                 accessibilityEnabled = AccessibilityStatus.isServiceEnabled(context)
                 screenPressAllowed = AccessibilityStatus.isScreenPressAllowed(context)
                 aiConfig = AiKeyStore.config(context)
+                workflows = AutomationStore.load(context)
+                history = AutomationStore.history(context)
+                armed = AutomationTriggers.isArmed(context)
+                exactAlarmsAllowed = AutomationTriggers.canScheduleExact(context)
+                notificationsAllowed = canPostNotifications(context)
                 if (refreshGate.compareAndSet(false, true)) {
                     scope.launch {
                         try {
@@ -432,6 +477,41 @@ fun JarvisApp() {
                         }
                     },
                     onDismissFinished = { AutomationEngine.dismissFinished() },
+                    armed = armed,
+                    exactAlarmsAllowed = exactAlarmsAllowed,
+                    notificationsAllowed = notificationsAllowed,
+                    history = history,
+                    onToggleEnabled = { workflow, enabled ->
+                        AutomationStore.setEnabled(context, workflow.id, enabled)
+                        AutomationTriggers.sync(context)
+                        reloadAutomation()
+                    },
+                    onArm = { wantArmed ->
+                        if (!wantArmed) {
+                            AutomationTriggers.setArmed(context, false)
+                            reloadAutomation()
+                        } else if (!notificationsAllowed && Build.VERSION.SDK_INT >= 33) {
+                            // Ask first: without it the foreground chip is invisible and the
+                            // service is harder to explain to the user looking at the shade.
+                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            AutomationTriggers.setArmed(context, true)
+                            reloadAutomation()
+                        } else {
+                            AutomationTriggers.setArmed(context, true)
+                            reloadAutomation()
+                        }
+                    },
+                    onRequestExactAlarms = { AutomationTriggers.requestExactPermission(context) },
+                    onRequestNotificationPermission = {
+                        if (Build.VERSION.SDK_INT >= 33) {
+                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    },
+                    onCompose = { route = ROUTE_COMPOSE },
+                    onClearHistory = {
+                        AutomationStore.clearHistory(context)
+                        history = AutomationStore.history(context)
+                    },
                     onEdit = { workflow ->
                         editingWorkflow = workflow
                         route = ROUTE_ROUTINE
@@ -442,7 +522,8 @@ fun JarvisApp() {
                     },
                     onDelete = { workflow ->
                         AutomationStore.delete(context, workflow.id)
-                        workflows = AutomationStore.load(context)
+                        AutomationTriggers.sync(context)
+                        reloadAutomation()
                     },
                     onOpenAccessibility = {
                         LauncherStatus.openSystemScreen(context, AccessibilityStatus.settingsIntent())
@@ -454,6 +535,19 @@ fun JarvisApp() {
                     onOpenNotificationAccess = {
                         QuickControls.openNotificationAccessSettings(context)
                     },
+                    onBack = { route = ROUTE_DASHBOARD },
+                )
+
+                ROUTE_COMPOSE -> ComposeScreen(
+                    aiConfigured = aiConfig != null,
+                    onSave = { planned ->
+                        AutomationStore.upsert(context, planned)
+                        AutomationTriggers.sync(context)
+                        reloadAutomation()
+                        editingWorkflow = planned
+                        route = ROUTE_ROUTINE
+                    },
+                    onOpenAiSettings = { route = ROUTE_AI },
                     onBack = { route = ROUTE_DASHBOARD },
                 )
 
@@ -483,7 +577,8 @@ fun JarvisApp() {
                             onChange = { updated -> editingWorkflow = updated },
                             onSave = {
                                 AutomationStore.upsert(context, draft)
-                                workflows = AutomationStore.load(context)
+                                AutomationTriggers.sync(context)
+                                reloadAutomation()
                                 editingWorkflow = null
                                 route = ROUTE_DASHBOARD
                             },

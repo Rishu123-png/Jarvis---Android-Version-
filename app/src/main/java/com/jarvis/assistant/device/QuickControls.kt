@@ -201,6 +201,20 @@ object QuickControls {
         }
     }
 
+    /** Explicit play or pause, without toggling. Returns the applied state, or null. */
+    fun setPlayback(context: Context, play: Boolean): Boolean? {
+        val controller = activeController(context) ?: return null
+        return try {
+            if (play) controller.transportControls.play() else controller.transportControls.pause()
+            play
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    /** True when there is a media session JARVIS can drive. */
+    fun hasActiveMedia(context: Context): Boolean = activeController(context) != null
+
     fun skipNext(context: Context): Boolean = withController(context) {
         it.transportControls.skipToNext()
     }

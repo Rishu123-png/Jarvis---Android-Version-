@@ -1,21 +1,31 @@
 package com.jarvis.assistant.automation
 
 import android.accessibilityservice.AccessibilityService
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.AlarmClock
+import androidx.core.app.NotificationCompat
+import com.jarvis.assistant.R
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
 import kotlinx.coroutines.delay
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
 
 /**
- * Executes one [WorkflowStep].
+ * Executes one leaf [WorkflowStep].
  *
- * Every action maps to a documented Android intent or a permission-free API. Where Android does not
- * permit an action outright, the step *opens the system surface* and reports that honestly rather
- * than claiming success on something that did not happen.
+ * Every action maps to a documented Android intent, a permission-free API, or an explicit network
+ * call the operator asked for. Where Android does not permit an action outright, the step *opens the
+ * system surface* and reports that honestly rather than claiming success on something that did not
+ * happen.
+ *
+ * Control-flow actions are interpreted by [AutomationEngine], never here.
  */
 object StepExecutor {
 
@@ -25,56 +35,83 @@ object StepExecutor {
         data class Skipped(val reason: String) : Result
     }
 
-    /** Human-readable warning shown before a run when a step cannot possibly work. */
+    private const val WEBHOOK_CONNECT_TIMEOUT_MS = 8_000
+    private const val WEBHOOK_READ_TIMEOUT_MS = 10_000
+    private const val NOTIFY_CHANNEL = "jarvis_runs"
+
+    /** Human-readable warnings shown before a run when a step cannot possibly work. */
     fun preflight(context: Context, workflow: Workflow): List<String> {
         val warnings = mutableListOf<String>()
+        val all = workflow.flatSteps
+
         if (workflow.requiresAccessibility && !AccessibilityStatus.isServiceEnabled(context)) {
             warnings.add("Needs accessibility access for system gestures or screen presses.")
         }
         if (workflow.requiresNotificationAccess && !NotificationRepository.hasAccess(context)) {
             warnings.add("Needs notification access for media or alert steps.")
         }
-        if (workflow.steps.any { it.action == ActionType.PRESS_TEXT } &&
+        if (all.any { it.action == ActionType.PRESS_TEXT } &&
             !AccessibilityStatus.isScreenPressAllowed(context)
         ) {
             warnings.add("\"Press on screen\" steps are disabled until you allow them.")
         }
-        val unconfigured = workflow.steps.count { !it.isConfigured }
+        val unconfigured = all.count { !it.isConfigured }
         if (unconfigured > 0) warnings.add("$unconfigured step(s) have no value set.")
         if (workflow.steps.isEmpty()) warnings.add("This routine has no steps yet.")
+        if (workflow.totalSteps > AutomationEngine.MAX_TOTAL_STEPS) {
+            warnings.add("This routine exceeds the ${AutomationEngine.MAX_TOTAL_STEPS}-step budget.")
+        }
         return warnings
     }
 
-    suspend fun execute(context: Context, step: WorkflowStep): Result {
-        return try {
-            when (step.action) {
-                ActionType.OPEN_APP -> {
-                    val pkg = step.param.substringBefore('/')
-                    val activity = step.param.substringAfter('/', "")
-                    if (pkg.isBlank()) return Result.Failed("No app chosen")
-                    val intent = context.packageManager.getLaunchIntentForPackage(pkg)
-                        ?: return Result.Failed("$pkg is not installed")
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    if (activity.isNotBlank()) {
-                        intent.component = android.content.ComponentName(pkg, activity)
-                    }
-                    context.startActivity(intent)
-                    Result.Ok("Opened ${appLabel(context, pkg)}")
-                }
+    /** True when this step needs a touch of the system UI, so the runner can wait for it. */
+    fun opensSystemSurface(step: WorkflowStep): Boolean = when (step.action) {
+        ActionType.OPEN_APP, ActionType.OPEN_URL, ActionType.DEEP_LINK, ActionType.DIAL_NUMBER,
+        ActionType.COMPOSE_SMS, ActionType.SET_TIMER, ActionType.SET_ALARM, ActionType.OPEN_PANEL,
+        -> true
 
-                ActionType.OPEN_URL -> {
-                    val url = normaliseUrl(step.param)
-                    if (url == null) return Result.Failed("Not a valid address")
+        else -> false
+    }
+
+    suspend fun execute(context: Context, step: WorkflowStep): Result = try {
+        when (step.action) {
+            // ------------------------------------------------------------------ apps + links
+            ActionType.OPEN_APP -> openApp(context, step.param)
+
+            ActionType.OPEN_URL -> {
+                val url = normaliseUrl(step.param)
+                if (url == null) {
+                    Result.Failed("Not a valid address")
+                } else {
                     context.startActivity(
                         Intent(Intent.ACTION_VIEW, Uri.parse(url))
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                     Result.Ok("Opened $url")
                 }
+            }
 
-                ActionType.DIAL_NUMBER -> {
-                    val number = step.param.trim()
-                    if (number.isEmpty()) return Result.Failed("No number set")
+            ActionType.DEEP_LINK -> {
+                val raw = step.param.trim()
+                if (raw.isEmpty() || !raw.contains(":")) {
+                    Result.Failed("A deep link needs a scheme, e.g. app://screen")
+                } else {
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(raw))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                        Result.Ok("Opened deep link")
+                    } catch (e: Exception) {
+                        Result.Failed("No app handles that link")
+                    }
+                }
+            }
+
+            ActionType.DIAL_NUMBER -> {
+                val number = step.param.trim()
+                if (number.isEmpty()) {
+                    Result.Failed("No number set")
+                } else {
                     // ACTION_DIAL only opens the dialer with the number filled in. JARVIS never
                     // places a call: that would need CALL_PHONE, which this app does not hold.
                     context.startActivity(
@@ -83,120 +120,307 @@ object StepExecutor {
                     )
                     Result.Ok("Dialer opened, not called")
                 }
+            }
 
-                ActionType.COMPOSE_SMS -> {
-                    val number = step.param.trim()
-                    if (number.isEmpty()) return Result.Failed("No number set")
+            ActionType.COMPOSE_SMS -> {
+                val number = step.param.trim()
+                if (number.isEmpty()) {
+                    Result.Failed("No number set")
+                } else {
                     context.startActivity(
                         Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:${Uri.encode(number)}"))
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                     Result.Ok("Composer opened, not sent")
                 }
+            }
 
-                ActionType.SET_TIMER -> {
-                    val seconds = step.param.toIntOrNull() ?: 0
-                    if (seconds <= 0) return Result.Failed("Timer length must be positive")
+            // ------------------------------------------------------------------ device
+            ActionType.SET_TIMER -> {
+                val seconds = step.param.toIntOrNull() ?: 0
+                if (seconds <= 0) {
+                    Result.Failed("Timer length must be positive")
+                } else {
                     context.startActivity(
                         Intent(AlarmClock.ACTION_SET_TIMER)
                             .putExtra(AlarmClock.EXTRA_LENGTH, seconds)
-                            .putExtra(AlarmClock.EXTRA_SKIP_UI, false)
+                            .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                     Result.Ok("Timer set for ${seconds / 60}m ${seconds % 60}s")
                 }
+            }
 
-                ActionType.TORCH_ON -> {
-                    val state = QuickControls.Torch.toggle(context)
-                    when {
-                        state == null -> Result.Failed("No flashlight available")
-                        state -> Result.Ok("Torch on")
-                        // It was already on, so the toggle turned it off — put it back.
-                        else -> {
-                            QuickControls.Torch.toggle(context)
-                            Result.Ok("Torch on")
-                        }
+            ActionType.SET_ALARM -> setAlarm(context, step.param)
+
+            ActionType.TORCH_ON -> {
+                val state = QuickControls.Torch.toggle(context)
+                when {
+                    state == null -> Result.Failed("No flashlight available")
+                    state -> Result.Ok("Torch on")
+                    // It was already on, so the toggle turned it off — put it back.
+                    else -> {
+                        QuickControls.Torch.toggle(context)
+                        Result.Ok("Torch on")
                     }
                 }
+            }
 
-                ActionType.TORCH_OFF -> {
-                    QuickControls.Torch.setOff(context)
-                    Result.Ok("Torch off")
-                }
+            ActionType.TORCH_OFF -> {
+                QuickControls.Torch.setOff(context)
+                Result.Ok("Torch off")
+            }
 
-                ActionType.SET_VOLUME -> {
-                    val percent = step.param.toIntOrNull() ?: return Result.Failed("Not a number")
+            ActionType.SET_VOLUME -> {
+                val percent = step.param.toIntOrNull()
+                if (percent == null) {
+                    Result.Failed("Not a number")
+                } else {
                     val applied = QuickControls.setMediaVolume(context, percent)
                     Result.Ok("Media volume $applied%")
                 }
+            }
 
-                ActionType.MEDIA_TOGGLE -> {
-                    if (!NotificationRepository.hasAccess(context)) {
-                        return Result.Skipped("Notification access is off")
-                    }
-                    val playing = QuickControls.togglePlayback(context)
-                        ?: return Result.Failed("No active media session")
-                    Result.Ok(if (playing) "Playing" else "Paused")
+            ActionType.PLAY_MEDIA -> setPlayback(context, play = true)
+            ActionType.PAUSE_MEDIA -> setPlayback(context, play = false)
+
+            ActionType.NEXT_MEDIA -> {
+                if (!NotificationRepository.hasAccess(context)) {
+                    Result.Skipped("Notification access is off")
+                } else if (QuickControls.skipNext(context)) {
+                    Result.Ok("Next track")
+                } else {
+                    Result.Failed("No active media session")
                 }
+            }
 
-                ActionType.DISMISS_NOTIFICATIONS -> {
-                    if (!NotificationRepository.hasAccess(context)) {
-                        return Result.Skipped("Notification access is off")
-                    }
+            ActionType.PREVIOUS_MEDIA -> {
+                if (!NotificationRepository.hasAccess(context)) {
+                    Result.Skipped("Notification access is off")
+                } else if (QuickControls.skipPrevious(context)) {
+                    Result.Ok("Previous track")
+                } else {
+                    Result.Failed("No active media session")
+                }
+            }
+
+            ActionType.DISMISS_NOTIFICATIONS -> {
+                if (!NotificationRepository.hasAccess(context)) {
+                    Result.Skipped("Notification access is off")
+                } else {
                     val cleared = NotificationRepository.dismissAllClearable()
                     Result.Ok("Cleared $cleared alert(s)")
                 }
+            }
 
-                ActionType.OPEN_PANEL -> openPanel(context, step.param)
+            ActionType.NOTIFY -> notify(context, step.param)
 
-                ActionType.WAIT -> {
-                    val seconds = (step.param.toIntOrNull() ?: 0).coerceIn(0, 120)
-                    delay(seconds * 1000L)
-                    Result.Ok("Waited ${seconds}s")
-                }
+            ActionType.OPEN_PANEL -> openPanel(context, step.param)
 
-                ActionType.GLOBAL_ACTION -> performGlobal(context, step.param)
+            // ------------------------------------------------------------------ speech + network
+            ActionType.SAY -> {
+                val reason = SpeechOut.speak(context, step.param)
+                if (reason == null) Result.Ok("Spoke ${step.param.take(30)}") else Result.Failed(reason)
+            }
 
-                ActionType.PRESS_TEXT -> {
-                    if (!AccessibilityStatus.isServiceEnabled(context)) {
-                        return Result.Skipped("Accessibility access is off")
-                    }
-                    if (!AccessibilityStatus.isScreenPressAllowed(context)) {
-                        return Result.Skipped("Screen pressing is not allowed")
-                    }
-                    if (JarvisAccessibilityService.pressByText(step.param)) {
-                        Result.Ok("Pressed \"${step.param}\"")
+            ActionType.WEBHOOK -> webhook(step.param)
+
+            // ------------------------------------------------------------------ accessibility
+            ActionType.GLOBAL_ACTION -> performGlobal(context, step.param)
+
+            ActionType.PRESS_TEXT -> {
+                if (!AccessibilityStatus.isServiceEnabled(context)) {
+                    Result.Skipped("Accessibility access is off")
+                } else if (!AccessibilityStatus.isScreenPressAllowed(context)) {
+                    Result.Skipped("Screen pressing is not allowed")
+                } else {
+                    val label = step.param.trim()
+                    if (label.isEmpty()) {
+                        Result.Failed("No label set")
+                    } else if (JarvisAccessibilityService.pressByText(label)) {
+                        Result.Ok("Pressed \"$label\"")
                     } else {
-                        Result.Failed("No visible control labelled \"${step.param}\"")
+                        Result.Failed("No control labelled \"$label\" on screen")
                     }
                 }
             }
+
+            // ------------------------------------------------------------------ timing
+            ActionType.WAIT -> {
+                val seconds = (step.param.toIntOrNull() ?: 0).coerceIn(0, 120)
+                delay(seconds * 1000L)
+                Result.Ok("Waited ${seconds}s")
+            }
+
+            // Control flow never reaches the executor.
+            ActionType.IF_BLOCK, ActionType.REPEAT_BLOCK, ActionType.WAIT_UNTIL,
+            ActionType.STOP_ROUTINE,
+            -> Result.Skipped("Handled by the runner")
+        }
+    } catch (t: Throwable) {
+        Result.Failed(t.message ?: t.javaClass.simpleName)
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------------------------
+
+    private fun openApp(context: Context, param: String): Result {
+        val pkg = param.substringBefore('/')
+        val activity = param.substringAfter('/', "")
+        if (pkg.isBlank()) return Result.Failed("No app chosen")
+        val intent = try {
+            context.packageManager.getLaunchIntentForPackage(pkg)
         } catch (t: Throwable) {
-            Result.Failed(t.message?.take(80) ?: "Step failed")
+            null
+        } ?: return Result.Failed("$pkg is not installed")
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (activity.isNotBlank()) {
+            intent.component = android.content.ComponentName(pkg, activity)
+        }
+        return try {
+            context.startActivity(intent)
+            Result.Ok("Opened ${appLabel(context, pkg)}")
+        } catch (t: Throwable) {
+            Result.Failed("Could not open ${appLabel(context, pkg)}")
         }
     }
 
-    private fun openPanel(context: Context, key: String): Result {
-        val normalised = key.trim().lowercase(Locale.US)
-        return when {
-            normalised.startsWith("wifi") || normalised.contains("internet") -> {
-                QuickControls.openInternetPanel(context); Result.Ok("Opened connectivity panel")
+    private fun setPlayback(context: Context, play: Boolean): Result {
+        if (!NotificationRepository.hasAccess(context)) {
+            return Result.Skipped("Notification access is off")
+        }
+        val applied = QuickControls.setPlayback(context, play)
+            ?: return Result.Failed("No active media session")
+        return Result.Ok(if (applied) "Playing" else "Paused")
+    }
+
+    private fun setAlarm(context: Context, raw: String): Result {
+        val time = ConditionEvaluator.parseTime(raw)
+            ?: return Result.Failed("Time must look like 07:30")
+        return try {
+            context.startActivity(
+                Intent(AlarmClock.ACTION_SET_ALARM)
+                    .putExtra(AlarmClock.EXTRA_HOUR, time.hour)
+                    .putExtra(AlarmClock.EXTRA_MINUTES, time.minute)
+                    .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            Result.Ok("Alarm set for ${time.hour.toString().padStart(2, '0')}:${
+                time.minute.toString().padStart(2, '0')
+            }")
+        } catch (t: Throwable) {
+            Result.Failed("No alarm app available")
+        }
+    }
+
+    private fun notify(context: Context, text: String): Result {
+        val message = text.trim()
+        if (message.isEmpty()) return Result.Failed("No message set")
+        return try {
+            val manager = context.getSystemService(NotificationManager::class.java)
+                ?: return Result.Failed("Notification service unavailable")
+            val channel = NotificationChannel(
+                NOTIFY_CHANNEL,
+                "JARVIS routines",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply { description = "Messages posted by your own routines" }
+            manager.createNotificationChannel(channel)
+
+            val notification = NotificationCompat.Builder(context, NOTIFY_CHANNEL)
+                .setSmallIcon(R.drawable.ic_stat_jarvis)
+                .setContentTitle("JARVIS")
+                .setContentText(message.take(120))
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message.take(600)))
+                .setAutoCancel(true)
+                .build()
+            manager.notify(System.currentTimeMillis().toInt(), notification)
+            Result.Ok("Notified")
+        } catch (t: Throwable) {
+            Result.Failed("Could not post a notification (permission?)")
+        }
+    }
+
+    /**
+     * Calls a URL the operator typed. GET unless the value starts with `POST `.
+     * The full method/URL/status is reported so a silent failure cannot hide.
+     */
+    private fun webhook(raw: String): Result {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return Result.Failed("No URL set")
+
+        val isPost = trimmed.startsWith("POST ", ignoreCase = true)
+        val target = normaliseUrl(if (isPost) trimmed.substring(5).trim() else trimmed)
+            ?: return Result.Failed("Not a valid address")
+
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = (URL(target).openConnection() as HttpURLConnection).apply {
+                requestMethod = if (isPost) "POST" else "GET"
+                connectTimeout = WEBHOOK_CONNECT_TIMEOUT_MS
+                readTimeout = WEBHOOK_READ_TIMEOUT_MS
+                instanceFollowRedirects = true
+                useCaches = false
+                if (isPost) {
+                    doOutput = true
+                    setRequestProperty("Content-Type", "text/plain; charset=utf-8")
+                }
             }
-            normalised.startsWith("blue") -> {
+            if (isPost) {
+                connection.outputStream.use { it.write("jarvis".toByteArray(Charsets.UTF_8)) }
+            }
+            val code = connection.responseCode
+            if (code in 200..299) {
+                Result.Ok("HTTP $code from ${Uri.parse(target).host}")
+            } else {
+                Result.Failed("HTTP $code from ${Uri.parse(target).host}")
+            }
+        } catch (e: IOException) {
+            Result.Failed("Webhook failed: ${e.javaClass.simpleName}")
+        } catch (t: Throwable) {
+            Result.Failed("Webhook failed: ${t.javaClass.simpleName}")
+        } finally {
+            try {
+                connection?.disconnect()
+            } catch (t: Throwable) {
+                // Nothing to clean up.
+            }
+        }
+    }
+
+    private fun openPanel(context: Context, raw: String): Result {
+        val key = raw.trim().lowercase(Locale.US)
+        if (key.isEmpty()) return Result.Failed("No panel chosen")
+        return when {
+            key.startsWith("wifi") || key.startsWith("internet") -> {
+                QuickControls.openInternetPanel(context); Result.Ok("Opened internet panel")
+            }
+
+            key.startsWith("bt") || key.startsWith("bluetooth") -> {
                 QuickControls.openBluetoothSettings(context); Result.Ok("Opened Bluetooth settings")
             }
-            normalised.startsWith("dnd") || normalised.contains("disturb") -> {
+
+            key.startsWith("dnd") || key.startsWith("silent") || key.startsWith("do not") -> {
                 QuickControls.openDndSettings(context); Result.Ok("Opened Do Not Disturb")
             }
-            normalised.startsWith("display") || normalised.contains("bright") -> {
+
+            key.startsWith("display") || key.startsWith("screen") -> {
                 QuickControls.openDisplaySettings(context); Result.Ok("Opened display settings")
             }
-            normalised.startsWith("volume") -> {
+
+            key.startsWith("volume") || key.startsWith("audio") -> {
                 QuickControls.openVolumePanel(context); Result.Ok("Opened volume panel")
             }
-            normalised.startsWith("battery") -> {
+
+            key.startsWith("battery") -> {
                 QuickControls.openBatterySaverSettings(context); Result.Ok("Opened battery saver")
             }
+
+            key.startsWith("notif") -> {
+                QuickControls.openNotificationAccessSettings(context)
+                Result.Ok("Opened notification access")
+            }
+
             else -> Result.Failed("Unknown panel \"$key\" (try wifi, bluetooth, dnd, display, volume, battery)")
         }
     }
@@ -227,13 +451,13 @@ object StepExecutor {
     private fun normaliseUrl(raw: String): String? {
         val trimmed = raw.trim()
         if (trimmed.isEmpty()) return null
-        val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            trimmed
-        } else {
-            "https://$trimmed"
+        val withScheme = when {
+            trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
+            else -> "https://$trimmed"
         }
         return try {
             val uri = Uri.parse(withScheme)
+            // Only web schemes: a webhook must not be able to reach file:// or intent://.
             if (uri.host.isNullOrBlank()) null else withScheme
         } catch (t: Throwable) {
             null
@@ -241,8 +465,9 @@ object StepExecutor {
     }
 
     private fun appLabel(context: Context, pkg: String): String = try {
-        val pm = context.packageManager
-        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+        context.packageManager.getApplicationLabel(
+            context.packageManager.getApplicationInfo(pkg, 0)
+        ).toString()
     } catch (t: Throwable) {
         pkg
     }
