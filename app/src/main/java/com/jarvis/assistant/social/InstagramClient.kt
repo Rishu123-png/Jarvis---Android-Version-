@@ -54,7 +54,16 @@ object InstagramClient {
     private const val MEDIA_FIELDS =
         "id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count"
 
-    private const val MEDIA_METRICS = "reach,saved,shares,total_interactions"
+    /**
+     * Metric attempts, in order. Meta refuses the whole request if any single metric does not exist
+     * for that post type, so a narrower set is tried before giving up — and `views` comes before
+     * interaction metrics because the operator optimises views.
+     */
+    private val MEDIA_METRIC_ATTEMPTS = listOf(
+        "reach,views,saved,shares,total_interactions",
+        "reach,views",
+        "reach",
+    )
 
     private class IgFailure(override val message: String, val hint: String? = null) : Exception(message)
 
@@ -152,6 +161,7 @@ object InstagramClient {
                 media.add(
                     item.copy(
                         reach = insight["reach"],
+                        views = insight["views"],
                         saved = insight["saved"],
                         shares = insight["shares"],
                         interactions = insight["total_interactions"],
@@ -311,14 +321,25 @@ object InstagramClient {
      * metric that exists everywhere.
      */
     private fun fetchMediaInsight(base: String, mediaId: String, token: String): Map<String, Int> {
-        val full = try {
-            get("$base/$mediaId/insights?metric=$MEDIA_METRICS&access_token=${encode(token)}")
-        } catch (failure: IgFailure) {
-            if ((failure.hint ?: "").contains("permission", ignoreCase = true)) throw failure
-            get("$base/$mediaId/insights?metric=reach&access_token=${encode(token)}")
+        var reply: JSONObject? = null
+        var lastFailure: IgFailure? = null
+        for (metrics in MEDIA_METRIC_ATTEMPTS) {
+            try {
+                reply = get("$base/$mediaId/insights?metric=$metrics&access_token=${encode(token)}")
+                break
+            } catch (failure: IgFailure) {
+                lastFailure = failure
+                if ((failure.hint ?: "").contains("permission", ignoreCase = true)) throw failure
+            } catch (t: Throwable) {
+                break
+            }
+        }
+        if (reply == null) {
+            lastFailure?.let { throw it }
+            return emptyMap()
         }
         val out = HashMap<String, Int>()
-        val data = full.optJSONArray("data") ?: return out
+        val data = reply.optJSONArray("data") ?: return out
         for (i in 0 until data.length()) {
             val entry = data.optJSONObject(i) ?: continue
             val name = entry.optString("name")
