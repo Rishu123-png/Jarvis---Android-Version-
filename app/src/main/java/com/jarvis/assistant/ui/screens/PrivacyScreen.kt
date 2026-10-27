@@ -39,6 +39,7 @@ import com.jarvis.assistant.ui.theme.PanelNavy
 import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextPrimary
+import com.jarvis.assistant.voice.Brain
 import com.jarvis.assistant.voice.SpeechRoute
 
 /**
@@ -70,6 +71,10 @@ fun PrivacyScreen(
     onToggleNotifyBrain: (Boolean) -> Unit,
     nudgesEnabled: Boolean,
     onToggleNudges: (Boolean) -> Unit,
+    rememberedPeople: List<Brain.Person>,
+    rememberedFacts: List<Brain.Fact>,
+    rememberedTurns: Int,
+    onForgetMemory: () -> Unit,
     roadRoutingEnabled: Boolean,
     onToggleRoadRouting: (Boolean) -> Unit,
     lockNoticeEnabled: Boolean,
@@ -451,6 +456,79 @@ fun PrivacyScreen(
                 KeypadKey(if (roadRoutingEnabled) "TURN OFF" else "TURN ON") {
                     onToggleRoadRouting(!roadRoutingEnabled)
                 }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // ---------------------------------------------------------------- memory
+        HudPanel(
+            label = "WHAT HE REMEMBERS",
+            accent = ElectricCyan,
+            trailing = {
+                val total = rememberedPeople.size + rememberedFacts.size
+                HudChip(
+                    text = if (total == 0) "NOTHING YET" else "$total KNOWN",
+                    accent = if (total == 0) Amber else StatusGreen,
+                )
+            },
+        ) {
+            Text(
+                text = "Kept on this phone only, inside JARVIS's own storage. Nothing is uploaded, " +
+                    "and there is no account to sign out of. Say “my sister is Khushi” and it is " +
+                    "added here; wipe it whenever you like.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+
+            if (rememberedPeople.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "PEOPLE",
+                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.6.sp),
+                    color = ElectricCyan,
+                )
+                rememberedPeople.take(8).forEach { person ->
+                    Text(
+                        text = "· " + person.label,
+                        style = HudType.valueSmall,
+                        color = TextPrimary,
+                    )
+                }
+            }
+
+            if (rememberedFacts.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "FACTS",
+                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.6.sp),
+                    color = ElectricCyan,
+                )
+                rememberedFacts.take(8).forEach { fact ->
+                    Text(
+                        text = "· " + fact.key + ": " + fact.value,
+                        style = HudType.valueSmall,
+                        color = TextPrimary,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = remember(rememberedTurns) {
+                    if (rememberedTurns == 0) {
+                        "No conversation held yet."
+                    } else {
+                        "Last $rememberedTurns turn(s) of conversation are still in context."
+                    }
+                },
+                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+                color = TextMuted,
+            )
+
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey("FORGET EVERYTHING") { onForgetMemory() }
             }
         }
 
