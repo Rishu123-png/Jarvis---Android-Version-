@@ -3,12 +3,15 @@ package com.jarvis.assistant.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
@@ -25,12 +28,14 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.ai.AiClient
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.ai.AiProvider
 import com.jarvis.assistant.ai.AiResult
+import com.jarvis.assistant.ai.ModelsResult
 import com.jarvis.assistant.ui.components.HudDivider
 import com.jarvis.assistant.ui.components.HudPanel
 import com.jarvis.assistant.ui.components.ReadoutRow
@@ -47,12 +52,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private const val MIN_DETECT_LENGTH = 8
+private const val MODEL_PAGE = 12
+
 /**
  * Intelligence settings.
  *
  * The operator pastes their own provider key; the provider is inferred from the key's shape and can
  * be overridden. The key is encrypted with the Android Keystore before it touches disk, so a backup
  * of the app's data does not expose it.
+ *
+ * Model names are the fragile part of any provider integration — they are retired without warning.
+ * So this screen can ask the provider what the key can actually reach ([AiClient.listModels]) and
+ * offers that list as taps, and a failed test fetches the list automatically.
  */
 @Composable
 fun AiSettingsScreen(onBack: () -> Unit) {
@@ -69,25 +81,81 @@ fun AiSettingsScreen(onBack: () -> Unit) {
     var note by remember { mutableStateOf<String?>(null) }
     var noteOk by remember { mutableStateOf(false) }
 
+    var models by remember { mutableStateOf<List<String>>(emptyList()) }
+    var modelPage by remember { mutableStateOf(1) }
+    var fetchingModels by remember { mutableStateOf(false) }
+
     val effectiveModel = model.ifBlank { provider.defaultModel }
+
+    // A model or provider change is a save in its own right — the key must not have to be re-pasted.
+    val configChanged = current != null &&
+        (provider != current!!.provider ||
+            model.trim() != current!!.model ||
+            baseUrl.trim() != current!!.baseUrl)
+
+    fun fetchModels(auto: Boolean) {
+        if (fetchingModels) return
+        if (current == null && keyDraft.isBlank()) {
+            note = "Store a key first, then JARVIS can list its models."
+            noteOk = false
+            return
+        }
+        fetchingModels = true
+        models = emptyList()
+        modelPage = 1
+        if (auto) {
+            note = "Looking up the models your key can reach…"
+            noteOk = true
+        }
+        scope.launch {
+            // Use the draft key if it has not been saved yet, otherwise the stored one.
+            if (keyDraft.isNotBlank()) {
+                withContext(Dispatchers.IO) {
+                    AiKeyStore.save(context, provider, model, baseUrl, keyDraft)
+                }
+                current = withContext(Dispatchers.IO) { AiKeyStore.config(context) }
+            }
+            when (val result = AiClient.listModels(context)) {
+                is ModelsResult.Ok -> {
+                    models = AiClient.rankModels(result.models)
+                    note = "${result.models.size} models available on ${result.providerLabel} — tap one."
+                    noteOk = true
+                }
+
+                is ModelsResult.Error -> {
+                    note = result.message + (result.hint?.let { " — $it" } ?: "")
+                    noteOk = false
+                }
+            }
+            fetchingModels = false
+        }
+    }
 
     fun save() {
         if (busy) return
         busy = true
         note = null
         scope.launch {
-            val error = withContext(Dispatchers.IO) {
-                AiKeyStore.save(context, provider, model, baseUrl, keyDraft)
-            }
-            if (error == null) {
-                keyDraft = ""
-                current = withContext(Dispatchers.IO) { AiKeyStore.config(context) }
-                note = "Stored. ${provider.label} is linked to this device."
-                noteOk = true
+            if (keyDraft.isNotBlank()) {
+                val error = withContext(Dispatchers.IO) {
+                    AiKeyStore.save(context, provider, model, baseUrl, keyDraft)
+                }
+                if (error == null) {
+                    keyDraft = ""
+                    note = "Stored. ${provider.label} is linked to this device."
+                    noteOk = true
+                } else {
+                    note = error
+                    noteOk = false
+                }
             } else {
-                note = error
-                noteOk = false
+                withContext(Dispatchers.IO) {
+                    AiKeyStore.updateConfig(context, provider, model, baseUrl)
+                }
+                note = "Saved. ${provider.label} · ${model.ifBlank { provider.defaultModel }}"
+                noteOk = true
             }
+            current = withContext(Dispatchers.IO) { AiKeyStore.config(context) }
             busy = false
         }
     }
@@ -103,15 +171,29 @@ fun AiSettingsScreen(onBack: () -> Unit) {
         note = "Contacting provider…"
         noteOk = true
         scope.launch {
-            val result = AiClient.selfTest(context)
-            note = when (result) {
-                is AiResult.Ok ->
-                    "Connected · ${result.providerLabel} · ${result.model} · reply '${result.text.take(30)}'"
+            when (val result = AiClient.selfTest(context)) {
+                is AiResult.Ok -> {
+                    note = "Connected · ${result.providerLabel} · ${result.model}" +
+                        (result.note?.let { " ($it)" } ?: "") +
+                        " · reply '${result.text.take(30)}'"
+                    noteOk = true
+                    // The client may have switched model; pick the change up in the form.
+                    current = withContext(Dispatchers.IO) { AiKeyStore.config(context) }
+                    current?.let {
+                        model = it.model
+                        provider = it.provider
+                    }
+                }
 
-                is AiResult.Error ->
-                    result.message + (result.hint?.let { " — $it" } ?: "")
+                is AiResult.Error -> {
+                    note = result.message + (result.hint?.let { " — $it" } ?: "")
+                    noteOk = false
+                    // A model problem is self-fixing: list what this key can actually use.
+                    if (result.message.contains("model", ignoreCase = true)) {
+                        fetchModels(auto = true)
+                    }
+                }
             }
-            noteOk = result is AiResult.Ok
             busy = false
         }
     }
@@ -123,6 +205,7 @@ fun AiSettingsScreen(onBack: () -> Unit) {
             withContext(Dispatchers.IO) { AiKeyStore.clear(context) }
             current = null
             keyDraft = ""
+            models = emptyList()
             note = "Key removed from this device."
             noteOk = true
             busy = false
@@ -140,10 +223,11 @@ fun AiSettingsScreen(onBack: () -> Unit) {
             label = "STATUS",
             accent = if (current != null) StatusGreen else TextMuted,
         ) {
-            if (current != null) {
-                ReadoutRow(label = "PROVIDER", value = current!!.label, valueColor = StatusGreen)
-                ReadoutRow(label = "MODEL", value = current!!.resolvedModel)
-                ReadoutRow(label = "KEY", value = current!!.maskedKey)
+            val stored = current
+            if (stored != null) {
+                ReadoutRow(label = "PROVIDER", value = stored.label, valueColor = StatusGreen)
+                ReadoutRow(label = "MODEL", value = stored.resolvedModel)
+                ReadoutRow(label = "KEY", value = stored.maskedKey)
             } else {
                 ReadoutRow(label = "PROVIDER", value = "—", valueColor = TextMuted)
                 ReadoutRow(label = "MODEL", value = "—", valueColor = TextMuted)
@@ -215,8 +299,7 @@ fun AiSettingsScreen(onBack: () -> Unit) {
                         .fillMaxWidth()
                         .padding(bottom = 5.dp)
                         .background(
-                            if (selected) ElectricCyan.copy(alpha = 0.12f)
-                            else Color(0xFF0A1622),
+                            if (selected) ElectricCyan.copy(alpha = 0.12f) else Color(0xFF0A1622),
                             ChipShape,
                         )
                         .border(
@@ -227,6 +310,7 @@ fun AiSettingsScreen(onBack: () -> Unit) {
                         .clickable {
                             provider = option
                             autoDetect = false
+                            models = emptyList()
                             if (model.isBlank()) model = option.defaultModel
                         }
                         .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -273,13 +357,111 @@ fun AiSettingsScreen(onBack: () -> Unit) {
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "DEFAULT · ${provider.defaultModel.ifBlank { "ENTER ONE" }}  ·  USING ${effectiveModel.ifBlank { "—" }.uppercase()}",
+                text = "USING ${effectiveModel.ifBlank { "—" }.uppercase()}",
                 style = HudType.label.copy(fontSize = 7.sp, letterSpacing = 1.sp),
                 color = TextMuted,
             )
 
-            if (provider.needsBaseUrl) {
+            Spacer(Modifier.height(10.dp))
+
+            // Model ids get retired without notice, so the list is fetched, never assumed.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        (if (fetchingModels) TextMuted else ElectricCyan).copy(alpha = 0.10f),
+                        ChipShape,
+                    )
+                    .border(
+                        1.dp,
+                        (if (fetchingModels) TextMuted else ElectricCyan).copy(alpha = 0.40f),
+                        ChipShape,
+                    )
+                    .clickable(enabled = !fetchingModels) { fetchModels(auto = false) }
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (fetchingModels) "FETCHING MODELS…" else "FETCH MODELS FROM PROVIDER",
+                    style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.4.sp),
+                    color = if (fetchingModels) TextMuted else ElectricCyan,
+                )
+            }
+
+            if (models.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "AVAILABLE · ${models.size}",
+                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+                    color = TextMuted,
+                )
+                Spacer(Modifier.height(6.dp))
+                models.take(modelPage * MODEL_PAGE).forEach { candidate ->
+                    val selected = candidate.equals(effectiveModel, ignoreCase = true)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 4.dp)
+                            .background(
+                                if (selected) StatusGreen.copy(alpha = 0.10f)
+                                else Color(0xFF0A1622),
+                                ChipShape,
+                            )
+                            .border(
+                                1.dp,
+                                (if (selected) StatusGreen else ElectricCyan)
+                                    .copy(alpha = if (selected) 0.40f else 0.12f),
+                                ChipShape,
+                            )
+                            .clickable {
+                                model = candidate
+                                autoDetect = false
+                                note = "Selected $candidate — tap SAVE KEY to keep it."
+                                noteOk = true
+                            }
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = candidate,
+                            style = HudType.terminal.copy(fontSize = 10.sp),
+                            color = if (selected) StatusGreen else TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (selected) {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "IN USE",
+                                style = HudType.label.copy(fontSize = 7.sp, letterSpacing = 1.sp),
+                                color = StatusGreen,
+                            )
+                        }
+                    }
+                }
+                if (models.size > modelPage * MODEL_PAGE) {
+                    Spacer(Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0A1622), ChipShape)
+                            .border(1.dp, ElectricCyan.copy(alpha = 0.16f), ChipShape)
+                            .clickable { modelPage += 1 }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "SHOW MORE (${models.size - modelPage * MODEL_PAGE} LEFT)",
+                            style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+                            color = TextSecondary,
+                        )
+                    }
+                }
+            }
+
+            if (provider.needsBaseUrl) {
+                Spacer(Modifier.height(12.dp))
                 Text(
                     text = "BASE URL",
                     style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
@@ -323,13 +505,39 @@ fun AiSettingsScreen(onBack: () -> Unit) {
                     style = HudType.terminal.copy(fontSize = 10.sp),
                     color = if (noteOk) StatusGreen else Color(0xFFFF8A98),
                 )
+                if (!noteOk && (message.contains("model", ignoreCase = true) ||
+                        message.contains("404"))
+                ) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SmallPill(
+                            label = "FETCH MODELS",
+                            accent = ElectricCyan,
+                            onClick = { fetchModels(auto = false) },
+                        )
+                        SmallPill(
+                            label = "USE ${provider.defaultModel.uppercase()}",
+                            accent = StatusGreen,
+                            onClick = {
+                                model = provider.defaultModel
+                                note = "Selected ${provider.defaultModel} — tap SAVE KEY."
+                                noteOk = true
+                            },
+                        )
+                    }
+                }
             }
         }
 
         ActionButton(
-            label = if (busy) "WORKING…" else "SAVE KEY",
+            label = when {
+                busy -> "WORKING…"
+                keyDraft.isNotBlank() -> "SAVE KEY"
+                configChanged -> "SAVE CHANGES"
+                else -> "SAVE KEY"
+            },
             accent = ElectricCyan,
-            enabled = !busy && keyDraft.isNotBlank(),
+            enabled = !busy && (keyDraft.isNotBlank() || configChanged),
             onClick = { save() },
         )
         ActionButton(
@@ -356,6 +564,14 @@ fun AiSettingsScreen(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(8.dp))
             Text(
+                text = "If a model is rejected, JARVIS tries the provider's known alternatives and " +
+                    "remembers the one that answered, so a retired model id cannot break a routine " +
+                    "that used to work.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
                 text = "Uninstalling JARVIS, or clearing its data, destroys the encryption key " +
                     "and the stored key with it.",
                 style = HudType.terminal.copy(fontSize = 10.sp),
@@ -365,7 +581,24 @@ fun AiSettingsScreen(onBack: () -> Unit) {
     }
 }
 
-private const val MIN_DETECT_LENGTH = 8
+@Composable
+private fun SmallPill(label: String, accent: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .background(accent.copy(alpha = 0.10f), ChipShape)
+            .border(1.dp, accent.copy(alpha = 0.38f), ChipShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Text(
+            text = label,
+            style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.sp),
+            color = accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
 
 @Composable
 private fun ActionButton(

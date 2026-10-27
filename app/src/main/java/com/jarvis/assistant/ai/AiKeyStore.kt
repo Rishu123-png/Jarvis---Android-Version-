@@ -92,6 +92,22 @@ object AiKeyStore {
         return null
     }
 
+    /**
+     * Changes provider/model/base URL without touching the stored key.
+     *
+     * Needed because switching model is the common fix for a 404, and forcing the operator to paste
+     * the key again just to change one string would be hostile.
+     */
+    fun updateConfig(context: Context, provider: AiProvider, model: String, baseUrl: String) {
+        val store = prefs(context)
+        if (store.getString(P_PAYLOAD, null) == null) return
+        store.edit()
+            .putString(P_PROVIDER, provider.id)
+            .putString(P_MODEL, model.trim())
+            .putString(P_BASE, baseUrl.trim())
+            .apply()
+    }
+
     fun clear(context: Context) {
         prefs(context).edit().clear().apply()
     }

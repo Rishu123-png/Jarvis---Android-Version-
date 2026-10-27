@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,12 +37,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.automation.ActionType
+import com.jarvis.assistant.automation.AutomationEngine
+import com.jarvis.assistant.automation.RunState
 import com.jarvis.assistant.automation.ParamKind
 import com.jarvis.assistant.automation.Workflow
 import com.jarvis.assistant.automation.WorkflowStep
 import com.jarvis.assistant.data.InstalledApp
 import com.jarvis.assistant.ui.components.AppIcon
 import com.jarvis.assistant.ui.components.HudChip
+import com.jarvis.assistant.ui.components.HudMeter
 import com.jarvis.assistant.ui.components.HudDivider
 import com.jarvis.assistant.ui.components.HudPanel
 import com.jarvis.assistant.ui.components.ReadoutRow
@@ -55,6 +59,7 @@ import com.jarvis.assistant.ui.theme.PanelNavy
 import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextPrimary
+import com.jarvis.assistant.ui.theme.TextSecondary
 import com.jarvis.assistant.ui.theme.TileShape
 
 /**
@@ -68,11 +73,30 @@ import com.jarvis.assistant.ui.theme.TileShape
 fun AutomationEditorScreen(
     workflow: Workflow,
     apps: List<InstalledApp>,
+    runState: RunState,
+    accessibilityEnabled: Boolean,
+    screenPressAllowed: Boolean,
     onChange: (Workflow) -> Unit,
     onSave: () -> Unit,
+    onTestStep: (WorkflowStep) -> Unit,
+    onStopTest: () -> Unit,
+    onActivateAccessibility: () -> Unit,
+    onAllowScreenPress: () -> Unit,
     onBack: () -> Unit,
 ) {
     var sheet by remember { mutableStateOf<EditorSheet?>(null) }
+
+    // The engine names its throwaway workflow STEP TEST, so its state is distinguishable here.
+    val stateName: String? = when (runState) {
+        is RunState.Running -> runState.workflowName
+        is RunState.AwaitingConfirmation -> runState.workflowName
+        is RunState.Finished -> runState.workflowName
+        RunState.Idle -> null
+    }
+    val isStepTest = stateName == AutomationEngine.STEP_TEST_NAME
+    val testRunning = isStepTest &&
+        (runState is RunState.Running || runState is RunState.AwaitingConfirmation)
+    val testFinished = isStepTest && runState is RunState.Finished
 
     ModuleScaffold(
         title = "ROUTINE EDITOR",
@@ -127,6 +151,8 @@ fun AutomationEditorScreen(
                         onMoveUp = { onChange(workflow.moveStep(index, index - 1)) },
                         onMoveDown = { onChange(workflow.moveStep(index, index + 1)) },
                         onRemove = { onChange(workflow.removeStep(index)) },
+                        onTest = { onTestStep(step) },
+                        testEnabled = !testRunning,
                     )
                     if (index != workflow.steps.lastIndex) Spacer(Modifier.height(6.dp))
                 }
@@ -147,6 +173,101 @@ fun AutomationEditorScreen(
                     style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.8.sp),
                     color = ElectricCyan,
                 )
+            }
+        }
+
+        // ---- single-step test ----
+        if (testRunning || testFinished) {
+            val accent = when {
+                runState is RunState.AwaitingConfirmation -> Amber
+                testFinished && (runState as RunState.Finished).failed == 0 -> StatusGreen
+                testFinished -> AlertRed
+                else -> ElectricCyan
+            }
+            HudPanel(label = "STEP TEST", accent = accent) {
+                when (runState) {
+                    is RunState.AwaitingConfirmation -> {
+                        Text(
+                            text = "WAITING FOR APPROVAL",
+                            style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.6.sp),
+                            color = Amber,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "${runState.actionLabel} · ${runState.detail}",
+                            style = HudType.value.copy(fontSize = 11.sp),
+                            color = TextPrimary,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "This step is gated. Approve it on the confirmation card.",
+                            style = HudType.terminal.copy(fontSize = 10.sp),
+                            color = TextMuted,
+                        )
+                    }
+
+                    is RunState.Running -> {
+                        Text(
+                            text = "RUNNING · ${runState.currentAction}",
+                            style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.4.sp),
+                            color = ElectricCyan,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        HudMeter(progress = 0.5f, accent = ElectricCyan, height = 5.dp)
+                    }
+
+                    is RunState.Finished -> {
+                        runState.log.forEach { entry ->
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text(
+                                    text = if (entry.ok) "PASS" else "FAIL",
+                                    style = HudType.label.copy(fontSize = 8.sp),
+                                    color = if (entry.ok) StatusGreen else AlertRed,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = entry.actionLabel,
+                                        style = HudType.value.copy(fontSize = 11.sp),
+                                        color = TextPrimary,
+                                    )
+                                    Text(
+                                        text = entry.outcome,
+                                        style = HudType.terminal.copy(fontSize = 10.sp),
+                                        color = if (entry.ok) TextSecondary else Color(0xFFFF8A98),
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "A failing test usually means the step needs a permission or " +
+                                "a target that does not exist right now.",
+                            style = HudType.terminal.copy(fontSize = 10.sp),
+                            color = TextMuted,
+                        )
+                    }
+
+                    else -> Unit
+                }
+                if (testRunning) {
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(AlertRed.copy(alpha = 0.12f), ChipShape)
+                            .border(1.dp, AlertRed.copy(alpha = 0.4f), ChipShape)
+                            .clickable(onClick = onStopTest)
+                            .padding(vertical = 9.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "STOP TEST",
+                            style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.4.sp),
+                            color = AlertRed,
+                        )
+                    }
+                }
             }
         }
 
@@ -270,6 +391,50 @@ fun AutomationEditorScreen(
                             style = HudType.terminal.copy(fontSize = 10.sp),
                             color = TextMuted,
                         )
+                    }
+
+                    if (step.action.needsAccessibility && !accessibilityEnabled) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = "This step needs the accessibility service.",
+                            style = HudType.terminal.copy(fontSize = 10.sp),
+                            color = Amber,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Amber.copy(alpha = 0.12f), ChipShape)
+                                .border(1.dp, Amber.copy(alpha = 0.45f), ChipShape)
+                                .clickable(onClick = onActivateAccessibility)
+                                .padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "ACTIVATE ACCESSIBILITY",
+                                style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.4.sp),
+                                color = Amber,
+                            )
+                        }
+                    }
+
+                    if (step.action == ActionType.PRESS_TEXT && !screenPressAllowed) {
+                        Spacer(Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(IceBlue.copy(alpha = 0.12f), ChipShape)
+                                .border(1.dp, IceBlue.copy(alpha = 0.45f), ChipShape)
+                                .clickable(onClick = onAllowScreenPress)
+                                .padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "ALLOW SCREEN PRESSING",
+                                style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.4.sp),
+                                color = IceBlue,
+                            )
+                        }
                     }
 
                     if (step.action.sensitive) {
@@ -489,6 +654,8 @@ private fun StepRow(
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onRemove: () -> Unit,
+    onTest: () -> Unit,
+    testEnabled: Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -530,6 +697,8 @@ private fun StepRow(
             )
         }
 
+        MiniButton(Icons.Outlined.PlayArrow, testEnabled, onTest, tint = StatusGreen)
+        Spacer(Modifier.width(5.dp))
         MiniButton(Icons.Outlined.ArrowUpward, canMoveUp, onMoveUp)
         Spacer(Modifier.width(5.dp))
         MiniButton(Icons.Outlined.ArrowDownward, canMoveDown, onMoveDown)

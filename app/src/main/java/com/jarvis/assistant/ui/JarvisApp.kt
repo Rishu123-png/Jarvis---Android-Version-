@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.jarvis.assistant.automation.AccessibilityStatus
 import com.jarvis.assistant.automation.AutomationEngine
 import com.jarvis.assistant.automation.AutomationStore
+import com.jarvis.assistant.automation.RunState
 import com.jarvis.assistant.automation.Workflow
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.data.AppRepository
@@ -45,6 +46,7 @@ import com.jarvis.assistant.device.QuickControls
 import com.jarvis.assistant.device.readStorage
 import com.jarvis.assistant.device.rememberDeviceInfo
 import com.jarvis.assistant.device.rememberSystemStatus
+import com.jarvis.assistant.ui.components.ConfirmationOverlay
 import com.jarvis.assistant.ui.components.HudBackground
 import com.jarvis.assistant.ui.components.rememberClock
 import com.jarvis.assistant.ui.components.rememberIsResumed
@@ -412,7 +414,23 @@ fun JarvisApp() {
                     notificationAccess = hasNotificationAccess,
                     onRun = { workflow -> AutomationEngine.run(context, workflow) },
                     onStop = { AutomationEngine.stop() },
-                    onConfirm = { approved -> AutomationEngine.confirm(approved) },
+                    onActivateAll = {
+                        // Everything JARVIS may switch on itself, then one system page.
+                        if (accessibilityEnabled) {
+                            if (!screenPressAllowed) {
+                                AccessibilityStatus.setScreenPressAllowed(context, true)
+                                screenPressAllowed = true
+                            }
+                            if (!hasNotificationAccess) {
+                                QuickControls.openNotificationAccessSettings(context)
+                            }
+                        } else {
+                            LauncherStatus.openSystemScreen(
+                                context,
+                                AccessibilityStatus.settingsIntent(),
+                            )
+                        }
+                    },
                     onDismissFinished = { AutomationEngine.dismissFinished() },
                     onEdit = { workflow ->
                         editingWorkflow = workflow
@@ -447,6 +465,21 @@ fun JarvisApp() {
                         AutomationEditorScreen(
                             workflow = draft,
                             apps = installedApps,
+                            runState = runState,
+                            accessibilityEnabled = accessibilityEnabled,
+                            screenPressAllowed = screenPressAllowed,
+                            onTestStep = { step -> AutomationEngine.testStep(context, step) },
+                            onStopTest = { AutomationEngine.stop() },
+                            onActivateAccessibility = {
+                                LauncherStatus.openSystemScreen(
+                                    context,
+                                    AccessibilityStatus.settingsIntent(),
+                                )
+                            },
+                            onAllowScreenPress = {
+                                AccessibilityStatus.setScreenPressAllowed(context, true)
+                                screenPressAllowed = true
+                            },
                             onChange = { updated -> editingWorkflow = updated },
                             onSave = {
                                 AutomationStore.upsert(context, draft)
@@ -480,6 +513,20 @@ fun JarvisApp() {
                     onOpenTerminal = { route = ROUTE_TERMINAL },
                 )
             }
+        }
+
+        // A suspended routine must stay answerable from any screen. Drawn last so it sits above
+        // the route content, including the automation screen.
+        (runState as? RunState.AwaitingConfirmation)?.let { pending ->
+            ConfirmationOverlay(
+                workflowName = pending.workflowName,
+                actionLabel = pending.actionLabel,
+                detail = pending.detail,
+                stepIndex = pending.stepIndex,
+                stepCount = pending.stepCount,
+                onApprove = { AutomationEngine.confirm(true) },
+                onDecline = { AutomationEngine.confirm(false) },
+            )
         }
     }
 }

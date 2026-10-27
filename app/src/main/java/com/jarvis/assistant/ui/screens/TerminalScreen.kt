@@ -130,7 +130,10 @@ fun TerminalScreen(
                         append(line)
                     }
                 }
-                append("via ${result.providerLabel} · ${result.model}")
+                append(
+                    "via ${result.providerLabel} · ${result.model}" +
+                        (result.note?.let { " ($it)" } ?: "")
+                )
             }
 
             is AiResult.Error -> {
