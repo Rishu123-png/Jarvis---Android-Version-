@@ -135,8 +135,9 @@ data class Condition(
 
     companion object {
         fun fromJson(obj: JSONObject?): Condition? {
-            val type = ConditionType.fromId(obj?.optString("type")) ?: return null
-            return Condition(type, obj.optString("param", type.defaultParam))
+            val source = obj ?: return null
+            val type = ConditionType.fromId(source.optString("type")) ?: return null
+            return Condition(type, source.optString("param", type.defaultParam))
         }
     }
 }

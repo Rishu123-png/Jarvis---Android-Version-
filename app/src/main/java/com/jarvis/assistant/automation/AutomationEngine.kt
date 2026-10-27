@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -211,7 +212,7 @@ object AutomationEngine {
         counters: Counters,
     ): Boolean {
         for ((index, step) in steps.withIndex()) {
-            if (!isActive) return true
+            if (!currentCoroutineContext().isActive) return true
 
             if (budget.remaining <= 0) {
                 log.add(
@@ -289,7 +290,7 @@ object AutomationEngine {
                     log.add(RunLogEntry(index, "REPEAT", "$times×", ok = true))
                     var stopped = false
                     for (round in 1..times) {
-                        if (!isActive) {
+                        if (!currentCoroutineContext().isActive) {
                             stopped = true
                             break
                         }
@@ -440,7 +441,7 @@ object AutomationEngine {
         val deadline = System.currentTimeMillis() + timeoutSec.coerceIn(5, 600) * 1000L
         var lastDescribe = ""
         while (System.currentTimeMillis() < deadline) {
-            if (!isActive) return "Cancelled" to false
+            if (!currentCoroutineContext().isActive) return "Cancelled" to false
             val evaluation = ConditionEvaluator.evaluate(context, condition)
             lastDescribe = evaluation.describe
             if (evaluation.passed) return "Became true · ${evaluation.describe}" to true

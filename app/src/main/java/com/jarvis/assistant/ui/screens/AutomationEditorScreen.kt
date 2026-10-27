@@ -739,7 +739,7 @@ private fun StepRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = depth * 14.dp)
+            .padding(start = (depth * 14).dp)
             .background(PanelNavy.copy(alpha = 0.6f), TileShape)
             .border(
                 1.dp,
