@@ -59,6 +59,7 @@ import com.jarvis.assistant.ui.theme.PanelNavy
 import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextPrimary
+import com.jarvis.assistant.ui.theme.TextSecondary
 import com.jarvis.assistant.ui.theme.TileShape
 
 /**
