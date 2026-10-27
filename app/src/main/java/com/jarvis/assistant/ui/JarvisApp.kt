@@ -1,7 +1,9 @@
 package com.jarvis.assistant.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -47,6 +49,7 @@ import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.DockPrefs
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
+import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.LauncherStatus
 import com.jarvis.assistant.device.NotificationAccess
 import com.jarvis.assistant.device.NotificationRepository
@@ -54,6 +57,7 @@ import com.jarvis.assistant.device.QuickControls
 import com.jarvis.assistant.device.readStorage
 import com.jarvis.assistant.device.rememberDeviceInfo
 import com.jarvis.assistant.device.rememberSystemStatus
+import com.jarvis.assistant.shell.ShizukuShell
 import com.jarvis.assistant.ui.components.ConfirmationOverlay
 import com.jarvis.assistant.ui.components.HudBackground
 import com.jarvis.assistant.ui.components.rememberClock
@@ -167,6 +171,16 @@ fun JarvisApp() {
         notificationsAllowed = canPostNotifications(context)
     }
 
+    // ---- quiet mode + privileged shell ----
+    var dndAccess by remember { mutableStateOf(DndControl.hasAccess(context)) }
+    var dndMode by remember { mutableStateOf(DndControl.current(context)) }
+    val shizukuState by ShizukuShell.state.collectAsState()
+
+    fun refreshQuietMode() {
+        dndAccess = DndControl.hasAccess(context)
+        dndMode = DndControl.current(context)
+    }
+
     // ---- intelligence ----
     var aiConfig by remember { mutableStateOf(AiKeyStore.config(context)) }
 
@@ -208,6 +222,10 @@ fun JarvisApp() {
         aiConfig = withContext(Dispatchers.IO) { AiKeyStore.config(context) }
         history = AutomationStore.history(context)
         notificationsAllowed = canPostNotifications(context)
+        refreshQuietMode()
+        // Only registers Shizuku listeners; if Shizuku is absent this is a no-op.
+        ShizukuShell.attach(context)
+        ShizukuShell.refresh(context)
     }
 
     // Refresh on every foreground pass: apps change, access can be revoked, media comes and goes.
@@ -224,6 +242,8 @@ fun JarvisApp() {
                 armed = AutomationTriggers.isArmed(context)
                 exactAlarmsAllowed = AutomationTriggers.canScheduleExact(context)
                 notificationsAllowed = canPostNotifications(context)
+                refreshQuietMode()
+                scope.launch { ShizukuShell.refresh(context) }
                 if (refreshGate.compareAndSet(false, true)) {
                     scope.launch {
                         try {
@@ -252,6 +272,42 @@ fun JarvisApp() {
     }
 
     val launchApp: (InstalledApp) -> Unit = { app -> LauncherStatus.launch(context, app) }
+
+    /**
+     * Sets the interruption filter for real. Returns the system's answer through the recomposed
+     * state; without the special grant it opens the one screen that can give it instead of failing
+     * silently.
+     */
+    val applyDnd: (DndControl.Mode) -> Unit = { mode ->
+        when (DndControl.set(context, mode)) {
+            null -> QuickControls.openDndAccessSettings(context)
+            else -> Unit
+        }
+        refreshQuietMode()
+    }
+
+    val shizukuAction: () -> Unit = {
+        when (shizukuState.status) {
+            ShizukuShell.Status.PERMISSION_NEEDED -> ShizukuShell.requestPermission(context)
+            ShizukuShell.Status.NOT_RUNNING -> {
+                val intent = ShizukuShell.launchIntent(context)
+                if (intent != null) LauncherStatus.openSystemScreen(context, intent)
+            }
+
+            ShizukuShell.Status.NOT_INSTALLED -> {
+                try {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/"))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                } catch (t: Throwable) {
+                    // No browser installed; the status row already says what is missing.
+                }
+            }
+
+            ShizukuShell.Status.READY -> Unit
+        }
+    }
 
     BackHandler(enabled = route != ROUTE_DASHBOARD) { route = ROUTE_DASHBOARD }
 
@@ -330,6 +386,11 @@ fun JarvisApp() {
                         QuickControls.openNotificationAccessSettings(context)
                     },
                     onOpenIntelligence = { route = ROUTE_AI },
+                    dndAccess = dndAccess,
+                    dndLabel = DndControl.label(context),
+                    shizuku = shizukuState,
+                    onOpenDndAccess = { QuickControls.openDndAccessSettings(context) },
+                    onShizukuAction = shizukuAction,
                     onBack = { route = ROUTE_DASHBOARD },
                 )
 
@@ -404,6 +465,10 @@ fun JarvisApp() {
                     onOpenInternetPanel = { QuickControls.openInternetPanel(context) },
                     onOpenBluetoothSettings = { QuickControls.openBluetoothSettings(context) },
                     onOpenDndSettings = { QuickControls.openDndSettings(context) },
+                    dndAccess = dndAccess,
+                    dndMode = dndMode,
+                    onSetDnd = applyDnd,
+                    onOpenDndAccess = { QuickControls.openDndAccessSettings(context) },
                     onOpenDisplaySettings = { QuickControls.openDisplaySettings(context) },
                     onOpenNotificationAccess = {
                         QuickControls.openNotificationAccessSettings(context)

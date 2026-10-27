@@ -29,6 +29,23 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <!--
+      Notification policy access.
+
+      This is the only way an ordinary app may set the Do Not Disturb state directly. It is a
+      special app access (Settings -> Notifications -> Do Not Disturb access), the operator grants it
+      explicitly, and without it JARVIS falls back to opening the system screen and saying so.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
+    <!--
+      Shizuku (optional).
+
+      `moe.shizuku.manager.permission.API_V23` and the `<meta-data>` marker below are contributed by
+      the dev.rikka.shizuku:provider artifact's own manifest, so they are not repeated here. The
+      <provider> entry is required: it is how the Shizuku binder is delivered to this app.
+    -->
+
+    <!--
       Package visibility (Android 11+).
       Without this block, queryIntentActivities() silently returns an empty list on targetSdk 30+
       and the app drawer looks broken. Declaring the intents we query is the supported way to
@@ -43,6 +60,9 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
         </intent>
+        <!-- Android 11+ package visibility: needed to report whether Shizuku is installed. -->
+        <package android:name="moe.shizuku.manager" />
+        <package android:name="moe.shizuku.privileged.api" />
     </queries>
 
     <application
@@ -154,6 +174,22 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!--
+          Shizuku binder provider.
+
+          A ContentProvider (not a service) because that is how the Shizuku library hands over its
+          binder. `android:permission` is a signature permission held only by the system, so no other
+          ordinary app can query it. If Shizuku is not installed this provider simply never answers;
+          nothing else in the app depends on it being alive.
+        -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>
 
 </manifest>

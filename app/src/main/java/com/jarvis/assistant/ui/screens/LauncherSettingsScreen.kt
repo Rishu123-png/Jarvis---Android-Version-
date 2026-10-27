@@ -40,6 +40,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.jarvis.assistant.BuildConfig
 import com.jarvis.assistant.device.LauncherStatus
+import com.jarvis.assistant.shell.ShizukuShell
 import com.jarvis.assistant.ui.components.HudChip
 import com.jarvis.assistant.ui.components.HudDivider
 import com.jarvis.assistant.ui.components.HudPanel
@@ -73,6 +74,11 @@ fun LauncherSettingsScreen(
     onEditDock: () -> Unit,
     onOpenNotificationAccess: () -> Unit,
     onOpenIntelligence: () -> Unit,
+    dndAccess: Boolean,
+    dndLabel: String,
+    shizuku: ShizukuShell.State,
+    onOpenDndAccess: () -> Unit,
+    onShizukuAction: () -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -259,6 +265,82 @@ fun LauncherSettingsScreen(
                 text = "Notification access is the only special permission JARVIS can use. It powers " +
                     "the alerts panel and media controls, is granted in system settings, and can be " +
                     "revoked there at any time.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted,
+            )
+        }
+
+        HudPanel(label = "QUIET MODE", accent = if (dndAccess) StatusGreen else Amber) {
+            ReadoutRow(
+                label = "INTERRUPTIONS",
+                value = dndLabel,
+                valueColor = if (dndAccess) StatusGreen else Amber,
+            )
+            ReadoutRow(
+                label = "DND ACCESS",
+                value = if (dndAccess) "GRANTED" else "NOT GRANTED",
+                valueColor = if (dndAccess) StatusGreen else Amber,
+            )
+            ReadoutRow(label = "MODES", value = "OFF · PRIORITY · ALARMS · SILENT")
+            Spacer(Modifier.height(10.dp))
+            ActionButton(
+                label = if (dndAccess) "MANAGE DND ACCESS" else "ENABLE DND ACCESS",
+                icon = Icons.Outlined.NotificationsActive,
+                accent = if (dndAccess) IceBlue else Amber,
+                filled = !dndAccess,
+                onClick = onOpenDndAccess,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Do Not Disturb access is the one special grant that lets an ordinary app " +
+                    "set the interruption filter directly. With it, routines can genuinely silence " +
+                    "the phone; without it JARVIS opens the system screen instead.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted,
+            )
+        }
+
+        HudPanel(
+            label = "PRIVILEGED SHELL",
+            accent = if (shizuku.isReady) StatusGreen else ElectricCyan,
+        ) {
+            ReadoutRow(
+                label = "SHIZUKU",
+                value = ShizukuShell.describe(shizuku),
+                valueColor = if (shizuku.isReady) StatusGreen else TextSecondary,
+            )
+            ReadoutRow(
+                label = "IDENTITY",
+                value = shizuku.privilege.ifBlank { "—" },
+            )
+            ReadoutRow(label = "ROOT", value = "NOT REQUIRED", valueColor = StatusGreen)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = shizuku.detail.ifBlank {
+                    "Optional adb-level shell for routine steps. Nothing binds until a routine or " +
+                        "the terminal asks for it."
+                },
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextSecondary,
+            )
+            Spacer(Modifier.height(10.dp))
+            ActionButton(
+                label = when (shizuku.status) {
+                    ShizukuShell.Status.READY -> "CONNECTED · MANAGE IN SHIZUKU"
+                    ShizukuShell.Status.PERMISSION_NEEDED -> "AUTHORISE JARVIS"
+                    ShizukuShell.Status.NOT_RUNNING -> "START SHIZUKU"
+                    ShizukuShell.Status.NOT_INSTALLED -> "GET SHIZUKU"
+                },
+                icon = Icons.Outlined.Tune,
+                accent = if (shizuku.isReady) StatusGreen else ElectricCyan,
+                filled = shizuku.status == ShizukuShell.Status.PERMISSION_NEEDED,
+                onClick = onShizukuAction,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Shizuku runs as the shell user over adb, so nothing here is root. Shell " +
+                    "steps still need the operator's confirmation, and revoking Shizuku stops them " +
+                    "immediately — everything else in JARVIS keeps working.",
                 style = HudType.terminal.copy(fontSize = 10.sp),
                 color = TextMuted,
             )

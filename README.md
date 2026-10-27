@@ -15,8 +15,10 @@ Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · minSdk 29 (Androi
 | HUD, arc reactor, live telemetry, clock | Working |
 | Home app role, app drawer, launching apps | Working |
 | Notifications, torch, volume, media, system panels | Working |
+| Do Not Disturb — direct control, after one grant | Working |
 | Editable dock, storage telemetry | Working |
 | Automation: control flow, triggers, AI-authored routines | Working |
+| Privileged shell via Shizuku (optional, adb-level, no root) | Working |
 | Intelligence: your own AI key, any supported provider | Working |
 | Voice input and spoken replies | Not built |
 
@@ -61,6 +63,8 @@ print scripted text.
 status      battery     network    storage     apps       alerts [clear]
 torch [on|off]          volume [0-100|up|down]          time
 panel wifi|bt|dnd|display|volume|notification|battery
+dnd [status|on|off|priority|alarms|silent]
+shizuku                 shell <command>
 routines    run <name>  stop       modules    ai         help
 ```
 
@@ -103,8 +107,9 @@ and declines itself after five minutes rather than hanging.
 
 open app · open link · deep link · dial (dialer only, never calls) · compose SMS (never sends) ·
 set timer · set alarm · torch on/off · set media volume · play/pause/next/previous · clear alerts ·
-notify me · speak text · webhook (GET/POST, web schemes only) · open a system panel · wait ·
-system gesture · press a labelled control · IF · REPEAT · WAIT UNTIL · STOP.
+notify me · speak text · webhook (GET/POST, web schemes only) · open a system panel · do not
+disturb (off/priority/alarms/silent) · shell command (needs Shizuku) · wait · system gesture ·
+press a labelled control · IF · REPEAT · WAIT UNTIL · STOP.
 
 ### Compose with AI
 
@@ -120,6 +125,8 @@ no way to say otherwise.
 | --- | --- | --- |
 | Nothing | — | apps, links, dialer, SMS composer, timer, alarm, torch, volume, panels, speech |
 | Notification access | system switch | media transport, clearing alerts |
+| Do Not Disturb access | system switch | setting the interruption filter directly |
+| Shizuku | separate app, adb-level service | shell steps (`shell`, `pm`, `cmd`, …) |
 | Accessibility service | system switch | navigation gestures |
 | Screen pressing | separate in-app opt-in | pressing one labelled control |
 | Webhook | confirmation each run | calling a URL you own |
@@ -129,8 +136,13 @@ Every sensitive step suspends the routine until you approve it. The accessibilit
 
 ### What automation deliberately cannot do
 
-It will not place a call, send a message, flip Wi-Fi or DND, or move money. Those steps open the
-relevant screen so the final action stays yours. It cannot run while the app has been force-stopped,
+It will not place a call, send a message, flip Wi-Fi, or move money. Those steps open the relevant
+screen so the final action stays yours.
+
+Do Not Disturb is the exception, and only because Android has a grant for exactly that: with
+*Do Not Disturb access* the step sets the interruption filter for real (`dnd silent`). Without the
+grant the step is skipped with the reason "Do Not Disturb access is not granted", and the screen
+offers the one system page that can grant it. Nothing claims to have worked when it did not. It cannot run while the app has been force-stopped,
 and it cannot fire on a state Android never reports to a background app.
 
 ### Run history
@@ -281,7 +293,12 @@ app/src/main/java/com/jarvis/assistant/
 │   ├── LauncherStatus.kt        home role, role request, app launching
 │   ├── Notifications.kt         listener repository + access checks
 │   ├── QuickControls.kt         torch, volume, media session, system panels
+│   ├── DndControl.kt            real interruption filter + the access check behind it
 │   └── StorageStatus.kt         StatFs telemetry
+├── shell/
+│   ├── ShizukuShell.kt          optional adb-level shell: status, permission, timeouts
+│   └── ShellUserService.kt      runs in the Shizuku process as shell/root, one command at a time
+│   (app/src/main/aidl/…/IShellService.aidl  the one-method interface between the two)
 ├── data/
 │   ├── HudModules.kt            shortcut tile registry
 │   ├── CommandRegistry.kt       terminal commands + AI system prompt
@@ -335,6 +352,12 @@ model, `ui/components/` owns the visual language, and `ui/screens/` only compose
 - [ ] Screen pressing stays blocked until you allow it separately.
 - [ ] Editor: add → configure → reorder → save → run.
 - [ ] A failing step is logged and the run continues.
+- [ ] `dnd silent` says "access not granted" until you grant Do Not Disturb access, then really goes
+      silent; `dnd off` restores normal interruptions.
+- [ ] With Shizuku stopped, a `shell` step is skipped with a plain reason and the routine continues.
+- [ ] With Shizuku connected and authorised, `shell pm list packages -3` returns real package names.
+- [ ] Killing Shizuku mid-session does not crash JARVIS; the next shell attempt reports it is not
+      running.
 
 **Launcher**
 
@@ -360,8 +383,11 @@ model, `ui/components/` owns the visual language, and `ui/screens/` only compose
 - `INTERNET` exists for one reason: sending your prompt to the provider whose key you stored. With no
   key configured, the app makes no network request at all.
 - The AI key is encrypted with the Android Keystore and sent only to that provider.
-- No microphone permission is requested. Notification access and accessibility are optional, off by
-  default, revoked by a system switch you control.
+- No microphone permission is requested. Notification access, accessibility and Do Not Disturb access
+  are optional, off by default, revoked by a system switch you control.
+- Shizuku is entirely optional. If it is not installed, its manifest provider never answers and every
+  privileged path reports "not available"; nothing binds, nothing waits, nothing crashes. No root is
+  required — Shizuku is started once over adb or wireless debugging.
 - Secrets never belong in the repository — `.gitignore` excludes `secrets.properties`, `*.jks`,
   `keystore.properties` and `.env`.
 
@@ -371,7 +397,9 @@ model, `ui/components/` owns the visual language, and `ui/screens/` only compose
 
 Choosing JARVIS as the launcher will not replace Android. The lock screen, permission dialogs, system
 navigation and protected screens stay with the OS. It is a regular app: no root, no kernel access, no
-monitor mode, no shell inside another app's sandbox. Where a capability is impossible, the interface
-says so rather than pretending.
+monitor mode, no access to another app's sandbox. The one privileged path is opt-in: if you install
+and authorise Shizuku, routine steps and the `shell` command run as the shell user, which is exactly
+the identity `adb shell` already has — no more, and no root. Where a capability is impossible, the
+interface says so rather than pretending.
 
 Voice input is not built in this version.

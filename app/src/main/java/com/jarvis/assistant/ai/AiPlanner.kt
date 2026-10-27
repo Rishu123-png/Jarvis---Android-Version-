@@ -2,6 +2,7 @@ package com.jarvis.assistant.ai
 
 import android.content.Context
 import com.jarvis.assistant.automation.ActionType
+import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.automation.AutomationEngine
 import com.jarvis.assistant.automation.Condition
 import com.jarvis.assistant.automation.ConditionType
@@ -260,6 +261,7 @@ object AiPlanner {
             ActionType.SET_TIMER -> (param.toIntOrNull() ?: 300).coerceIn(1, 86_400).toString()
             ActionType.WAIT -> (param.toIntOrNull() ?: 2).coerceIn(0, 120).toString()
             ActionType.REPEAT_BLOCK -> (param.toIntOrNull() ?: 2).coerceIn(1, 10).toString()
+            ActionType.SET_DND -> DndControl.Mode.fromText(param)?.id ?: DndControl.Mode.SILENT.id
             ActionType.OPEN_APP -> {
                 val pkg = param.substringBefore('/').trim()
                 val exists = try {
