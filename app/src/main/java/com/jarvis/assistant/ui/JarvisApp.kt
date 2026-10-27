@@ -50,6 +50,8 @@ import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.DockPrefs
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
+import com.jarvis.assistant.device.BiometricPolicy
+import com.jarvis.assistant.device.Biometrics
 import com.jarvis.assistant.device.Bubble
 import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.JarvisWidget
@@ -148,6 +150,11 @@ fun JarvisApp(
     // ---- privacy lock ----
     var locked by remember { mutableStateOf(Privacy.isEnabled(context)) }
     var pinChecking by remember { mutableStateOf(false) }
+    var biometricAvailable by remember { mutableStateOf(Biometrics.isAvailable(context)) }
+    var biometricEnabled by remember { mutableStateOf(Biometrics.isEnabled(context)) }
+    var biometricPending by remember { mutableStateOf(false) }
+    var biometricFailures by remember { mutableIntStateOf(0) }
+    var biometricTried by remember { mutableStateOf(false) }
     var pinError by remember { mutableStateOf<String?>(null) }
     var leftAt by remember { mutableLongStateOf(0L) }
     var pinEnabled by remember { mutableStateOf(Privacy.isEnabled(context)) }
@@ -229,8 +236,11 @@ fun JarvisApp(
                         System.currentTimeMillis() - leftAt > Privacy.LOCK_AFTER_MS
                     ) {
                         locked = true
+                        biometricTried = false
+                        biometricFailures = 0
                         route = ROUTE_HOME
                     }
+                    biometricAvailable = Biometrics.isAvailable(context)
                     leftAt = 0L
                 }
                 else -> Unit
@@ -517,6 +527,13 @@ fun JarvisApp(
                     onSelectRoute = { picked ->
                         VoiceSettings.setRoute(context, picked)
                         speechRoute = picked
+                    },
+                    biometricStatus = Biometrics.availability(context),
+                    biometricEnabled = biometricEnabled,
+                    onToggleBiometric = { enable ->
+                        Biometrics.setEnabled(context, enable)
+                        biometricEnabled = enable
+                        if (enable) biometricTried = false
                     },
                     onAddWidget = { requestWidget(context) },
                     onBack = { route = ROUTE_SETTINGS },
@@ -823,9 +840,50 @@ fun JarvisApp(
                     .background(VoidBlack)
                     .windowInsetsPadding(WindowInsets.systemBars),
             ) {
+                // One automatic attempt per lock appearance; after that only the button fires it.
+                LaunchedEffect(locked, biometricFailures) {
+                    val activity = context as? android.app.Activity
+                    if (locked && activity != null && !biometricTried &&
+                        BiometricPolicy.shouldAutoPrompt(biometricEnabled, biometricAvailable, biometricFailures)
+                    ) {
+                        biometricTried = true
+                        biometricPending = true
+                        Biometrics.prompt(activity) { ok ->
+                            biometricPending = false
+                            if (ok) {
+                                pinError = null
+                                biometricFailures = 0
+                                locked = false
+                            } else {
+                                biometricFailures += 1
+                            }
+                        }
+                    }
+                }
+
                 LockScreen(
                     verifying = pinChecking,
                     error = pinError,
+                    biometricOffered = BiometricPolicy.canOffer(biometricEnabled, biometricAvailable),
+                    biometricPending = biometricPending,
+                    onUsePin = { biometricTried = true },
+                    onBiometric = {
+                        val activity = context as? android.app.Activity
+                        if (activity != null && !biometricPending) {
+                            biometricPending = true
+                            biometricTried = true
+                            Biometrics.prompt(activity) { ok ->
+                                biometricPending = false
+                                if (ok) {
+                                    pinError = null
+                                    biometricFailures = 0
+                                    locked = false
+                                } else {
+                                    biometricFailures += 1
+                                }
+                            }
+                        }
+                    },
                     onSubmit = { pin ->
                         if (!pinChecking) {
                             pinChecking = true

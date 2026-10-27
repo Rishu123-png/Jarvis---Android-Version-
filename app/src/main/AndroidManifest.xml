@@ -66,6 +66,14 @@
       down instead of running invisibly.
     -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!--
+      Biometric unlock for the privacy lock.
+
+      A normal permission: it grants the right to *ask* the system to authenticate. No biometric data
+      reaches the app — Android compares in its own secure hardware and returns only a pass/fail.
+    -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!--

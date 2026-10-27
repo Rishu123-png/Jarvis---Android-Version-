@@ -178,12 +178,23 @@ Secrets live in the Android Keystore (`AES/GCM`), never in the repository and ne
 | Contacts / Phone | the chips on home | “call dad”, messages |
 | Camera | the camera chip | photo capture |
 | Overlay | only if you enable the bubble | floating disc |
+| Biometric | a normal permission, no prompt | fingerprint/face unlock shortcut |
 | Accessibility | your explicit choice in settings | screen taps, screenshots, OCR |
 | Notification listener | your explicit choice | alerts, media, `VERIFY` |
 
 **The lock** is a numeric PIN over the app itself: PBKDF2-HMAC-SHA256, 120 000 iterations, random salt,
 constant-time compare, no recovery. It re-engages a minute after you leave. The lock screen shows no app
 names, no history and no last command.
+
+**There is exactly one credential** — the PIN you choose the first time you open *Settings → Advanced →
+Privacy lock*. There is no default, no second password and nothing shipped in the build. Change it by
+turning the lock off and setting a new PIN.
+
+**Fingerprint and face are a shortcut, not a second password.** When the phone has an enrolled sensor,
+the lock screen offers the system prompt first (one automatic attempt, then a button). Android performs
+the match in its own secure hardware and returns only pass/fail — JARVIS never sees, stores or transmits
+biometric data, so there is nothing to extract. If the sensor is wet, busy or locked out, the keypad is
+still there: biometrics can save typing the PIN, never replace it.
 
 There is **no JARVIS backend**. No account, no sync, no analytics, no crash reporting. The only network
 traffic is a request to the provider whose key you pasted, a connector you set up, or a URL you asked

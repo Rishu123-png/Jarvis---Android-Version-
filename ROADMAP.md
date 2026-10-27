@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **2.3.0 (versionCode 16)**.
+Last updated with **2.3.1 (versionCode 17)**.
 
 ---
 
@@ -32,7 +32,7 @@ Last updated with **2.3.0 (versionCode 16)**.
 | Tests: 5 JVM suites over the pure logic, run in CI before the APKs | Live |
 | Quick Settings tiles (open JARVIS, torch) | Live |
 | Reminders, screenshot action, subsystem health panel | Live |
-| Privacy lock (PBKDF2 PIN), floating bubble, home-screen widget | Live |
+| Privacy lock (PBKDF2 PIN) + fingerprint/face shortcut, floating bubble, home-screen widget | Live |
 | Downloads, translate, per-app speech engine choice | Live |
 | OCR fallback for the screen agent (bundled, on device) | Live |
 | VERIFY step type, multi-turn voice, 12-hour clock | Live |

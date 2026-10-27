@@ -57,6 +57,10 @@ fun LockScreen(
     error: String?,
     onSubmit: (String) -> Unit,
     modifier: Modifier = Modifier,
+    biometricOffered: Boolean = false,
+    biometricPending: Boolean = false,
+    onBiometric: () -> Unit = {},
+    onUsePin: () -> Unit = {},
 ) {
     var entry by remember { mutableStateOf("") }
 
@@ -123,6 +127,31 @@ fun LockScreen(
             color = if (error != null) AlertRed else TextMuted,
             textAlign = TextAlign.Center,
         )
+
+        if (biometricOffered) {
+            Spacer(Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(ElectricCyan.copy(alpha = 0.12f), ChipShape)
+                    .border(1.dp, ElectricCyan.copy(alpha = 0.5f), ChipShape)
+                    .clickable(enabled = !biometricPending) { onBiometric() }
+                    .padding(vertical = 13.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (biometricPending) "WAITING FOR SENSOR" else "FINGERPRINT / FACE",
+                    style = HudType.label.copy(fontSize = 10.sp, letterSpacing = 2.sp),
+                    color = ElectricCyan,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "or enter your PIN",
+                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.4.sp),
+                color = TextMuted,
+            )
+        }
 
         Spacer(Modifier.height(24.dp))
 
@@ -197,7 +226,11 @@ fun LockScreen(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = if (verifying) "CHECKING" else "UNLOCK",
+                text = when {
+                    verifying -> "CHECKING"
+                    entry.isEmpty() && biometricOffered -> "USE PIN INSTEAD"
+                    else -> "UNLOCK"
+                },
                 style = HudType.label.copy(fontSize = 11.sp, letterSpacing = 2.2.sp),
                 color = if (entry.length >= Privacy.MIN_DIGITS) ElectricCyan else TextMuted,
             )
