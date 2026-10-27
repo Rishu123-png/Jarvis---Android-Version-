@@ -8,6 +8,8 @@ composeBom = "2024.10.01"
 shizuku = "13.1.5"
 camerax = "1.4.1"
 mlkitText = "16.0.1"
+biometric = "1.1.0"
+fragment = "1.6.2"
 junit = "4.13.2"
 orgJson = "20240303"
 testCore = "1.6.1"
@@ -27,6 +29,8 @@ androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 androidx-mlkit-text = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitText" }
+androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
+androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragment" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 androidx-test-core-ktx = { group = "androidx.test", name = "core-ktx", version.ref = "testCore" }

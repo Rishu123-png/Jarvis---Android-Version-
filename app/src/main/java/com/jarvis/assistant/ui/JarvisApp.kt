@@ -842,7 +842,7 @@ fun JarvisApp(
             ) {
                 // One automatic attempt per lock appearance; after that only the button fires it.
                 LaunchedEffect(locked, biometricFailures) {
-                    val activity = context as? android.app.Activity
+                    val activity = context as? androidx.fragment.app.FragmentActivity
                     if (locked && activity != null && !biometricTried &&
                         BiometricPolicy.shouldAutoPrompt(biometricEnabled, biometricAvailable, biometricFailures)
                     ) {
@@ -868,7 +868,7 @@ fun JarvisApp(
                     biometricPending = biometricPending,
                     onUsePin = { biometricTried = true },
                     onBiometric = {
-                        val activity = context as? android.app.Activity
+                        val activity = context as? androidx.fragment.app.FragmentActivity
                         if (activity != null && !biometricPending) {
                             biometricPending = true
                             biometricTried = true

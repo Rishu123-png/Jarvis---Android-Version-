@@ -1,27 +1,21 @@
 package com.jarvis.assistant.device
 
-import android.app.Activity
 import android.content.Context
-import android.content.DialogInterface
-import android.hardware.biometrics.BiometricManager
-import android.hardware.biometrics.BiometricPrompt
-import android.os.CancellationSignal
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 
 /**
  * Fingerprint and face unlock for the privacy lock.
  *
  * This is a **shortcut**, not a second password. JARVIS never sees, stores or transmits biometric
- * data — Android matches the finger or the face in its own secure hardware and only tells us "yes" or
- * "no". Nothing here can be extracted, and there is nothing to be stolen if the phone is rooted, which
- * is exactly why it is safe to offer.
+ * data — Android matches the finger or the face in its own secure hardware and returns only pass or
+ * fail. There is nothing here to extract, which is exactly why it is safe to offer.
  *
- * The PIN stays the real gate: biometrics can be unavailable (wet finger, no enrolment, hardware
- * locked out after too many attempts), and the keypad is always one tap away. Biometrics can never
- * *replace* the PIN, only save typing it.
- *
- * Uses the platform API directly — the app already requires Android 10 (API 29) and
- * `BiometricManager` arrived in API 29, so no extra dependency is needed and there is no
- * AppCompat/AndroidX fragment requirement.
+ * The PIN stays the real gate: biometrics can be unavailable (wet finger, no enrolment, sensor locked
+ * out after too many attempts), and the keypad is always one tap away. Biometrics can never *replace*
+ * the PIN, only save typing it.
  */
 object Biometrics {
 
@@ -39,80 +33,69 @@ object Biometrics {
     }
 
     /** True when the phone has a working fingerprint/face sensor with at least one enrolled. */
-    fun isAvailable(context: Context): Boolean = try {
-        val manager = context.getSystemService(BiometricManager::class.java) ?: return false
-        manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) ==
-            BiometricManager.BIOMETRIC_SUCCESS
-    } catch (t: Throwable) {
-        false
-    }
+    fun isAvailable(context: Context): Boolean = codeFor(context) == BiometricManager.BIOMETRIC_SUCCESS
 
     /** Why biometrics cannot be offered, for the settings row. */
-    fun availability(context: Context): String = try {
-        val manager = context.getSystemService(BiometricManager::class.java)
-            ?: return "NO SENSOR"
-        when (manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)) {
-            BiometricManager.BIOMETRIC_SUCCESS -> "READY"
-            BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "NO FINGERPRINT SAVED"
-            BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "NO SENSOR"
-            BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "SENSOR BUSY"
-            BiometricManager.BIOMETRIC_STATUS_UNKNOWN -> "UNKNOWN"
-            else -> "UNAVAILABLE"
-        }
-    } catch (t: Throwable) {
-        "UNAVAILABLE"
+    fun availability(context: Context): String = when (codeFor(context)) {
+        BiometricManager.BIOMETRIC_SUCCESS -> "READY"
+        BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "NO FINGERPRINT SAVED"
+        BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "NO SENSOR"
+        BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "SENSOR BUSY"
+        BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> "SECURITY UPDATE NEEDED"
+        BiometricManager.BIOMETRIC_ERROR_UNSUPPORTED -> "UNSUPPORTED"
+        BiometricManager.BIOMETRIC_STATUS_UNKNOWN -> "UNKNOWN"
+        else -> "UNAVAILABLE"
     }
 
     /** Whether the lock screen should attempt biometrics at all. */
     fun canOffer(context: Context): Boolean = isEnabled(context) && isAvailable(context)
 
+    private fun codeFor(context: Context): Int = try {
+        BiometricManager.from(context.applicationContext)
+            .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+    } catch (t: Throwable) {
+        BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
+    }
+
     /**
-     * Shows the system prompt. [onResult] receives true only on a real match; a cancel, a lockout or
-     * an error is false, and the caller keeps the keypad visible.
+     * Shows the system prompt from [activity].
      *
-     * Returns the signal used to cancel, so leaving the screen does not leave a prompt behind.
+     * [onResult] receives true only on a real match. A cancel, a lockout or an error is false, and the
+     * caller keeps the keypad in front. A single non-matching finger does not end the prompt — the
+     * system lets the operator try again.
      */
     fun prompt(
-        activity: Activity,
+        activity: FragmentActivity,
         onResult: (Boolean) -> Unit,
-    ): CancellationSignal? {
-        val executor = activity.mainExecutor
-        val signal = CancellationSignal()
+    ) {
+        val executor = ContextCompat.getMainExecutor(activity)
 
-        val prompt = try {
-            BiometricPrompt.Builder(activity)
-                .setTitle("JARVIS")
-                .setSubtitle("Unlock with your fingerprint or face")
-                .setNegativeButtonText("Use PIN", executor) { _: DialogInterface, _: Int ->
-                    onResult(false)
-                }
-                .build()
-        } catch (t: Throwable) {
-            return null
+        val callback = object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                onResult(true)
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                onResult(false)
+            }
+
+            override fun onAuthenticationFailed() = Unit
         }
 
-        return try {
-            prompt.authenticate(
-                signal,
-                executor,
-                object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
-                        onResult(true)
-                    }
+        val prompt = BiometricPrompt(activity, executor, callback)
+        val info = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("JARVIS")
+            .setSubtitle("Unlock with your fingerprint or face")
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+            .setNegativeButtonText("Use PIN")
+            .setConfirmationRequired(false)
+            .build()
 
-                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
-                        // Includes user cancel, lockout after too many attempts, and hardware errors.
-                        onResult(false)
-                    }
-
-                    // A single non-matching finger does not end the prompt — the system lets the
-                    // operator try again, so this deliberately does nothing.
-                    override fun onAuthenticationFailed() = Unit
-                },
-            )
-            signal
+        try {
+            prompt.authenticate(info)
         } catch (t: Throwable) {
-            null
+            // The sensor vanished between the check and the call, or the activity is finishing.
+            onResult(false)
         }
     }
 }
@@ -127,8 +110,8 @@ object BiometricPolicy {
      * @param enabled   the operator's switch
      * @param available hardware present and enrolled
      * @param failCount failed attempts in this session; after [MAX_AUTO_FAILURES] the prompt is no
-     *   longer fired automatically, because a sensor that keeps rejecting chips away at the "just
-     *   unlock it" moment. The button stays, so it is still one tap.
+     *   longer fired automatically, because a sensor that keeps rejecting turns unlocking into a
+     *   fight. The button stays, so it is still one tap.
      */
     fun shouldAutoPrompt(enabled: Boolean, available: Boolean, failCount: Int): Boolean =
         enabled && available && failCount < MAX_AUTO_FAILURES

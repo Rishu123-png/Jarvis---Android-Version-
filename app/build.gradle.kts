@@ -129,6 +129,14 @@ dependencies {
      */
     implementation(libs.androidx.mlkit.text)
 
+    /*
+     * BiometricPrompt for the privacy lock. The AndroidX facade is used rather than the platform
+     * class so the prompt behaves the same on every OEM skin, and it requires the host activity to be
+     * a FragmentActivity — which MainActivity now is.
+     */
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment.ktx)
+
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
 
