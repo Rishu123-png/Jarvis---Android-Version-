@@ -46,6 +46,10 @@ object VoiceController {
     private var local: LocalSpeech? = null
     private var taskId = 0
 
+    /** The last thing the operator said, so follow-ups ("again, but quieter") have a subject. */
+    @Volatile
+    private var lastHeard: String? = null
+
     fun hasMicrophone(context: Context): Boolean = ContextCompat.checkSelfPermission(
         context.applicationContext,
         Manifest.permission.RECORD_AUDIO,
@@ -110,7 +114,14 @@ object VoiceController {
             return
         }
 
-        if (Whisper.ready(context)) {
+        val route = VoiceSettings.route(context)
+        val useWhisper = when (route) {
+            SpeechRoute.WHISPER -> Whisper.ready(context)
+            SpeechRoute.DEVICE, SpeechRoute.OFFLINE -> false
+            SpeechRoute.AUTO -> Whisper.ready(context)
+        }
+
+        if (useWhisper) {
             val recorder = MicRecorder()
             val problem = recorder.start()
             if (problem != null) {
@@ -131,14 +142,14 @@ object VoiceController {
                 source = "WHISPER",
             )
         } else {
-            val session = LocalSpeech(context)
+            val session = LocalSpeech(context, preferOffline = route == SpeechRoute.OFFLINE)
             session.start()
             local = session
             _state.value = VoiceTask(
                 taskId = id,
                 phase = VoicePhase.LISTENING,
                 subtitle = "TAP TO STOP",
-                source = "DEVICE",
+                source = if (route == SpeechRoute.OFFLINE) "DEVICE · OFFLINE" else "DEVICE",
             )
         }
     }
@@ -211,9 +222,10 @@ object VoiceController {
             error = null,
         )
 
+        val previous = lastHeard
         val plan = withTimeoutOrNull(PLAN_TIMEOUT_MS) {
             try {
-                IntentRouter.plan(context, heard)
+                IntentRouter.plan(context, heard, previous)
             } catch (t: Throwable) {
                 null
             }
@@ -235,6 +247,7 @@ object VoiceController {
         )
 
         runCatching { VoiceMemory.remember(context, heard, plan.title) }
+        lastHeard = heard
 
         if (plan.steps.isEmpty() && !hasScreenTask) {
             speak(context, plan.say)

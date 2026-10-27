@@ -132,11 +132,30 @@ jobs:
               print(f"| {name} | {t} | {f} |")
           EOF
 
+      # Releases need a file name a human can trust. The version is read from the Gradle file so it can
+      # never disagree with the build, and the name is stable across machines.
+      - name: Name the APKs for release
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          CODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts | head -1)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "CODE=$CODE" >> "$GITHUB_ENV"
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/jarvis-$VERSION.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/jarvis-$VERSION-debug.apk"
+          ls -lh dist
+          echo "## APK names" >> "$GITHUB_STEP_SUMMARY"
+          echo "| File | Version | code |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| jarvis-$VERSION.apk | $VERSION | $CODE |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| jarvis-$VERSION-debug.apk | $VERSION-debug | $CODE |" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: dist/*-debug.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -144,18 +163,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-release-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: dist/jarvis-*.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: Attach APKs to release
+      # The exact files a GitHub Release should carry. Both are attached automatically on a v* tag.
+      - name: Attach APKs to the release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
+            dist/jarvis-*.apk
           generate_release_notes: true
+
 
       # Surfaces the compiler output on the commit so failures are readable without
       # downloading log bundles.

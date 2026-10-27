@@ -328,7 +328,7 @@ private fun IdentityBar(
             }
             Spacer(Modifier.height(5.dp))
             Text(
-                text = "${clock.time}:${clock.seconds}",
+                text = clock.labelWithSeconds,
                 style = HudType.valueSmall,
                 color = TextSecondary,
             )
@@ -364,12 +364,18 @@ private fun ReactorBlock(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(text = clock.time, style = HudType.clock, color = TextPrimary)
-                        Text(
-                            text = clock.seconds,
-                            style = HudType.valueSmall.copy(fontSize = 12.sp),
-                            color = IceBlue.copy(alpha = 0.85f),
-                            modifier = Modifier.padding(start = 3.dp, bottom = 8.dp),
-                        )
+                        Column(modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)) {
+                            Text(
+                                text = clock.meridiem,
+                                style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.2.sp),
+                                color = IceBlue.copy(alpha = 0.85f),
+                            )
+                            Text(
+                                text = clock.seconds,
+                                style = HudType.valueSmall.copy(fontSize = 11.sp),
+                                color = TextMuted,
+                            )
+                        }
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(

@@ -57,9 +57,14 @@ enum class ActionType(
     // ---- privileged (needs Shizuku; degrades to a skip when it is not connected) ----
     SHELL("shell", "SHELL COMMAND", "Run an adb-level command through Shizuku", ParamKind.TEXT, sensitive = true),
 
+    // ---- verification: did the previous step actually work? ----
+    VERIFY("verify", "VERIFY", "Check a fact before continuing, e.g. app:com.whatsapp", ParamKind.TEXT),
+
     // ---- speech + network ----
     SAY("say", "SAY", "Speak text out loud", ParamKind.TEXT),
     WEBHOOK("webhook", "WEBHOOK", "Call a URL you own, e.g. https://host/path", ParamKind.TEXT, sensitive = true),
+    DOWNLOAD("download", "DOWNLOAD", "Save a file to Download/JARVIS, e.g. \"https://host/file|name\"", ParamKind.TEXT, sensitive = true),
+    TRANSLATE("translate", "TRANSLATE", "Translate text through your AI key: \"lang|text\"", ParamKind.TEXT, sensitive = true),
 
     // ---- accessibility ----
     GLOBAL_ACTION("global", "SYSTEM GESTURE", "Back, home, recents, shade, quick settings, lock", ParamKind.TEXT, needsAccessibility = true, sensitive = true),

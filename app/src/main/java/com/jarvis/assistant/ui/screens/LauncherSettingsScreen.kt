@@ -79,6 +79,8 @@ fun LauncherSettingsScreen(
     shizuku: ShizukuShell.State,
     onOpenDndAccess: () -> Unit,
     onShizukuAction: () -> Unit,
+    onOpenAdvanced: () -> Unit,
+    pinEnabled: Boolean,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -104,6 +106,34 @@ fun LauncherSettingsScreen(
         statusLabel = "LIVE",
         onBack = onBack,
     ) {
+        HudPanel(
+            label = "ADVANCED",
+            accent = Amber,
+            trailing = { HudChip(text = if (pinEnabled) "LOCKED" else "OPEN", accent = if (pinEnabled) StatusGreen else Amber) },
+        ) {
+            Text(
+                text = "Privacy lock, floating bubble, speech engine and the home-screen widget.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    modifier = Modifier
+                        .background(PanelNavy.copy(alpha = 0.9f), ChipShape)
+                        .border(1.dp, ElectricCyan.copy(alpha = 0.28f), ChipShape)
+                        .clickable(onClick = onOpenAdvanced)
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                ) {
+                    Text(
+                        text = "OPEN ADVANCED SETTINGS",
+                        style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.4.sp),
+                        color = ElectricCyan,
+                    )
+                }
+            }
+        }
+
         HudPanel(
             label = "HOME ROLE",
             accent = if (isHome) StatusGreen else ElectricCyan,

@@ -49,7 +49,7 @@ object Reminders {
         val triggerAt = when {
             inSeconds != null && inSeconds > 0 -> System.currentTimeMillis() + inSeconds * 1_000L
             atClock != null -> nextOccurrence(atClock)
-            else -> return Outcome(false, "I need a time — try \"in 10 minutes\" or \"at 18:30\".")
+            else -> return Outcome(false, "I need a time — try \"in 10 minutes\" or \"at 6:30 PM\".")
         }
         if (triggerAt <= System.currentTimeMillis()) return Outcome(false, "That time has already passed.")
 
@@ -58,7 +58,7 @@ object Reminders {
         store(context, (existing + reminder).sortedBy { it.at }.take(MAX_PENDING))
 
         val scheduled = arm(context, reminder)
-        val clock = SimpleDateFormat("HH:mm", Locale.US).format(Date(triggerAt))
+        val clock = SimpleDateFormat("h:mm a", Locale.US).format(Date(triggerAt))
         val whenPart = if (inSeconds != null) "in ${describe(inSeconds)}" else "at $clock"
 
         return when (scheduled) {
@@ -183,6 +183,9 @@ object Reminders {
             // Permission revoked between scheduling and firing.
         }
     }
+
+    /** "6:30 PM" for any stored HH:mm, so the HUD never shows a 24-hour clock. */
+    fun clock12(hhmm: String): String = com.jarvis.assistant.voice.VoiceParsing.clock12(hhmm)
 
     private fun describe(seconds: Long): String = when {
         seconds < 60 -> "$seconds seconds"

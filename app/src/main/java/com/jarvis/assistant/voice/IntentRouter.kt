@@ -57,7 +57,7 @@ object IntentRouter {
 
     fun aiReady(context: Context): Boolean = AiKeyStore.config(context) != null
 
-    suspend fun plan(context: Context, heard: String): VoicePlan {
+    suspend fun plan(context: Context, heard: String, previous: String? = null): VoicePlan {
         val spoken = heard.trim()
         if (spoken.isEmpty()) {
             return VoicePlan(
@@ -71,22 +71,22 @@ object IntentRouter {
 
         if (aiReady(context)) {
             val viaAi = try {
-                aiPlan(context, spoken)
+                aiPlan(context, spoken, previous)
             } catch (t: Throwable) {
                 null
             }
             if (viaAi != null) return viaAi
         }
 
-        return localPlan(context, spoken)
+        return localPlan(context, spoken, previous)
     }
 
     // ---------------------------------------------------------------------------------------------
     // AI path
     // ---------------------------------------------------------------------------------------------
 
-    private suspend fun aiPlan(context: Context, heard: String): VoicePlan? {
-        val system = systemPrompt(context)
+    private suspend fun aiPlan(context: Context, heard: String, previous: String?): VoicePlan? {
+        val system = systemPrompt(context, previous)
         val result = AiClient.chat(
             context = context,
             messages = listOf(AiMessage.user(heard)),
@@ -151,7 +151,7 @@ object IntentRouter {
         )
     }
 
-    private suspend fun systemPrompt(context: Context): String {
+    private suspend fun systemPrompt(context: Context, previous: String?): String {
         val actions = voiceActions.joinToString("\n") { action ->
             val kind = when (action.paramKind) {
                 ParamKind.NONE -> "no param"
@@ -213,6 +213,25 @@ object IntentRouter {
 
             Recent commands for context:
             $recents
+
+            ${followUpRule(previous)}
+        """.trimIndent()
+    }
+
+    /**
+     * The multi-turn rule.
+     *
+     * A follow-up such as "again but quieter" or "do that for Divik" only makes sense next to what
+     * was just asked, so the previous sentence is handed to the model explicitly rather than being
+     * inferred from the recents list.
+     */
+    private fun followUpRule(previous: String?): String {
+        if (previous.isNullOrBlank()) return "There is no previous command; treat this as the first turn."
+        return """
+            The operator's previous command was: "$previous"
+            If the new sentence is a follow-up ("again", "but quieter", "do that for Divik", "turn it
+            off", "what about tomorrow"), resolve it against that previous command and plan the action
+            it implies. Do not ask for clarification when the previous command makes it obvious.
         """.trimIndent()
     }
 
@@ -301,7 +320,7 @@ object IntentRouter {
     // Local path — silent fallback, no menu anywhere in the UI
     // ---------------------------------------------------------------------------------------------
 
-    private suspend fun localPlan(context: Context, heard: String): VoicePlan {
+    private suspend fun localPlan(context: Context, heard: String, previous: String? = null): VoicePlan {
         fun answer(
             title: String,
             say: String,
@@ -318,9 +337,9 @@ object IntentRouter {
 
         // "again" / "repeat" re-runs the previous command.
         if (clean in setOf("again", "repeat", "do it again", "repeat that", "same again")) {
-            val previous = VoiceMemory.lastCommand(context)
+            val last = VoiceMemory.lastCommand(context)
                 ?: return answer("NOTHING TO REPEAT", "There is nothing to repeat yet.")
-            return localPlan(context, previous)
+            return localPlan(context, last, null)
         }
 
         // People speak in chains; flatten before parsing.
@@ -395,6 +414,46 @@ object IntentRouter {
                 if (off) "DND OFF" else "DND ON",
                 if (off) "Interruptions back on." else "Do not disturb on.",
                 listOf(PlannedStep(ActionType.SET_DND, param, if (off) "DND OFF" else "DND ON")),
+            )
+        }
+
+        // Follow-ups that adjust rather than repeat.
+        if (clean.contains("louder") || clean.contains("volume up")) {
+            return answer(
+                "VOLUME UP",
+                "Louder.",
+                listOf(PlannedStep(ActionType.SET_VOLUME, "80", "VOLUME 80")),
+            )
+        }
+        if (clean.contains("quieter") || clean.contains("volume down")) {
+            return answer(
+                "VOLUME DOWN",
+                "Quieter.",
+                listOf(PlannedStep(ActionType.SET_VOLUME, "25", "VOLUME 25")),
+            )
+        }
+
+        // Downloads.
+        Regex("\\b(?:download|save)\\s+(https?://\\S+)").find(clean)?.let { match ->
+            return answer(
+                "DOWNLOAD",
+                "Downloading.",
+                listOf(PlannedStep(ActionType.DOWNLOAD, match.groupValues[1], "DOWNLOAD")),
+            )
+        }
+
+        // Translation: "translate good morning to hindi".
+        Regex("translate\\s+(.+?)\\s+(?:to|in|into)\\s+([a-z ]{3,20})$").find(clean)?.let { match ->
+            val text = heard.trim()
+                .replace(Regex("(?i)^translate\\s+"), "")
+                .substringBeforeLast(" to ", "")
+                .substringBeforeLast(" in ", "")
+                .trim()
+            val language = match.groupValues[2].trim()
+            return answer(
+                "TRANSLATE",
+                "Translating to $language.",
+                listOf(PlannedStep(ActionType.TRANSLATE, "$language|$text", "TRANSLATE")),
             )
         }
 

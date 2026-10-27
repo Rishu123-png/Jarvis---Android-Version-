@@ -19,7 +19,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * always destroyed after a session, and every await is bounded: a recognizer that never calls back
  * must never leave the HUD stuck.
  */
-class LocalSpeech(context: Context) {
+class LocalSpeech(context: Context, private val preferOffline: Boolean = false) {
 
     private val appContext = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
@@ -55,6 +55,9 @@ class LocalSpeech(context: Context) {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                // Only honoured by recognizers with an on-device model; others ignore it and
+                // fall back to the network, which the UI already says.
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOffline)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, appContext.packageName)
             }
             try {

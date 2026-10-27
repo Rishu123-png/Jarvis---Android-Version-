@@ -59,6 +59,13 @@
       finishes. A spoken chain such as "open camera, capture, show it" then opens the newest file.
     -->
     <uses-permission android:name="android.permission.CAMERA" />
+
+    <!--
+      Floating bubble (opt-in). SYSTEM_ALERT_WINDOW is a special app access: the operator grants it in
+      system settings and can revoke it at any time, in which case the bubble service shuts itself
+      down instead of running invisibly.
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!--
@@ -173,6 +180,28 @@
             <intent-filter>
                 <action android:name="com.jarvis.assistant.action.FIRE_ROUTINE" />
             </intent-filter>
+        </receiver>
+
+        <!-- The floating bubble. Foreground, so it cannot be killed silently mid-session. -->
+        <service
+            android:name=".device.BubbleService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Operator-enabled floating shortcut to the voice surface" />
+        </service>
+
+        <!-- Home-screen widget: a live 12-hour clock that opens JARVIS ready to listen. -->
+        <receiver
+            android:name=".device.JarvisWidget"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
         </receiver>
 
         <!--

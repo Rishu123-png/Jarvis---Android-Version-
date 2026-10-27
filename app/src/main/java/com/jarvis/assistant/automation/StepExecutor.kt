@@ -15,6 +15,8 @@ import com.jarvis.assistant.R
 import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
+import com.jarvis.assistant.ai.Translator
+import com.jarvis.assistant.device.Downloads
 import com.jarvis.assistant.device.Gallery
 import com.jarvis.assistant.device.Reminders
 import com.jarvis.assistant.device.QuickCapture
@@ -162,6 +164,36 @@ object StepExecutor {
             ActionType.CAPTURE_PHOTO -> {
                 val (uri, error) = QuickCapture.capture(context)
                 if (uri == null) Result.Failed(error ?: "No photo was taken") else Result.Ok("Photo saved")
+            }
+
+            ActionType.VERIFY -> when (val check = Verify.evaluate(context, step.param)) {
+                is Verify.Result.Passed -> Result.Ok(check.detail)
+                is Verify.Result.Failed -> Result.Failed(check.detail)
+                is Verify.Result.Unavailable -> Result.Skipped(check.detail)
+            }
+
+            ActionType.DOWNLOAD -> {
+                val parts = step.param.split('|')
+                val url = parts.getOrNull(0)?.trim().orEmpty()
+                val name = parts.getOrNull(1)?.trim().orEmpty()
+                val outcome = Downloads.fetch(context, url, name)
+                if (outcome.uri == null) {
+                    Result.Failed(outcome.error ?: "The download failed")
+                } else {
+                    Result.Ok("Saved ${outcome.name} to Download/JARVIS")
+                }
+            }
+
+            ActionType.TRANSLATE -> {
+                val parts = step.param.split('|')
+                val language = parts.getOrNull(0)?.trim().orEmpty().ifBlank { "English" }
+                val text = parts.drop(1).joinToString("|").trim()
+                val outcome = Translator.translate(context, text, language)
+                if (outcome.text == null) {
+                    Result.Failed(outcome.error ?: "Translation failed")
+                } else {
+                    Result.Ok(outcome.text)
+                }
             }
 
             ActionType.SCREENSHOT -> {
@@ -373,9 +405,11 @@ object StepExecutor {
                     .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
-            Result.Ok("Alarm set for ${time.hour.toString().padStart(2, '0')}:${
-                time.minute.toString().padStart(2, '0')
-            }")
+            Result.Ok(
+                "Alarm set for " + com.jarvis.assistant.voice.VoiceParsing.clock12(
+                    String.format(Locale.US, "%02d:%02d", time.hour, time.minute),
+                ),
+            )
         } catch (t: Throwable) {
             Result.Failed("No alarm app available")
         }
