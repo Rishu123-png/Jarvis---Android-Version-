@@ -1,372 +1,466 @@
+<div align="center">
+
+<img src=".github/assets/banner.png" alt="J.A.R.V.I.S." width="100%" />
+
+<br />
+
+<svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Arc reactor">
+  <defs>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#EAFDFF"/>
+      <stop offset="45%" stop-color="#16C8FF"/>
+      <stop offset="100%" stop-color="#0A3D57"/>
+    </radialGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2.4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#glow)">
+    <circle cx="60" cy="60" r="52" fill="none" stroke="#16C8FF" stroke-opacity="0.18" stroke-width="1"/>
+    <g>
+      <circle cx="60" cy="60" r="44" fill="none" stroke="#16C8FF" stroke-opacity="0.55"
+              stroke-width="1.5" stroke-dasharray="10 8">
+        <animateTransform attributeName="transform" type="rotate"
+                          from="0 60 60" to="360 60 60" dur="14s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+    <g>
+      <circle cx="60" cy="60" r="34" fill="none" stroke="#8BEAFF" stroke-opacity="0.5"
+              stroke-width="1.2" stroke-dasharray="3 14" stroke-linecap="round">
+        <animateTransform attributeName="transform" type="rotate"
+                          from="360 60 60" to="0 60 60" dur="9s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+    <g>
+      <circle cx="60" cy="60" r="24" fill="none" stroke="#16C8FF" stroke-opacity="0.7" stroke-width="1"/>
+      <circle cx="60" cy="60" r="24" fill="none" stroke="#8BEAFF" stroke-width="2"
+              stroke-dasharray="6 44" stroke-linecap="round">
+        <animateTransform attributeName="transform" type="rotate"
+                          from="0 60 60" to="360 60 60" dur="3.2s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+    <circle cx="60" cy="60" r="12" fill="url(#core)">
+      <animate attributeName="r" values="11;13;11" dur="2.6s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.85;1;0.85" dur="2.6s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+</svg>
+
 # J.A.R.V.I.S.
 
-**A native Android assistant that actually does things.** Voice in, real actions out — calls, messages,
-camera, app control — on top of a hand-drawn HUD. No account, no JARVIS server, no telemetry. Every AI
-feature runs on a key *you* own, and every permission is requested at the moment it is needed.
+**A family member who lives on your phone — not an assistant that waits for commands.**
 
-`com.jarvis.assistant` · Kotlin + Jetpack Compose + Material 3 · minSdk 29 (Android 10) · **1.0.0**
+[![Build](https://github.com/Rishu123-png/Jarvis---Android-Version-/actions/workflows/build.yml/badge.svg)](https://github.com/Rishu123-png/Jarvis---Android-Version-/actions/workflows/build.yml)
+![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
+![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-17%20suites-48E5A2?style=flat-square)
+![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
-| | |
-| --- | --- |
-| **Voice** | Tap the orb, speak, tap again. Whisper through your key, or the phone's own recognizer |
-| **Actions** | 33 typed actions — calls, messages, camera, screenshots, downloads, reminders, translation |
-| **Chains** | “open camera, capture, show me” — up to 8 steps with waits between app hand-offs |
-| **Screen agent** | Observe → decide → act inside apps it has never seen, one tap at a time |
-| **Memory** | Last 50 commands, contact nicknames, app aliases — on device only |
-| **Privacy** | PBKDF2 PIN lock, local-only keys, nothing leaves the phone unless you send it |
+**Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
+
+*Ask him anything. He remembers.*
+
+</div>
+
+---
+
+```
+> jarvis, how far is india gate
+
+  DISTANCE · INDIA GATE
+  ─────────────────────────────────────────────
+  India Gate is 8.4 kilometres away by road.
+  ─────────────────────────────────────────────
+```
+
+He knows the difference between **"open gallery"**, **"gallery kholo"** and **"show me my photos"**.
+He knows your sister's name because you told him once. He knows it is half past eleven at night and
+answers accordingly. He answers in the language you spoke to him.
+
+And when he cannot do something, he says so — precisely, and with the reason.
 
 ---
 
 ## Table of contents
 
-1. [What works right now](#what-works-right-now)
-2. [Architecture](#architecture)
-3. [Voice](#voice)
-4. [Automation](#automation)
-5. [Connections and analytics](#connections-and-analytics)
-6. [Privacy, permissions and the lock](#privacy-permissions-and-the-lock)
-7. [Install it](#install-it)
-8. [Release it](#release-it)
-9. [Tests](#tests)
-10. [Stability and honest limits](#stability-and-honest-limits)
-11. [Design system](#design-system)
-12. [Project layout](#project-layout)
+- [What he actually is](#what-he-actually-is)
+- [The brain](#the-brain)
+- [What he can do](#what-he-can-do)
+- [The lock, honestly](#the-lock-honestly)
+- [Install the APK](#install-the-apk)
+- [Build it yourself](#build-it-yourself)
+- [What he cannot do](#what-he-cannot-do)
+- [Architecture](#architecture)
+- [Privacy](#privacy)
+- [Tests](#tests)
+- [Release checklist](#release-checklist)
 
 ---
 
-## What works right now
+## What he actually is
 
-| Area | State |
-| --- | --- |
-| HUD · arc reactor · live telemetry · 12-hour clock | Working |
-| Home app role, app drawer, editable dock | Working |
-| Notifications, torch, volume, media, DND, system panels | Working |
-| Automation: control flow, triggers, AI authoring, run history | Working |
-| Voice: tap-to-speak, Whisper or on-device, spoken replies | Working |
-| Voice commands: contacts, calls, WhatsApp messages, apps, reminders | Working |
-| Voice chains: camera capture → gallery, multi-app, screen-aware tapping | Working |
-| Screen agent with OCR fallback for custom-drawn apps | Working |
-| Instagram creator analytics, views-first (your own account) | Working |
-| Connections: Instagram login, Google Drive + Gmail (read-only) | Working |
-| Intelligence: your own AI key, any supported provider | Working |
-| Privacy lock, floating bubble, home-screen widget | Working |
-| Quick Settings tiles, reminders, screenshot, downloads | Working |
-| Privileged shell via Shizuku (optional, adb-level, no root) | Working |
-| Understands ~400 phrasings per intent family, fuzzy and Hinglish included | Working |
-| Opens any app, the gallery, files and ~25 settings pages | Working |
-| Message/reply by name, through the notification's own reply action | Working |
-| Reads alerts aloud, judges adverts, suggests replies | Working |
-| File search (All-files access), distance by road, offline maths | Working |
-| Health: steps, distance, water, sleep estimate, heart rate where present | Working |
-| Lock with the phone's own PIN/pattern/fingerprint, line on the lock screen | Working |
-| Answers in the language it was asked in (EN/HI/Hinglish offline) | Working |
-| Calendar read/add, contact saving, voice notes, multi-turn follow-ups | Working |
-| A short brief on unlock, at most every three hours, silent otherwise | Working |
-| Automated tests: 16 JVM suites + 1 device smoke test, run in CI before the APK | Working |
+A full Android launcher, an automation engine, and a conversation partner in one app. He replaces
+your home screen, speaks with you, acts on your phone, and keeps a small, local memory of the things
+that matter to you.
 
-Every tile on the HUD is either backed by a real Android API or clearly marked as not built. Nothing
-in the interface imitates a capability the app does not have.
+Two ideas shape every design decision in this repository:
+
+> **He never lies.** If a message was not sent, he says it was not sent. If a sensor is missing, he
+> says the phone has no sensor. There is no "done" that did not happen, anywhere in the codebase.
+
+> **He is family, not a product.** No account. No sync. No analytics. No telemetry. Your memory of
+> him is a preferences file on your phone that you can read in *Advanced → What he remembers* — and
+> wipe with one key.
+
+---
+
+## The brain
+
+Most "AI assistants" are a command table with a microphone bolted on. Say the wrong words and they
+collapse. JARVIS has four layers, and each one catches what the one above it missed.
+
+<table>
+<tr><td width="33%" valign="top">
+
+### 1 · The ear
+**~400 phrasings, ~50 intents**
+
+Exact → prefix → word-set → Jaro-Winkler fuzzy.
+
+`open galery` `gallery kholo`
+`kitne steps` `tumhe kisne banaya`
+
+A miss returns *"did you mean Photos?"* — never silence.
+
+</td><td width="33%" valign="top">
+
+### 2 · The conversation
+**Free speech, not JSON**
+
+Ask him to *do* something and he plans it. Talk to *him* and he answers with sentences. He knows the
+time, the battery, your next event and who has messaged you — and he uses it.
+
+</td><td width="33%" valign="top">
+
+### 3 · The memory
+**Local, inspectable, erasable**
+
+*"my sister is Khushi"* → remembered.
+*"I like tea"* → remembered.
+*"do that for her"* → he knows who.
+
+Stored in one preferences file. Nothing leaves the phone.
+
+</td></tr>
+<tr><td valign="top">
+
+### 4 · The judgment
+**Knows when to speak**
+
+Adverts get one dry line, then a day of silence. Real messages get read aloud with three suggested
+replies. Quiet hours are quiet. The brief happens once every three hours, and never when there is
+nothing to say.
+
+</td><td valign="top">
+
+### 5 · The honesty
+**Never a dead end**
+
+Every reply ends in one of three states: done, *"I need one thing from you"*, or *"I cannot, and here
+is why."* A provider name, an API key or an "as an AI language model" never reaches your ears —
+scrubbed before speech.
+
+</td><td valign="top">
+
+### 6 · The language
+**Answered in the language asked**
+
+English, Hindi and Hinglish work fully **offline**. Every other language comes back in that language
+through the model, with the matching text-to-speech voice.
+
+</td></tr>
+</table>
+
+---
+
+## What he can do
+
+<table>
+<tr><th align="left" width="30%">If you say…</th><th align="left">He does</th></tr>
+
+<tr><td><b>Open anything</b></td><td>
+
+`open gallery` · `files kholo` · `open wifi settings` · `open Instagram`
+
+System intents, skin-specific packages and fuzzy labels — so it works on ColorOS, MIUI, One UI and
+stock alike.</td></tr>
+
+<tr><td><b>Talk to people</b></td><td>
+
+`send message Khushi saying hi` · `call dad` · `reply to Khushi "on my way"`
+
+Resolves the person from contacts, memory or a live chat. Replies through the notification's own
+`RemoteInput` — the supported path. Verifies the chat before pressing send, and says so when unsure.</td></tr>
+
+<tr><td><b>Messages that matter</b></td><td>
+
+`what did I miss` · `read my notifications` · `reply second one`
+
+Reads real messages with three fitting replies. Ignores Flipkart-style adverts after one line. Reads
+OTPs with the code.</td></tr>
+
+<tr><td><b>Find anything</b></td><td>
+
+`find my aadhaar pdf` · `open the newest download`
+
+Whole-phone search with All-files access, falling back to indexed media. Opens when there is exactly
+one match; lists them when there are several.</td></tr>
+
+<tr><td><b>Know where</b></td><td>
+
+`how far is India Gate` · `where am I` · `take me to Connaught Place`
+
+Road distance through OSRM. Says *straight line* out loud when the router cannot be reached — never
+presents crow-flight as driving distance.</td></tr>
+
+<tr><td><b>Health</b></td><td>
+
+`how many steps` · `I drank a glass of water` · `heart rate` · `how did I sleep`
+
+Hardware sensors with hardware honesty: no sensor means he says so. Water is only what you logged.
+Sleep is a screen-off estimate, labelled as one.</td></tr>
+
+<tr><td><b>Think</b></td><td>
+
+`12 percent of 4500` · `5 km to miles` · `50 c to f`
+
+Offline. No key, no network, no waiting.</td></tr>
+
+<tr><td><b>The day</b></td><td>
+
+`what's my schedule` · `add meeting with Amit tomorrow at 4` · `save this number as Khushi`
+
+Your real calendar, your real contacts. Spoken time parsed properly: `tomorrow at 4`,
+`kal shaam 6 baje`.</td></tr>
+
+<tr><td><b>Do it again</b></td><td>
+
+`do that for Khushi` · `and tomorrow` · `make it 8:30`
+
+Follow-ups resolved against the previous turn — the thing that stops a conversation feeling like a
+form.</td></tr>
+
+<tr><td><b>Capture</b></td><td>
+
+`screenshot` · `take a photo` · `record a note for 30 seconds`
+
+Photos to `Pictures/JARVIS`, notes to `Music/JARVIS`.</td></tr>
+
+<tr><td><b>Routines</b></td><td>
+
+Full automation engine: triggers, conditions, control flow, retries, run history, and **19 action
+types** available to both routines and voice.</td></tr>
+
+</table>
+
+---
+
+## The lock, honestly
+
+Android does not allow any app to replace the lock screen or draw on it permanently — lockscreen
+widgets were removed in Android 5.0. Rather than pretend, JARVIS offers the two things that are real:
+
+| Mode | What happens |
+|---|---|
+| **PHONE LOCK** *(recommended)* | Your phone's own credential screen — PIN, pattern, password or fingerprint. JARVIS learns only *pass* or *fail*. |
+| **JARVIS KEYPAD** | A second, app-only gate: PBKDF2-HMAC-SHA256, 120 000 iterations, random salt, constant-time compare. |
+| **Lock-screen line** | A public-visibility notification over the keyguard: steps, water, unread messages. The only form Android permits. |
+
+Fingerprint and face are a **shortcut, never a second password**. Android matches in secure hardware;
+nothing biometric reaches this app.
+
+---
+
+## Install the APK
+
+### For everyone else — one link
+
+The APK lives on the **Releases** page, not in the repository:
+
+```
+https://github.com/Rishu123-png/Jarvis---Android-Version-/releases/latest
+```
+
+Pick **`jarvis-1.0.0.apk`** → download → open it on the phone → allow *Install unknown apps* once.
+
+That is the file to share. Anyone who opens that link can install it without a GitHub account.
+
+### Where the file comes from
+
+| Location | Path |
+|---|---|
+| GitHub Actions run | **Artifacts** → `jarvis-release-apk` → `jarvis-1.0.0.apk` |
+| Build machine | `app/build/outputs/apk/release/app-release.apk` |
+| CI copy | `dist/jarvis-1.0.0.apk` |
+| GitHub Release | attach `jarvis-1.0.0.apk` to tag `v1.0.0` |
+
+### First run
+
+1. Set JARVIS as the **home app** when asked.
+2. *Settings → Advanced → ACCESS* — grant what you want him to be able to do. Each row states what it
+   unlocks and what breaks without it.
+3. *Settings → Intelligence* — paste your own AI key (Groq, OpenAI, Anthropic, Gemini, or any
+   OpenAI-compatible endpoint). Without one, he still works: a local phrase engine answers offline.
+4. Tap the arc reactor and speak.
+
+> **No key? Still useful.** Call, message, open, torch, volume, alarm, timer, photos, calculator,
+> steps, water, calendar, notifications, and full conversation small-talk all work with no key at all.
+
+---
+
+## Build it yourself
+
+```bash
+git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
+cd Jarvis---Android-Version-
+./gradlew :app:assembleDebug        # debug APK
+./gradlew :app:testDebugUnitTest    # 17 JVM suites
+```
+
+Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
+
+---
+
+## What he cannot do
+
+Listed here rather than buried in an issue tracker, because an assistant you cannot trust is worse than
+no assistant.
+
+| Not possible | Why |
+|---|---|
+| Replace the lock screen | Removed from Android in 5.0. No API exists. |
+| Read your PIN, pattern or fingerprint | Only *pass* or *fail* is ever returned to an app. |
+| Send WhatsApp with zero taps when there is no live notification | App sandbox. His route is notification reply → `wa.me` link → in-app search. |
+| Always-on wake word | Would drain the battery and hold the microphone permanently. He listens when tapped. |
+| Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
+| Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |
+
+**Verified by CI:** compilation, 17 test suites, both APKs, manifest integrity.
+**Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
+step/heart sensors, the system credential screen, TTS voices.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────── UI (Compose) ───────────────────────────────┐
-│  HomeScreen  ── orb + top bar            DashboardScreen  ── tiles, dock  │
-│  VoiceTaskCard ── what is happening      LockScreen / PrivacyScreen        │
-└───────────────────────────────┬────────────────────────────────────────────┘
-                                │ state (StateFlow)
-┌───────────────────────────────▼────────────────────────────────────────────┐
-│ VoiceController — one turn at a time, every stage bounded                  │
-│   MicRecorder ─► Whisper (your key)  │  LocalSpeech (device / offline)     │
-│   IntentRouter ─► AI plan (no canned command list) │ local parser fallback │
-│   StepExecutor ─► 33 typed actions │ ScreenAgent (observe→decide→act)      │
-│   SpeechOut ── spoken reply                    VoiceMemory ── recents      │
-└───────────────────────────────┬────────────────────────────────────────────┘
-                                │
-┌───────────────────────────────▼────────────────────────────────────────────┐
-│ Android surfaces: intents · MediaStore · CameraX · AccessibilityService     │
-│ AlarmManager · Quick Settings · AppWidget · NotificationListener · Shizuku  │
-└────────────────────────────────────────────────────────────────────────────┘
+app/src/main/java/com/jarvis/assistant/
+├── MainActivity.kt               single activity, Compose host
+├── ai/                           your key, any provider, JSON + free conversation
+├── automation/                   the engine: 19 actions, conditions, triggers, screen agent
+├── connect/                      Instagram, Google Drive + Gmail (read-only), OAuth
+├── data/                         PhraseBook (~400 phrasings) · Units · When · command line
+├── device/                       the phone itself: files, gallery, location, health, calendar,
+│                                 contacts, notifications, voice notes, lock, biometrics
+├── shell/                        Shizuku user service (optional, adb-level, no root)
+├── social/                       Instagram analytics
+├── ui/                           Home · Dashboard · Lock · Privacy · Terminal · Voice
+└── voice/                        Brain (memory) · IntentRouter · Language · Persona · FollowUp
 ```
 
-Three rules hold the whole thing together:
-
-1. **Nothing blocks the main thread.** Recording, transcription, planning, each step and each screen
-   action run off it, with a timeout on all of them.
-2. **One turn at a time.** Every turn carries an id; a late coroutine from a cancelled turn can never
-   write over what you are looking at.
-3. **Honest outcomes.** A failed step stops the turn and says why. There is no fake success anywhere.
-
----
-
-## Voice
-
-**Tap the orb, speak, tap again.** Home is a top bar and one orb — the tiles and telemetry are one tap
-away behind the grid button, so nothing competes with the thing you actually press.
-
-### Ears — four routes, chosen in Advanced settings
-
-| Route | Engine | Audio goes to |
-| --- | --- | --- |
-| `AUTO` (default) | Whisper if a key is stored, else the device recognizer | as chosen |
-| `WHISPER` | Your provider's transcription endpoint | that provider only, then discarded |
-| `DEVICE` | Android `SpeechRecognizer` | the platform recognizer |
-| `DEVICE OFFLINE` | `SpeechRecognizer` with `EXTRA_PREFER_OFFLINE` | nothing, when an on-device model exists |
-
-No model is bundled and none is downloaded: the Whisper path uploads a 16 kHz WAV built in-process
-(RTF 44-byte header, unit-tested) and works with any OpenAI-compatible key. A provider without a
-speech endpoint falls back to the device recognizer instead of breaking voice.
-
-### Brain — no command list to memorise
-
-With a key, the raw sentence goes to the model along with the list of capabilities this phone actually
-has. Sloppy speech, half-sentences and mixed Hindi–English are fine. The model may only choose ids that
-exist; anything it invents is dropped before execution. **There is no canned-command menu in the UI.**
-
-Without a key, a silent parser covers the phrasings people really use — and it is covered by 21 tests,
-including the negatives that matter (“show me my photos” must not fire the camera).
-
-### Chains
-
-A sentence can carry several actions: up to 8 steps with waits between app hand-offs.
-
-> “open camera, capture the image and show me in gallery”
-
-→ `TAKE PHOTO ✓` → `WAIT ✓` → `SHOW PHOTO ✓`
-
-The middle step does not need you to press anything: JARVIS opens its own capture surface, takes one
-frame with CameraX, writes it to `Pictures/JARVIS` and closes.
-
-### Screen agent
-
-For anything buried inside another app — a switch on a settings page, a chat behind a search box — the
-plan ends with a **screen task**: read what is on screen, ask the model for exactly one action, do it,
-look again. At most six actions, each shown on the card, each cancellable, each verified against a label
-that was actually on screen. When the accessibility tree is empty (custom-drawn apps), it falls back to
-a screenshot plus **bundled on-device OCR**, so pixels are readable too.
-
-### Follow-ups
-
-The previous command is handed to the planner, so “again, but quieter”, “do that for Divik” and “turn it
-off” resolve without repeating yourself.
-
----
-
-## Automation
-
-- **37 action types** — 33 executable actions plus `IF` / `REPEAT` / `WAIT UNTIL` / `STOP_ROUTINE`
-  control-flow blocks — with 12 conditions and 10 triggers.
-- **`VERIFY` step**: `app:com.whatsapp`, `screen:Send`, `notif:hi`, `battery<20`, `charging`, `wifi`.
-  A routine can now check that something happened instead of trusting a step's own report.
-- **AI authoring**: describe a routine in a sentence; the planner returns a validated workflow, and the
-  model can only choose actions and conditions that exist.
-- **Safety tiers**: sensitive actions are marked, confirmed before a run, and cannot be produced by the
-  planner in a way that skips the gate.
-- **Run history** with per-step outcomes, so a failure is inspectable rather than mysterious.
-
----
-
-## Connections and analytics
-
-- **Instagram**: Instagram Login (no Facebook Page needed), token exchange on device; views-first
-  analytics, `NEXT POST` suggestions, and a six-probe `diagnose()` that says exactly which step fails.
-- **Google**: Drive and Gmail, read-only, through your own OAuth client — nothing is proxied.
-- **WhatsApp**: stated plainly — there is no third-party account-linking API. JARVIS opens a chat with
-  the text written; sending needs the accessibility tier.
-
-Secrets live in the Android Keystore (`AES/GCM`), never in the repository and never in a server.
-
----
-
-## Privacy, permissions and the lock
-
-| Permission | Requested when | Needed for |
-| --- | --- | --- |
-| Microphone | first orb tap | voice |
-| Contacts / Phone | the chips on home | “call dad”, messages |
-| Camera | the camera chip | photo capture |
-| Overlay | only if you enable the bubble | floating disc |
-| Biometric | a normal permission, no prompt | fingerprint/face unlock shortcut |
-| Photos and media | a normal runtime dialog | the gallery, your last photo, video |
-| Location | a normal runtime dialog | where am I, distance, directions |
-| Activity / body sensors | a normal runtime dialog | steps, heart rate where present |
-| All files access | a special grant in system settings | finding any file by name |
-| Accessibility | your explicit choice in settings | screen taps, screenshots, OCR |
-| Notification listener | your explicit choice | alerts, media, `VERIFY` |
-
-**The lock** is a numeric PIN over the app itself: PBKDF2-HMAC-SHA256, 120 000 iterations, random salt,
-constant-time compare, no recovery. It re-engages a minute after you leave. The lock screen shows no app
-names, no history and no last command.
-
-**Which lock.** Android will not let an app replace the lock screen, so JARVIS offers two honest
-choices in *Advanced → Which lock*: **your phone's own lock** (the system credential screen — the same
-PIN, pattern or fingerprint you already use; JARVIS learns only pass or fail) or **a JARVIS keypad**
-(a second, app-only gate). A separate switch posts a short line over the lock screen — steps, water,
-unread messages — as a public notification, which is the only form Android allows.
-
-**There is exactly one credential** — the PIN you choose the first time you open *Settings → Advanced →
-Privacy lock*. There is no default, no second password and nothing shipped in the build. Change it by
-turning the lock off and setting a new PIN.
-
-**Fingerprint and face are a shortcut, not a second password.** When the phone has an enrolled sensor,
-the lock screen offers the system prompt first (one automatic attempt, then a button). Android performs
-the match in its own secure hardware and returns only pass/fail — JARVIS never sees, stores or transmits
-biometric data, so there is nothing to extract. If the sensor is wet, busy or locked out, the keypad is
-still there: biometrics can save typing the PIN, never replace it.
-
-There is **no JARVIS backend**. No account, no sync, no analytics, no crash reporting. The only network
-traffic is a request to the provider whose key you pasted, a connector you set up, or a URL you asked
-for.
-
----
-
-## Install it
-
-Requires **Android 10 (API 29) or newer**. One package only (`com.jarvis.assistant`), so new builds
-update in place.
-
-### Codemagic (zero setup)
-
-1. Add this repository in Codemagic and select **codemagic.yaml**.
-2. Run **JARVIS · debug APK**, then download from the build artifacts:
-
-   ```
-   app/build/outputs/apk/debug/app-debug.apk
-   ```
-
-3. For a stable signature (so updates never conflict), add a keystore under *Code signing identities →
-   Android keystore* as `keystore_credentials`, then use **JARVIS · release APK**:
-
-   ```
-   app/build/outputs/apk/release/app-release.apk
-   ```
-
-> Codemagic's free tier only includes macOS machines, so both workflows use `instance_type:
-> mac_mini_m2`. `linux_x2` needs billing enabled and fails before the build starts on a free account.
-
-### GitHub Actions
-
-Every push runs the full pipeline: unit tests → debug + release APKs → APK signature and intent-filter
-verification in the run summary → artifacts. The release artifacts are already named for a release:
+**The turn, end to end:**
 
 ```
-jarvis-1.0.0.apk          (release — use this one)
-jarvis-1.0.0-debug.apk    (debug)
+  tap ──► Ears (Whisper or on-device)
+          │
+          ▼
+      Language.detect ──► EN / HI / HINGLISH / …
+          │
+          ▼
+      FollowUp.rewritten      "do that for her"  ──►  "message Khushi I will be late"
+          │
+          ▼
+      IntentRouter.plan
+          ├── identity  ──► answered locally. Never a model.
+          ├── PhraseBook ──► local steps (no key needed)
+          └── Brain context + AI ──► JSON steps  OR  plain conversation
+          │
+          ▼
+      StepExecutor  (25 s ceiling, honest failure)
+          │
+          ▼
+      Brain.remember + absorb      "my sister is Khushi" ──► memory
+          │
+          ▼
+      SpeechOut in the detected language
 ```
-
-### Android Studio / command line
-
-```bash
-./gradlew assembleRelease    # app/build/outputs/apk/release/app-release.apk
-./gradlew installDebug       # with a device connected over adb
-```
-
-Play Protect warns about any self-signed app — choose *Install anyway*. If a build was signed with a
-different key, uninstall the old app first.
 
 ---
 
-## Release it
+## Privacy
 
-Step by step, from this repository:
+| | |
+|---|---|
+| **Backend** | None. There is no JARVIS server, no account, no sync. |
+| **Network** | Only: your own AI key's provider, one optional router for road distance, a connector you set up, or a URL you asked for. |
+| **Memory** | A preferences file on this phone. Read it in Advanced; wipe it with one key. |
+| **Keys** | Android Keystore (`AES/GCM`). Never in this repository. |
+| **Notifications** | Held in memory only, dropped when the listener disconnects. |
+| **Photo, microphone, screen** | Only while you are using the feature that needs them. |
 
-1. **Check the build is green** — Actions tab → latest **Build JARVIS APK** run → all steps passed.
-2. **Download the release APK** — from the run's artifacts, `jarvis-release-apk` → `jarvis-1.0.0.apk`
-   (or from Codemagic: `app/build/outputs/apk/release/app-release.apk`).
-3. **Rename it if you like** — the release pipeline already names it `jarvis-<version>.apk`, which is
-   the name to upload. Keep it exactly like that: `jarvis-1.0.0.apk`.
-4. **Create the GitHub Release** — *Releases → Draft a new release* → tag `v1.0.0` → title
-   `JARVIS 1.0.0` → paste the notes from [CHANGELOG.md](CHANGELOG.md).
-5. **Attach the APK** to that release as an asset (drag `jarvis-1.0.0.apk` into the assets box).
-   Pushing a `v*` tag also does this automatically: the workflow attaches `dist/jarvis-*.apk`.
-6. **Verify**: the release page shows `jarvis-1.0.0.apk` plus *Source code* archives.
-
-The file you upload is **`jarvis-1.0.0.apk`**; its source on the build machine is
-**`app/build/outputs/apk/release/app-release.apk`**, and in CI **`dist/jarvis-1.0.0.apk`**.
+Permissions are not hidden in a settings page nobody opens — *Advanced → ACCESS* lists every
+capability, what it unlocks, and what breaks without it.
 
 ---
 
 ## Tests
 
+17 JVM suites, run before every APK in CI.
+
+| Suite | Pins down |
+|---|---|
+| `PhrasesTest` | ~400 phrasings including typos and Hinglish |
+| `LanguageTest` | script detection, Hinglish word vote, reply templates |
+| `BrainTest` | what is remembered, and what must **not** be |
+| `FollowUpTest` | "do that for Khushi", "and tomorrow", "make it 8:30" |
+| `NotifyBrainTest` | advert vs message vs OTP, quiet hours, reply suggestions |
+| `PersonaTest` | provider names and keys never reach speech |
+| `WhenTest` | spoken time → timestamp, with no guessing |
+| `UnitsTest` | percentages, conversions, spoken operators |
+| `DistanceTest` | haversine, road-distance phrasing |
+| `HealthMathTest` | step baselines, sleep estimate caps |
+| `NudgesTest` | briefs that should stay silent |
+| `BiometricPolicyTest` | when the sensor may fire on its own |
+| `TimeFormatTest` · `VoiceParsingTest` · `JsonReplyTest` · `WavTest` · `WorkflowJsonTest` | the rest of the pure logic |
+
+---
+
+## Release checklist
+
 ```bash
-./gradlew testDebugUnitTest          # JVM, no device — runs in CI before the APKs are built
-./gradlew connectedDebugAndroidTest  # one launch smoke test, needs a device or emulator
+# 1. version stays 1.0.0; only versionCode moves
+#    app/build.gradle.kts  →  versionCode = 20
+
+# 2. green CI on main
+gh run list --limit 1
+
+# 3. tag it — CI attaches the APK to the release automatically
+git tag v1.0.0 && git push origin v1.0.0
 ```
 
-| Suite | What it pins |
-| --- | --- |
-| `VoiceParsingTest` | message / call / volume / alarm / timer / camera / reminder phrasing, and what must **not** match |
-| `JsonReplyTest` | code fences, prose around the object, braces inside strings, invalid objects |
-| `WavTest` | RIFF header sizes and format fields against the payload |
-| `WorkflowJsonTest` | routine → JSON → routine, nested blocks, conditions, time windows, unique action ids |
-| `TimeFormatTest` | 12-hour conversion, midnight and noon, stored `HH:mm` → `6:30 PM` |
-| `AppLaunchTest` (androidTest) | the shell inflates and the HUD draws |
-
-A failing test fails the build before an APK exists, and the run summary lists every suite.
+Then edit the draft release, paste the notes from [CHANGELOG.md](CHANGELOG.md), and the download link
+above works for everyone.
 
 ---
 
-## Stability and honest limits
+<div align="center">
 
-**Designed against:** background work parks when the app is not visible; the accessibility tree walk is
-depth- and count-limited; network calls all carry connect/read timeouts; the notification list and
-terminal history are capped; every engine release is off the main thread.
+**Built by Rishu Jaswar.**
 
-**What the app will not do, and says so:**
+*"Sometimes you gotta run before you can walk."*
 
-- Always-on wake word — battery, privacy, and a microphone held open behind your back.
-- A cloud backend, accounts or sync.
-- Auto-sending SMS, call guarding or SOS.
-- Scraped and unofficial APIs (WhatsApp linked-device, Instagram private endpoints).
-- Claiming a call was placed when only the dialer opened, or a message sent when only the text was
-  written.
+<sub>Kotlin · Jetpack Compose · Material 3 · minSdk 29 · no backend, no account, no telemetry</sub>
 
-**Best-effort by nature:** the screen agent reads labels and pixels, so a fully custom-drawn app can
-still defeat it; six actions is a hard ceiling and it gives up out loud. Telegram and Instagram have no
-“message this contact” link, so those stay open-the-app only.
-
----
-
-## Design system
-
-| Token | Value | Use |
-| --- | --- | --- |
-| Void Black | `#03070D` | App background |
-| Deep Navy | `#091421` | Panels |
-| Electric Cyan | `#16C8FF` | Primary glow, active elements |
-| Ice Blue | `#8BEAFF` | Headings, highlights |
-| Status Green | `#48E5A2` | Nominal / charging |
-| Alert Red | `#FF465C` | Critical states only |
-| Amber | `#FFC24B` | Caution / needs attention |
-
-Monospace for every readout (numbers do not jitter), a light serif-flavoured display face for headings,
-chamfered corners, hairline gradient borders and machined corner brackets on every panel. Red is used
-sparingly, and only where something is genuinely wrong.
-
----
-
-## Project layout
-
-```
-app/src/main/java/com/jarvis/assistant/
-├── MainActivity.kt              single-activity host
-├── ai/                          AiClient · AiPlanner · JsonReply · Translator · key store
-├── automation/                  AutomationEngine · StepExecutor · Verify · triggers · conditions
-├── connect/                     OAuth flows · Drive/Gmail · connector store
-├── data/                        app registry · dock · command registry · HUD module list
-├── device/                      status · controls · notifications · bubble · widget · privacy
-│                                reminders · downloads · quick tiles · capture · health
-├── shell/                       Shizuku user service
-├── social/                      Instagram client, analytics, store
-├── ui/                          JarvisApp · components · screens · theme
-└── voice/                       VoiceController · IntentRouter · Ears/Whisper · LocalSpeech
-                                 ScreenAgent · Ocr · VoiceMemory · VoiceParsing · Wav
-app/src/test/                    JVM suites (parsers, JSON, WAV, workflow, time,
-                                 biometric policy)
-app/src/androidTest/             launch smoke test
-```
-
-What is left, and in what order, is tracked in **[ROADMAP.md](ROADMAP.md)**. Release notes live in
-**[CHANGELOG.md](CHANGELOG.md)**.
+</div>

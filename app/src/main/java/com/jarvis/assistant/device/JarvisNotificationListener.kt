@@ -144,6 +144,17 @@ class JarvisNotificationListener : NotificationListenerService() {
                 }
             }
 
+            if (verdict.kind == NotificationKind.MESSAGE) {
+                val sender = NotifyBrain.senderOf(sbn)
+                if (sender.isNotBlank()) {
+                    try {
+                        com.jarvis.assistant.voice.Brain.touchPerson(context, sender)
+                    } catch (t: Throwable) {
+                        // A memory write must never break an announcement.
+                    }
+                }
+            }
+
             scope.launch {
                 try {
                     SpeechOut.speak(context, line, timeoutMillis = 20_000L)

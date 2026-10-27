@@ -95,6 +95,7 @@ import com.jarvis.assistant.ui.screens.PrivacyScreen
 import com.jarvis.assistant.ui.screens.PowerScreen
 import com.jarvis.assistant.ui.screens.LockScreen
 import com.jarvis.assistant.ui.screens.TerminalScreen
+import com.jarvis.assistant.voice.Brain
 import com.jarvis.assistant.ui.theme.Amber
 import com.jarvis.assistant.ui.theme.ElectricCyan
 import com.jarvis.assistant.ui.theme.IceBlue
@@ -175,6 +176,18 @@ fun JarvisApp(
     var notifyBrainEnabled by remember { mutableStateOf(NotifyBrain.isEnabled(context)) }
     var roadRoutingEnabled by remember { mutableStateOf(Whereabouts.roadRoutingEnabled(context)) }
     var nudgesEnabled by remember { mutableStateOf(Nudges.isEnabled(context)) }
+
+    // ---- what he remembers, shown so it can be read and wiped --------------------------------
+    var rememberedPeople by remember { mutableStateOf<List<Brain.Person>>(emptyList()) }
+    var rememberedFacts by remember { mutableStateOf<List<Brain.Fact>>(emptyList()) }
+    var rememberedTurns by remember { mutableIntStateOf(0) }
+    LaunchedEffect(route) {
+        if (route == ROUTE_ADVANCED) {
+            rememberedPeople = Brain.people(context)
+            rememberedFacts = Brain.facts(context)
+            rememberedTurns = Brain.thread(context).size
+        }
+    }
 
     // ---- today, for the dashboard ------------------------------------------------------------
     var stepsToday by remember { mutableStateOf<Int?>(null) }
@@ -644,6 +657,15 @@ fun JarvisApp(
                     onToggleNudges = { enable ->
                         Nudges.setEnabled(context, enable)
                         nudgesEnabled = enable
+                    },
+                    rememberedPeople = rememberedPeople,
+                    rememberedFacts = rememberedFacts,
+                    rememberedTurns = rememberedTurns,
+                    onForgetMemory = {
+                        Brain.forget(context)
+                        rememberedPeople = emptyList()
+                        rememberedFacts = emptyList()
+                        rememberedTurns = 0
                     },
                     lockNoticeEnabled = lockNoticeEnabled,
                     onToggleLockNotice = { enable ->

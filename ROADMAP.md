@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **1.0.0 (versionCode 18)**.
+Last updated with **1.0.0 (versionCode 19)**.
 
 ---
 
@@ -35,7 +35,8 @@ Last updated with **1.0.0 (versionCode 18)**.
 | Health: steps, distance, water, sleep estimate, heart rate | Live |
 | Phone's own lock, lock-screen line, language-aware replies | Live |
 | Calendar, contacts, voice notes, follow-ups, brief | Live |
-| Tests: 16 JVM suites over the pure logic, run in CI before the APKs | Live |
+| **The brain**: local memory of people and facts, free conversation, small talk offline | Live |
+| Tests: 17 JVM suites over the pure logic, run in CI before the APKs | Live |
 | Quick Settings tiles (open JARVIS, torch) | Live |
 | Reminders, screenshot action, subsystem health panel | Live |
 | Privacy lock (PBKDF2 PIN) + fingerprint/face shortcut, floating bubble, home-screen widget | Live |

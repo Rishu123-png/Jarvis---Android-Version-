@@ -12,6 +12,15 @@ family member released to family should not be called 2.4.
 
 Everything below is new in this release.
 
+**The brain (built after the first pass, same version).** JARVIS now keeps a local memory of the
+operator — people and how they are related, standing facts like a name or a city, the last few turns
+of conversation — and answers *conversation* as well as commands: a spoken reply with no JSON steps
+is now a legitimate answer instead of a parse failure. Four families of plain sentence teach him
+something ("my sister is Khushi", "my name is Rishu", "I like tea", "I live in Delhi"), and the
+narrowness is deliberate: a wrong memory is repeated back with total confidence. Everything is
+visible in *Advanced → What he remembers* and erasable with one key. Small talk ("how are you",
+"kaise ho", "who am I", "I am tired") works with no AI key at all, in English, Hindi and Hinglish.
+
 **Also in this same version (built straight after):** your calendar read aloud and events created by
 voice ("add meeting with Amit tomorrow at 4"), "save this number as Amit" writing a real contact,
 voice notes recorded straight into `Music/JARVIS`, multi-turn follow-ups ("do that for Khushi",
@@ -68,8 +77,8 @@ are scrubbed from every spoken reply before it is heard.
 **Also in this release**: 15 new automation actions (message, reply, read alerts, find file, open
 file, open gallery, location, distance, navigate, calculate, settings page, read screen, share, health,
 log water, read calendar, add event, save contact, record note) available to routines and to the AI
-planner; one ACCESS panel that states every permission and what breaks without it; 10 new JVM test
-suites (16 in total).
+planner; one ACCESS panel that states every permission and what breaks without it; 11 new JVM test
+suites (17 in total).
 
 ---
 

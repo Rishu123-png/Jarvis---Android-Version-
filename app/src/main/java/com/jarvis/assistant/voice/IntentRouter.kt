@@ -65,6 +65,20 @@ object IntentRouter {
     private const val VIRTUAL_SEND = "send_message"
     private const val VIRTUAL_SCREEN = "screen_task"
     private const val MAX_STEPS = 8
+
+    /**
+     * The instruction that makes him a conversationalist as well as an operator.
+     *
+     * Without it a model either always talks (and nothing gets done) or always emits JSON (and "how
+     * are you" becomes an empty step list).
+     */
+    private val CONVERSATION_RULE = """
+        Two ways to answer, and you choose:
+        - If the operator asks you to DO something on the phone, reply with the JSON object above.
+        - If the operator is talking to you — a question, a feeling, a joke, a memory, a greeting —
+          reply with plain sentences and NO JSON. Use what you remember about them; never list it.
+        Never do both. Never explain which one you chose.
+    """.trimIndent()
     private const val MAX_SPOKEN = 240
 
     /** Actions the voice surface may use. Shell and webhooks are excluded on purpose. */
@@ -121,7 +135,28 @@ object IntentRouter {
     // ---------------------------------------------------------------------------------------------
 
     private suspend fun aiPlan(context: Context, heard: String, previous: String?): VoicePlan? {
-        val system = systemPrompt(context, previous)
+        val lang = Language.detect(heard)
+        val brainBlock = try {
+            Brain.contextBlock(
+                world = Brain.world(context),
+                people = Brain.people(context),
+                facts = Brain.facts(context),
+                thread = Brain.thread(context),
+                language = lang,
+            )
+        } catch (t: Throwable) {
+            ""
+        }
+
+        val system = buildString {
+            append(systemPrompt(context, previous))
+            if (brainBlock.isNotBlank()) {
+                appendLine()
+                appendLine(brainBlock)
+            }
+            appendLine()
+            appendLine(CONVERSATION_RULE)
+        }
         val result = AiClient.chat(
             context = context,
             messages = listOf(AiMessage.user(heard)),
@@ -132,7 +167,20 @@ object IntentRouter {
             is AiResult.Ok -> result.text
         }
 
-        val json = JsonReply.extractObject(reply) ?: return null
+        val json = JsonReply.extractObject(reply)
+        if (json == null) {
+            // No JSON means the model chose to *talk* rather than to act — that is a conversation,
+            // not a failure. This is the difference between an assistant and a command list.
+            val spoken = Persona.sanitize(reply.trim()).take(600)
+            if (spoken.isBlank()) return null
+            return VoicePlan(
+                title = "JARVIS",
+                subtitle = "CONVERSATION",
+                steps = emptyList(),
+                say = spoken,
+                source = "AI",
+            )
+        }
         val title = json.optString("title").trim().uppercase(Locale.US).take(28).ifBlank { "COMMAND" }
         val say = Persona.sanitize(json.optString("say").trim().take(MAX_SPOKEN))
 
@@ -1030,6 +1078,11 @@ object IntentRouter {
         // ---- "open <anything>" ---------------------------------------------------------------------
         openTargetOf(clean)?.let { target ->
             if (target.isNotBlank()) return openAnything(context, target, lang)
+        }
+
+        // ---- conversation, with or without a key -----------------------------------------------
+        Brain.smallTalk(clean, lang, Brain.fact(context, "name"))?.let { reply ->
+            return answer("JARVIS", reply, subtitle = "CONVERSATION")
         }
 
         // ---- never a dead end ----------------------------------------------------------------------

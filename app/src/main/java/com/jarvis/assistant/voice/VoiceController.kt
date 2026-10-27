@@ -257,6 +257,18 @@ object VoiceController {
                     slot = plan.steps.firstOrNull()?.param.orEmpty(),
                 ),
             )
+            // The thread is what makes the next sentence make sense, and `absorb` is what turns a
+            // plain sentence into a memory ("my sister is Khushi", "I live in Delhi").
+            Brain.remember(
+                context,
+                Brain.Turn(
+                    heard = heard,
+                    reply = plan.say,
+                    kind = if (plan.steps.isEmpty()) Brain.Kind.CHAT else Brain.Kind.COMMAND,
+                    title = plan.title,
+                ),
+            )
+            Brain.absorb(context, heard)
         }
         lastHeard = heard
         val spokenLang = Language.detect(heard)
