@@ -9,8 +9,8 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URLEncoder
-import java.net.URL
 import java.net.UnknownHostException
+import java.net.URL
 
 data class AiMessage(val role: String, val content: String) {
     companion object {
@@ -24,6 +24,8 @@ sealed interface AiResult {
         val text: String,
         val providerLabel: String,
         val model: String,
+        /** Set when the configured model was rejected and a fallback answered instead. */
+        val note: String? = null,
     ) : AiResult
 
     data class Error(
@@ -32,13 +34,21 @@ sealed interface AiResult {
     ) : AiResult
 }
 
+sealed interface ModelsResult {
+    data class Ok(val models: List<String>, val providerLabel: String) : ModelsResult
+    data class Error(val message: String, val hint: String? = null) : ModelsResult
+}
+
 /**
  * Minimal, dependency-free client for the three wire formats JARVIS supports.
  *
- * Stability rules that matter more than features here:
+ * Stability and durability rules that matter more than features here:
  *  * every call runs on [Dispatchers.IO] — never the main thread;
  *  * connect and read timeouts are explicit, so a stalled provider cannot hang the UI;
- *  * exactly one request can be in flight per call site, enforced by the screen;
+ *  * a rejected model (HTTP 404) falls through to the provider's fallback list instead of failing
+ *    the whole request — providers retire model ids without notice, and a hardcoded name is how a
+ *    working app breaks months later with no code change;
+ *  * the model that actually answered is reported back so the caller can remember it;
  *  * every failure is mapped to a sentence the operator can act on.
  *
  * Deliberately not streaming: a partial stream is harder to cancel cleanly, and this client has to
@@ -56,74 +66,103 @@ object AiClient {
     private class Request(
         val url: String,
         val headers: Map<String, String>,
-        val body: String,
+        val body: String?,
     )
+
+    private class Credentials(
+        val config: AiKeyStore.Config,
+        val apiKey: String,
+    )
+
+    // -----------------------------------------------------------------------------------------
+    // Chat
+    // -----------------------------------------------------------------------------------------
 
     suspend fun chat(
         context: Context,
         messages: List<AiMessage>,
         system: String,
     ): AiResult = withContext(Dispatchers.IO) {
-        val config = AiKeyStore.config(context)
-            ?: return@withContext AiResult.Error(
-                "No API key configured.",
-                "Add one in Settings → INTELLIGENCE.",
-            )
-        val apiKey = AiKeyStore.apiKey(context)
-            ?: return@withContext AiResult.Error(
-                "The stored key could not be decrypted.",
-                "Enter it again in Settings → INTELLIGENCE.",
-            )
-        val model = config.resolvedModel.trim()
-        if (model.isEmpty()) {
-            return@withContext AiResult.Error(
-                "No model selected.",
-                "Enter a model name in Settings → INTELLIGENCE.",
+        val credentials = loadCredentials(context) ?: return@withContext missingKey(context)
+        if (messages.isEmpty()) return@withContext AiResult.Error("Nothing to send.")
+
+        val configured = credentials.config.resolvedModel
+        val models = credentials.config.provider.candidates(configured)
+
+        var modelMissing = false
+        var lastMessage: String? = null
+
+        for (model in models) {
+            val request = try {
+                buildRequest(credentials, model, messages, system)
+            } catch (t: Throwable) {
+                return@withContext AiResult.Error("Could not build the request.", t.message)
+            }
+
+            val response = try {
+                post(request)
+            } catch (e: SocketTimeoutException) {
+                return@withContext AiResult.Error(
+                    "The provider did not answer in time.",
+                    "Check your connection, or try a smaller model.",
+                )
+            } catch (e: UnknownHostException) {
+                return@withContext AiResult.Error(
+                    "No network route.",
+                    "Check your connection and try again.",
+                )
+            } catch (e: IOException) {
+                return@withContext AiResult.Error("Network error.", e.message)
+            } catch (t: Throwable) {
+                return@withContext AiResult.Error("Request failed.", t.message)
+            }
+
+            val (code, body) = response
+
+            // 404 almost always means "this model name is not available to your key". Walk on.
+            if (code == 404) {
+                modelMissing = true
+                lastMessage = providerMessage(body)
+                continue
+            }
+
+            if (code !in 200..299) {
+                return@withContext errorFor(code, body, credentials.config.provider)
+            }
+
+            val text = extractText(credentials.config.provider.wire, body)
+                ?: return@withContext AiResult.Error(
+                    "The provider sent a reply JARVIS could not read.",
+                    "HTTP $code · tap FETCH MODELS and pick one explicitly.",
+                )
+
+            // Remember the winner so the next request skips the failed candidates.
+            if (model != configured) {
+                AiKeyStore.updateConfig(
+                    context = context,
+                    provider = credentials.config.provider,
+                    model = model,
+                    baseUrl = credentials.config.baseUrl,
+                )
+            }
+
+            return@withContext AiResult.Ok(
+                text = text.take(MAX_REPLY_CHARS),
+                providerLabel = credentials.config.provider.label,
+                model = model,
+                note = if (model != configured) "auto-selected" else null,
             )
         }
-        if (messages.isEmpty()) {
-            return@withContext AiResult.Error("Nothing to send.")
-        }
 
-        val request = try {
-            buildRequest(config, apiKey, model, messages, system)
-        } catch (t: Throwable) {
-            return@withContext AiResult.Error("Could not build the request.", t.message)
-        }
-
-        val (code, body) = try {
-            post(request)
-        } catch (e: SocketTimeoutException) {
-            return@withContext AiResult.Error(
-                "The provider did not answer in time.",
-                "Check your connection, or try a smaller model.",
+        if (modelMissing) {
+            AiResult.Error(
+                "No usable model on ${credentials.config.provider.label}.",
+                lastMessage
+                    ?: "Tap FETCH MODELS in Settings → INTELLIGENCE to list what your key can use.",
             )
-        } catch (e: UnknownHostException) {
-            return@withContext AiResult.Error(
-                "No network route.",
-                "Check your connection and try again.",
-            )
-        } catch (e: IOException) {
-            return@withContext AiResult.Error("Network error.", e.message)
-        } catch (t: Throwable) {
-            return@withContext AiResult.Error("Request failed.", t.message)
+        } else {
+            AiResult.Error("No model configured.", "Set one in Settings → INTELLIGENCE.")
         }
-
-        if (code !in 200..299) {
-            return@withContext errorFor(code, body, config.provider)
-        }
-
-        val text = extractText(config.provider.wire, body)
-            ?: return@withContext AiResult.Error(
-                "The provider sent a reply JARVIS could not read.",
-                "HTTP $code · check the model name.",
-            )
-
-        AiResult.Ok(
-            text = text.take(MAX_REPLY_CHARS),
-            providerLabel = config.provider.label,
-            model = model,
-        )
     }
 
     /** Round-trips a fixed prompt so the operator can prove the key works. */
@@ -131,6 +170,141 @@ object AiClient {
         context = context,
         messages = listOf(AiMessage.user("Reply with exactly one word: ONLINE")),
         system = "You are a connectivity probe. Reply with one word only.",
+    )
+
+    // -----------------------------------------------------------------------------------------
+    // Model discovery
+    // -----------------------------------------------------------------------------------------
+
+    /**
+     * Asks the provider which models this key can actually use. This is the authoritative answer;
+     * everything else in the app is a guess with a fallback.
+     */
+    suspend fun listModels(context: Context): ModelsResult = withContext(Dispatchers.IO) {
+        val credentials = loadCredentials(context) ?: return@withContext missingModels()
+        val provider = credentials.config.provider
+
+        val request = when (provider.wire) {
+            AiWire.OPENAI -> Request(
+                url = "${baseUrl(credentials.config)}/models",
+                headers = mapOf("Authorization" to "Bearer ${credentials.apiKey}"),
+                body = null,
+            )
+
+            AiWire.ANTHROPIC -> Request(
+                url = "${baseUrl(credentials.config)}/models?limit=100",
+                headers = mapOf(
+                    "x-api-key" to credentials.apiKey,
+                    "anthropic-version" to "2023-06-01",
+                ),
+                body = null,
+            )
+
+            AiWire.GEMINI -> Request(
+                url = "${baseUrl(credentials.config)}/models?pageSize=200&key=" +
+                    URLEncoder.encode(credentials.apiKey, "UTF-8"),
+                headers = emptyMap(),
+                body = null,
+            )
+        }
+
+        val (code, body) = try {
+            send(request)
+        } catch (e: SocketTimeoutException) {
+            return@withContext ModelsResult.Error(
+                "The provider did not answer in time.",
+                "Try again in a moment.",
+            )
+        } catch (e: UnknownHostException) {
+            return@withContext ModelsResult.Error("No network route.", "Check your connection.")
+        } catch (e: IOException) {
+            return@withContext ModelsResult.Error("Network error.", e.message)
+        } catch (t: Throwable) {
+            return@withContext ModelsResult.Error("Request failed.", t.message)
+        }
+
+        if (code !in 200..299) {
+            val mapped = errorFor(code, body, provider)
+            return@withContext ModelsResult.Error(mapped.message, mapped.hint)
+        }
+
+        val models = parseModels(provider.wire, body)
+        if (models.isEmpty()) {
+            ModelsResult.Error(
+                "The provider returned no models.",
+                "Your key may not have access to any, or this endpoint does not list them.",
+            )
+        } else {
+            ModelsResult.Ok(models, provider.label)
+        }
+    }
+
+    private fun parseModels(wire: AiWire, body: String): List<String> = runCatching {
+        when (wire) {
+            AiWire.OPENAI, AiWire.ANTHROPIC -> {
+                val data = JSONObject(body).optJSONArray("data") ?: JSONArray()
+                (0 until data.length())
+                    .mapNotNull { index ->
+                        data.optJSONObject(index)?.optString("id")?.takeIf { it.isNotBlank() }
+                    }
+            }
+
+            AiWire.GEMINI -> {
+                val data = JSONObject(body).optJSONArray("models") ?: JSONArray()
+                (0 until data.length())
+                    .mapNotNull { index ->
+                        val item = data.optJSONObject(index) ?: return@mapNotNull null
+                        val methods = item.optJSONArray("supportedGenerationMethods")
+                        val canGenerate = methods == null ||
+                            (0 until methods.length()).any {
+                                methods.optString(it) == "generateContent"
+                            }
+                        if (!canGenerate) {
+                            null
+                        } else {
+                            item.optString("name").removePrefix("models/")
+                                .takeIf { it.isNotBlank() }
+                        }
+                    }
+            }
+        }
+    }.getOrNull().orEmpty()
+        .distinct()
+        .sorted()
+        .take(200)
+
+    /** Keeps the list readable: chat-capable ids first, obvious non-chat entries last. */
+    fun rankModels(models: List<String>): List<String> {
+        val noise = listOf("embed", "whisper", "tts", "dall", "moderation", "audio", "image", "rerank")
+        val (chat, other) = models.partition { id ->
+            noise.none { id.contains(it, ignoreCase = true) }
+        }
+        return chat + other
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Credentials
+    // -----------------------------------------------------------------------------------------
+
+    private fun loadCredentials(context: Context): Credentials? {
+        val config = AiKeyStore.config(context) ?: return null
+        val apiKey = AiKeyStore.apiKey(context) ?: return null
+        return Credentials(config, apiKey)
+    }
+
+    private fun missingKey(context: Context): AiResult.Error =
+        if (AiKeyStore.config(context) == null) {
+            AiResult.Error("No API key configured.", "Add one in Settings → INTELLIGENCE.")
+        } else {
+            AiResult.Error(
+                "The stored key could not be decrypted.",
+                "Enter it again in Settings → INTELLIGENCE.",
+            )
+        }
+
+    private fun missingModels(): ModelsResult = ModelsResult.Error(
+        "No API key configured.",
+        "Add one in Settings → INTELLIGENCE.",
     )
 
     // -----------------------------------------------------------------------------------------
@@ -150,105 +324,113 @@ object AiClient {
     }
 
     private fun buildRequest(
-        config: AiKeyStore.Config,
-        apiKey: String,
+        credentials: Credentials,
         model: String,
         messages: List<AiMessage>,
         system: String,
-    ): Request = when (config.provider.wire) {
-        AiWire.OPENAI -> {
-            val base = baseUrl(config)
-            val url = if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
-            val array = JSONArray()
-            if (system.isNotBlank()) {
-                array.put(JSONObject().put("role", "system").put("content", system))
-            }
-            messages.forEach { message ->
-                array.put(JSONObject().put("role", message.role).put("content", message.content))
-            }
-            val body = JSONObject()
-                .put("model", model)
-                .put("messages", array)
-                .put("max_tokens", MAX_REPLY_TOKENS)
-                .put("temperature", 0.4)
-                .toString()
-            Request(url, mapOf("Authorization" to "Bearer $apiKey"), body)
-        }
+    ): Request {
+        val provider = credentials.config.provider
+        val apiKey = credentials.apiKey
 
-        AiWire.ANTHROPIC -> {
-            val array = JSONArray()
-            messages.forEach { message ->
-                array.put(JSONObject().put("role", message.role).put("content", message.content))
+        return when (provider.wire) {
+            AiWire.OPENAI -> {
+                val base = baseUrl(credentials.config)
+                val url = if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
+                val array = JSONArray()
+                if (system.isNotBlank()) {
+                    array.put(JSONObject().put("role", "system").put("content", system))
+                }
+                messages.forEach { message ->
+                    array.put(JSONObject().put("role", message.role).put("content", message.content))
+                }
+                val body = JSONObject()
+                    .put("model", model)
+                    .put("messages", array)
+                    .put("max_tokens", MAX_REPLY_TOKENS)
+                    .put("temperature", 0.4)
+                    .toString()
+                Request(url, mapOf("Authorization" to "Bearer $apiKey"), body)
             }
-            val body = JSONObject()
-                .put("model", model)
-                .put("max_tokens", MAX_REPLY_TOKENS)
-                .put("system", system)
-                .put("temperature", 0.4)
-                .put("messages", array)
-                .toString()
-            Request(
-                url = "${baseUrl(config)}/messages",
-                headers = mapOf(
-                    "x-api-key" to apiKey,
-                    "anthropic-version" to "2023-06-01",
-                ),
-                body = body,
-            )
-        }
 
-        AiWire.GEMINI -> {
-            val array = JSONArray()
-            messages.forEach { message ->
-                array.put(
-                    JSONObject()
-                        .put("role", if (message.role == "assistant") "model" else "user")
-                        .put(
-                            "parts",
-                            JSONArray().put(JSONObject().put("text", message.content)),
-                        )
-                )
-            }
-            val root = JSONObject()
-                .put("contents", array)
-                .put(
-                    "generationConfig",
-                    JSONObject()
-                        .put("maxOutputTokens", MAX_REPLY_TOKENS)
-                        .put("temperature", 0.4),
-                )
-            if (system.isNotBlank()) {
-                root.put(
-                    "systemInstruction",
-                    JSONObject().put(
-                        "parts",
-                        JSONArray().put(JSONObject().put("text", system)),
+            AiWire.ANTHROPIC -> {
+                val array = JSONArray()
+                messages.forEach { message ->
+                    array.put(JSONObject().put("role", message.role).put("content", message.content))
+                }
+                val body = JSONObject()
+                    .put("model", model)
+                    .put("max_tokens", MAX_REPLY_TOKENS)
+                    .put("system", system)
+                    .put("temperature", 0.4)
+                    .put("messages", array)
+                    .toString()
+                Request(
+                    url = "${baseUrl(credentials.config)}/messages",
+                    headers = mapOf(
+                        "x-api-key" to apiKey,
+                        "anthropic-version" to "2023-06-01",
                     ),
+                    body = body,
                 )
             }
-            val encodedKey = URLEncoder.encode(apiKey, "UTF-8")
-            Request(
-                url = "${baseUrl(config)}/models/$model:generateContent?key=$encodedKey",
-                headers = emptyMap(),
-                body = root.toString(),
-            )
+
+            AiWire.GEMINI -> {
+                val array = JSONArray()
+                messages.forEach { message ->
+                    array.put(
+                        JSONObject()
+                            .put("role", if (message.role == "assistant") "model" else "user")
+                            .put(
+                                "parts",
+                                JSONArray().put(JSONObject().put("text", message.content)),
+                            )
+                    )
+                }
+                val root = JSONObject()
+                    .put("contents", array)
+                    .put(
+                        "generationConfig",
+                        JSONObject()
+                            .put("maxOutputTokens", MAX_REPLY_TOKENS)
+                            .put("temperature", 0.4),
+                    )
+                if (system.isNotBlank()) {
+                    root.put(
+                        "systemInstruction",
+                        JSONObject().put(
+                            "parts",
+                            JSONArray().put(JSONObject().put("text", system)),
+                        ),
+                    )
+                }
+                val encodedKey = URLEncoder.encode(apiKey, "UTF-8")
+                Request(
+                    url = "${baseUrl(credentials.config)}/models/$model:generateContent?key=$encodedKey",
+                    headers = emptyMap(),
+                    body = root.toString(),
+                )
+            }
         }
     }
 
-    private fun post(request: Request): Pair<Int, String> {
+    private fun post(request: Request): Pair<Int, String> = send(request, "POST")
+
+    private fun send(request: Request, method: String = "GET"): Pair<Int, String> {
         val connection = (URL(request.url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
+            requestMethod = method
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
-            doOutput = true
             useCaches = false
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("Accept", "application/json")
             request.headers.forEach { (name, value) -> setRequestProperty(name, value) }
         }
         try {
-            connection.outputStream.use { stream ->
-                stream.write(request.body.toByteArray(Charsets.UTF_8))
+            if (request.body != null) {
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                connection.outputStream.use { stream ->
+                    stream.write(request.body.toByteArray(Charsets.UTF_8))
+                }
             }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
@@ -291,7 +473,7 @@ object AiClient {
             )
             404 -> AiResult.Error(
                 "That model is not available on ${provider.label} (HTTP 404).",
-                detail ?: "Set a model this key can access.",
+                detail ?: "Tap FETCH MODELS and pick one your key can reach.",
             )
             413 -> AiResult.Error("The request was too large.", detail)
             429 -> AiResult.Error(

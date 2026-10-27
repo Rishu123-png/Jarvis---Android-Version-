@@ -63,7 +63,6 @@ fun AutomationScreen(
     notificationAccess: Boolean,
     onRun: (Workflow) -> Unit,
     onStop: () -> Unit,
-    onConfirm: (Boolean) -> Unit,
     onDismissFinished: () -> Unit,
     onEdit: (Workflow) -> Unit,
     onNew: () -> Unit,
@@ -71,6 +70,7 @@ fun AutomationScreen(
     onOpenAccessibility: () -> Unit,
     onToggleScreenPress: (Boolean) -> Unit,
     onOpenNotificationAccess: () -> Unit,
+    onActivateAll: () -> Unit,
     onBack: () -> Unit,
 ) {
     ModuleScaffold(
@@ -116,6 +116,21 @@ fun AutomationScreen(
 
             Spacer(Modifier.height(12.dp))
 
+            // Activates everything JARVIS is allowed to activate itself, then hands the one
+            // remaining system switch to the operator with the right page already open.
+            val allGranted = accessibilityEnabled && screenPressAllowed && notificationAccess
+            ActionPill(
+                label = when {
+                    allGranted -> "ALL ACCESS ACTIVE"
+                    accessibilityEnabled -> "ACTIVATE REMAINING ACCESS"
+                    else -> "ACTIVATE ALL ACCESS"
+                },
+                accent = if (allGranted) StatusGreen else ElectricCyan,
+                filled = !allGranted,
+                onClick = { if (!allGranted) onActivateAll() },
+            )
+            Spacer(Modifier.height(8.dp))
+
             if (!accessibilityEnabled) {
                 ActionPill(
                     label = "ENABLE IN SYSTEM SETTINGS",
@@ -144,6 +159,18 @@ fun AutomationScreen(
                     accent = IceBlue,
                     filled = false,
                     onClick = onOpenNotificationAccess,
+                )
+            }
+
+            if (!allGranted) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "JARVIS switches on the in-app grants itself. The accessibility and " +
+                        "notification switches belong to Android, so those open the exact system " +
+                        "page — Android will not let any app flip them silently, and that is the " +
+                        "protection working as intended.",
+                    style = HudType.terminal.copy(fontSize = 10.sp),
+                    color = TextMuted,
                 )
             }
 
@@ -233,24 +260,12 @@ fun AutomationScreen(
                     color = TextMuted,
                 )
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        ActionPill(
-                            label = "DECLINE",
-                            accent = TextMuted,
-                            filled = false,
-                            onClick = { onConfirm(false) },
-                        )
-                    }
-                    Box(modifier = Modifier.weight(1f)) {
-                        ActionPill(
-                            label = "APPROVE",
-                            accent = StatusGreen,
-                            filled = true,
-                            onClick = { onConfirm(true) },
-                        )
-                    }
-                }
+                // Answered on the shell's confirmation card, which stays reachable from any screen.
+                Text(
+                    text = "Approve or decline on the confirmation card.",
+                    style = HudType.terminal.copy(fontSize = 10.sp),
+                    color = Amber,
+                )
             }
 
             is RunState.Finished -> HudPanel(

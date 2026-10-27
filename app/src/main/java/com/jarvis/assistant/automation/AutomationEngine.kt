@@ -77,6 +77,9 @@ object AutomationEngine {
 
     private const val MAX_STEPS = 20
 
+    /** Name given to the throwaway workflow used to test one step in the editor. */
+    const val STEP_TEST_NAME = "STEP TEST"
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _state = MutableStateFlow<RunState>(RunState.Idle)
@@ -87,6 +90,26 @@ object AutomationEngine {
     private val log = mutableListOf<RunLogEntry>()
 
     val isBusy: Boolean get() = currentJob?.isActive == true
+
+    /**
+     * Runs exactly one step so the operator can prove it works before wiring it into a routine.
+     *
+     * Implemented as a one-step workflow, which means it inherits every guard the full runner has:
+     * the confirmation gate for sensitive steps, the run log, and STOP. Returns false when another
+     * routine already owns the engine.
+     */
+    fun testStep(context: Context, step: WorkflowStep): Boolean {
+        if (isBusy) return false
+        run(
+            context,
+            Workflow(
+                id = "__step_test__",
+                name = STEP_TEST_NAME,
+                steps = listOf(step),
+            ),
+        )
+        return true
+    }
 
     fun run(context: Context, workflow: Workflow) {
         if (isBusy) return

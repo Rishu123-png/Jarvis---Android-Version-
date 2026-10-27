@@ -42,10 +42,13 @@ only a masked `••••1234` is ever displayed. It is never logged, never wr
 exists in plaintext only for the duration of a request. Uninstalling the app or clearing its data
 destroys the encryption key with it.
 
-**Failure is explicit.** A bad key, an unavailable model, a rate limit, a timeout or a dead network
-each produce a sentence you can act on. Connect and read timeouts are fixed, one request is in
-flight at a time, and the request is cancelled when you leave the screen — a slow provider cannot
-leave the panel stuck.
+**Model names are the fragile part.** Providers retire model ids without warning, so no name is
+trusted: **FETCH MODELS** asks the provider what your key can actually reach and lists it, and a
+model rejection (HTTP 404) makes the client walk the provider's known alternatives, then remember
+the one that answered. A retired model cannot silently break a working setup. **Failure is explicit.** A bad key, a missing model, a rate limit, a timeout or a dead network each
+produce a sentence you can act on. Connect and read timeouts are fixed, one request is in flight at
+a time, and the request is cancelled when you leave the screen — a slow provider cannot leave the
+panel stuck.
 
 ---
 
