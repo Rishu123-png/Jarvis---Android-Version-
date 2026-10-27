@@ -19,12 +19,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Intent
+import com.jarvis.assistant.data.Archive
 import com.jarvis.assistant.data.Knowledge
 import com.jarvis.assistant.data.ResearchDesk
 import com.jarvis.assistant.device.Access
@@ -44,6 +47,9 @@ import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextPrimary
 import com.jarvis.assistant.voice.Brain
 import com.jarvis.assistant.voice.SpeechRoute
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Advanced settings: privacy lock, floating bubble, speech engine, widget.
@@ -94,6 +100,38 @@ fun PrivacyScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { accessRefresh++ }
+
+    val scope = rememberCoroutineScope()
+    var archiveNote by remember { mutableStateOf<String?>(null) }
+    // Reading a memory file and writing one are both disk work: never on the main thread, and the
+    // note only comes back to the UI once the work is finished.
+    val importer = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) {
+            archiveNote = "Nothing was chosen."
+        } else {
+            archiveNote = "Reading the file…"
+            scope.launch {
+                val note = withContext(Dispatchers.IO) {
+                    val text = try {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader()
+                            ?.use { it.readText() }
+                    } catch (t: Throwable) {
+                        null
+                    }
+                    val summary = if (text == null) null else Archive.restore(context, text)
+                    if (summary == null) {
+                        "That file is not a JARVIS memory file, so nothing was changed."
+                    } else {
+                        "Restored ${summary.keys} entries. Open a screen again to see them."
+                    }
+                }
+                archiveNote = note
+                learnedCards = Knowledge.count(context)
+            }
+        }
+    }
 
     ModuleScaffold(
         title = "ADVANCED",
@@ -570,6 +608,59 @@ fun PrivacyScreen(
                         learnedCards = 0
                     }
                 }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // ---------------------------------------------------------------- carry him to a new phone
+        HudPanel(label = "CARRY HIM TO A NEW PHONE", accent = IceBlue) {
+            Text(
+                text = "One file with everything he knows: who people are, the facts, the " +
+                    "conversation, the shelf, your routines. Your AI key is deliberately left " +
+                    "out — an export travels by chat and mail, and a file with a key in it gets " +
+                    "forwarded. Add the key again on the new phone in ten seconds.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey("EXPORT") {
+                    archiveNote = "Writing the file…"
+                    scope.launch {
+                        val saved = withContext(Dispatchers.IO) { Archive.saveToDownloads(context) }
+                        val uri = saved.first
+                        if (uri == null) {
+                            archiveNote = saved.second
+                        } else {
+                            archiveNote = "Saved to Download/JARVIS/${saved.second}"
+                            try {
+                                val share = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/json"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(
+                                    Intent.createChooser(share, "Send the memory file")
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            } catch (t: Throwable) {
+                                // The file is already on disk; the share sheet is a convenience.
+                            }
+                        }
+                    }
+                }
+                KeypadKey("IMPORT") {
+                    try {
+                        importer.launch(arrayOf("application/json", "text/plain", "*/*"))
+                    } catch (t: Throwable) {
+                        archiveNote = "No file picker is available on this phone."
+                    }
+                }
+            }
+            archiveNote?.let { line ->
+                Spacer(Modifier.height(8.dp))
+                Text(text = line, style = HudType.valueSmall, color = TextPrimary)
             }
         }
 

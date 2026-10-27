@@ -4,13 +4,22 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
-## 1.0.0 — versionCode 20
+## 1.0.0 — versionCode 21
 
 **The version number restarts here.** From this release on, JARVIS is **1.0.0** and stays there in
 every build; `versionCode` is what increases. The earlier 2.x names were internal scaffolding, and a
 family member released to family should not be called 2.4.
 
 Everything below is new in this release.
+
+**The eyes and the suitcase (same version).** He can look at something — *"look at this"*, *"read
+this"*, *"yeh kya hai"* — take one frame with his own capture surface, shrink it by subsampling at
+decode time (so a 12-megapixel photo never enters memory whole), and answer the question you asked
+through the AI key you already have. On demand only: no background camera, no held sensor. He is told
+in as many words to say "I cannot read that" rather than invent a dosage or a name. And the whole
+memory — people, facts, conversation, knowledge shelf, routines — now exports to **one JSON file** in
+`Download/JARVIS` for a new phone, and imports back additively. The AI key is deliberately excluded
+from the file, because exports travel by chat and mail. **versionCode 21**, 22 suites.
 
 **The curiosity (same version, rebuilt without the AI price tag).** He can look something up —
 Wikipedia and a free dictionary, both public, both keyless, no account and no bill — and he **asks
