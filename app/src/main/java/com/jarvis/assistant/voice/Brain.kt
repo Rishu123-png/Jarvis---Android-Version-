@@ -1,6 +1,7 @@
 package com.jarvis.assistant.voice
 
 import android.content.Context
+import com.jarvis.assistant.data.Knowledge
 import com.jarvis.assistant.data.PhraseBook
 import com.jarvis.assistant.data.When
 import com.jarvis.assistant.device.CalendarBridge
@@ -338,6 +339,17 @@ object Brain {
         val factLines = facts(context).take(10)
         if (factLines.isNotEmpty()) {
             lines.add("Known: " + factLines.joinToString("; ") { "${it.key}: ${it.value}" })
+        }
+
+        // What he has looked up and kept. A topic list, not the text: the model needs to know the
+        // subject is already on the shelf, not to recite a summary it did not write.
+        val learned = try {
+            Knowledge.cards(context).takeLast(8).map { it.topic }
+        } catch (t: Throwable) {
+            emptyList()
+        }
+        if (learned.isNotEmpty()) {
+            lines.add("He has looked up: " + learned.joinToString(", "))
         }
 
         return lines.joinToString("\n")

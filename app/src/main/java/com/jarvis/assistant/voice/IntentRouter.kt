@@ -11,7 +11,9 @@ import com.jarvis.assistant.automation.ActionType
 import com.jarvis.assistant.automation.JarvisAccessibilityService
 import com.jarvis.assistant.automation.ParamKind
 import com.jarvis.assistant.data.AppRepository
+import com.jarvis.assistant.data.Knowledge
 import com.jarvis.assistant.data.PhraseBook
+import com.jarvis.assistant.data.ResearchDesk
 import com.jarvis.assistant.data.PhraseIntent
 import com.jarvis.assistant.data.Units
 import com.jarvis.assistant.data.When
@@ -22,6 +24,7 @@ import com.jarvis.assistant.device.Files
 import com.jarvis.assistant.device.HealthLog
 import com.jarvis.assistant.device.Messaging
 import com.jarvis.assistant.device.NotificationRepository
+import com.jarvis.assistant.device.Research
 import com.jarvis.assistant.device.NotifyBrain
 import com.jarvis.assistant.device.VoiceNotes
 import com.jarvis.assistant.device.Whereabouts
@@ -117,6 +120,30 @@ object IntentRouter {
         // A short follow-up ("do that for Amit", "and tomorrow") only means something next to the
         // previous turn, so it is completed before anything else looks at it.
         val completed = FollowUp.rewritten(FollowUp.last(context), spoken) ?: spoken
+
+        // The two things that must be decided before a model sees the sentence: an explicit request
+        // to go and find something out ("look up X") and the answer to a permission question he
+        // already asked. Both are the operator's words, so neither is left to a guess.
+        ResearchTalk.explicitTopicOf(completed)?.let { topic ->
+            return research(context, topic, Language.detect(completed))
+        }
+        ResearchDesk.pending(context)?.let { waiting ->
+            val words = ResearchTalk.normal(completed)
+            if (ResearchTalk.isYes(words)) {
+                ResearchDesk.clearPending(context)
+                return research(context, waiting.topic, Language.detect(completed), approved = true)
+            }
+            if (ResearchTalk.isNo(words)) {
+                ResearchDesk.clearPending(context)
+                return VoicePlan(
+                    title = "LEAVE IT",
+                    subtitle = "RESEARCH",
+                    steps = emptyList(),
+                    say = ResearchTalk.declined(Language.detect(completed)),
+                    source = "LOCAL",
+                )
+            }
+        }
 
         if (aiReady(context)) {
             val viaAi = try {
@@ -1080,6 +1107,10 @@ object IntentRouter {
             if (target.isNotBlank()) return openAnything(context, target, lang)
         }
 
+        // ---- what he has learned, then the one thing that leaves the phone ----------------------
+        if (ResearchTalk.asksWhatHeKnows(heard)) return shelfAnswer(context, lang)
+        ResearchTalk.topicOf(heard)?.let { topic -> return research(context, topic, lang) }
+
         // ---- conversation, with or without a key -----------------------------------------------
         Brain.smallTalk(clean, lang, Brain.fact(context, "name"))?.let { reply ->
             return answer("JARVIS", reply, subtitle = "CONVERSATION")
@@ -1134,6 +1165,118 @@ object IntentRouter {
                 }
             }
         }
+
+    // ---------------------------------------------------------------------------------------------
+    // Research — the only path that uses the internet, and the only one that asks first
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Answers a question: from the shelf when he has been here before, from a public source when he
+     * has not, and never without a yes unless the operator turned the question off.
+     *
+     * The order matters. A remembered answer costs nothing, reveals nothing and works on a train,
+     * so it is tried before the permission question — asking permission to repeat something he
+     * already knows would be theatre.
+     */
+    private suspend fun research(
+        context: Context,
+        topic: String,
+        lang: Lang,
+        approved: Boolean = false,
+    ): VoicePlan {
+        val asked = topic.trim()
+        if (asked.isBlank()) {
+            return VoicePlan("LOOK UP", "RESEARCH", emptyList(), ResearchTalk.noTopic(lang), "LOCAL")
+        }
+
+        Knowledge.find(context, asked)?.let { card ->
+            return VoicePlan(
+                title = "REMEMBERED",
+                subtitle = card.topic.uppercase(Locale.US).take(20),
+                steps = emptyList(),
+                say = ResearchTalk.answered(lang, card.summary, card.source),
+                source = "LOCAL",
+            )
+        }
+
+        if (!approved && ResearchDesk.shouldAsk(context)) {
+            // Nothing is fetched until the next word is yes. The topic is written down so the yes
+            // has something to apply to, and it expires rather than waiting all day.
+            ResearchDesk.setPending(context, asked)
+            return VoicePlan(
+                title = "ASK FIRST",
+                subtitle = "RESEARCH",
+                steps = emptyList(),
+                say = ResearchTalk.ask(lang, asked),
+                source = "LOCAL",
+            )
+        }
+
+        val outcome = try {
+            Research.look(asked, wiki = ResearchTalk.wikiOf(lang))
+        } catch (t: Throwable) {
+            Research.Outcome.Unreachable(t.javaClass.simpleName)
+        }
+
+        return when (outcome) {
+            is Research.Outcome.Found -> {
+                val finding = outcome.finding
+                // Keep it. The next asking of the same question is instant and offline.
+                Knowledge.save(
+                    context,
+                    Knowledge.Card(
+                        topic = finding.topic,
+                        summary = finding.summary,
+                        source = finding.source,
+                        url = finding.url,
+                    ),
+                )
+                VoicePlan(
+                    title = "LEARNED",
+                    subtitle = finding.source.uppercase(Locale.US).take(20),
+                    steps = emptyList(),
+                    say = ResearchTalk.answered(lang, finding.summary, finding.source),
+                    source = "WEB",
+                )
+            }
+
+            is Research.Outcome.Missing -> VoicePlan(
+                title = "NO RESULT",
+                subtitle = "RESEARCH",
+                steps = emptyList(),
+                say = ResearchTalk.notFound(lang, asked),
+                source = "WEB",
+            )
+
+            is Research.Outcome.Unreachable -> VoicePlan(
+                title = "NO LINK",
+                subtitle = "RESEARCH",
+                steps = emptyList(),
+                say = ResearchTalk.offline(lang),
+                source = "LOCAL",
+            )
+        }
+    }
+
+    /** "what have you learned" — the shelf, out loud. */
+    private fun shelfAnswer(context: Context, lang: Lang): VoicePlan {
+        val cards = try {
+            Knowledge.cards(context)
+        } catch (t: Throwable) {
+            emptyList()
+        }
+        if (cards.isEmpty()) {
+            return VoicePlan("KNOWLEDGE", "EMPTY", emptyList(), ResearchTalk.shelfEmpty(lang), "LOCAL")
+        }
+        val topics = cards.takeLast(6).map { it.topic.lowercase(Locale.US) }.reversed()
+        return VoicePlan(
+            title = "KNOWLEDGE \u00B7 ${cards.size}",
+            subtitle = "LEARNED",
+            steps = emptyList(),
+            say = ResearchTalk.shelfList(lang, cards.size, topics),
+            source = "LOCAL",
+        )
+    }
 
     /** "what can you do" — answered from what this phone actually has. */
     private fun helpText(context: Context, lang: Lang): String {

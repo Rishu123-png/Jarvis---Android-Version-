@@ -4,13 +4,22 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
-## 1.0.0 — versionCode 18
+## 1.0.0 — versionCode 20
 
 **The version number restarts here.** From this release on, JARVIS is **1.0.0** and stays there in
 every build; `versionCode` is what increases. The earlier 2.x names were internal scaffolding, and a
 family member released to family should not be called 2.4.
 
 Everything below is new in this release.
+
+**The curiosity (same version, rebuilt without the AI price tag).** He can look something up —
+Wikipedia and a free dictionary, both public, both keyless, no account and no bill — and he **asks
+first**: *ask everything*, *ask once per topic* (default) or *don't ask*, three positions on the new
+**KNOWLEDGE** page. Answers are summarised on the phone by counting (two sentences, no model, no
+download), attributed out loud to their source, and kept as cards that answer the same question
+instantly and offline next time. Every card is listed with its date and can be deleted one by one.
+Nothing about the operator is ever sent, and he still cannot post, send or sign in to anything.
+Version code **20**.
 
 **The brain (built after the first pass, same version).** JARVIS now keeps a local memory of the
 operator — people and how they are related, standing facts like a name or a city, the last few turns
