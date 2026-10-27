@@ -38,6 +38,13 @@ object Biometrics {
         FAILED,
     }
 
+    // The system reports these codes through AuthenticationCallback, but the platform class does not
+    // publish them as constants the way the AndroidX facade does — they are only documented in the
+    // framework sources. The values are part of the native fingerprint/hardware API and stable.
+    private const val ERROR_CANCELED = 5
+    private const val ERROR_USER_CANCELED = 10
+    private const val ERROR_NEGATIVE_BUTTON = 13
+
     private const val PREFS = "jarvis_biometrics"
     private const val KEY_ENABLED = "enabled"
 
@@ -125,9 +132,9 @@ object Biometrics {
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
                         answer(
                             when (errorCode) {
-                                BiometricPrompt.ERROR_USER_CANCELED,
-                                BiometricPrompt.ERROR_NEGATIVE_BUTTON,
-                                BiometricPrompt.ERROR_CANCELED,
+                                ERROR_USER_CANCELED,
+                                ERROR_NEGATIVE_BUTTON,
+                                ERROR_CANCELED,
                                 -> Outcome.CANCELLED
                                 // Lockout after too many attempts, hardware gone, timeout: all
                                 // leave the keypad as the only way in.
