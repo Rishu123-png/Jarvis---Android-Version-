@@ -321,7 +321,6 @@ fun ControlsScreen(
     }
 }
 
-@Composable
 /**
  * One interruption mode. When [mode] is null this row is the "grant access" affordance, which is
  * why it takes a nullable mode instead of a second composable.
