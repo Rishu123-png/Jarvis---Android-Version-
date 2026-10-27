@@ -103,7 +103,7 @@ object HudModules {
             caption = "Speech I/O",
             icon = Icons.Outlined.Mic,
             accent = Amber,
-            isLive = false,
+            isLive = true,
         ),
         HudModule(
             id = AUTOMATION,

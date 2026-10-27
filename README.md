@@ -22,7 +22,8 @@ Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · minSdk 29 (Androi
 | Instagram creator analytics, views-first (your own account) | Working |
 | Account linking: Instagram login, Google Drive + Gmail | Working |
 | Intelligence: your own AI key, any supported provider | Working |
-| Voice input and spoken replies | Not built |
+| Voice: tap-to-speak, Whisper or on-device, spoken replies | Working |
+| Voice commands: call a contact, message on WhatsApp, open apps, torch, alarms | Working |
 
 Every tile on the HUD is either backed by a real Android API or clearly marked as not built. Nothing
 in the interface imitates a capability the app does not have.
@@ -55,6 +56,53 @@ the one that answered. A retired model cannot silently break a working setup. **
 produce a sentence you can act on. Connect and read timeouts are fixed, one request is in flight at
 a time, and the request is cancelled when you leave the screen — a slow provider cannot leave the
 panel stuck.
+
+---
+
+## Voice
+
+Home is now one orb with a top bar. Tap the orb, speak, tap again — JARVIS transcribes, plans, shows
+each step on a card over the orb, does it, and says the result out loud. The old dashboard (tiles,
+telemetry, dock, log) still exists behind the grid button in the top bar.
+
+**Two ears, picked automatically:**
+
+| Situation | Engine | Where the audio goes |
+| --- | --- | --- |
+| An OpenAI, Groq or OpenAI-compatible key is stored | Whisper through that provider | That provider only, then discarded |
+| No key, or a provider without a speech endpoint | The device recognizer | Nowhere — it never leaves the phone |
+
+Nothing is bundled and nothing is downloaded: no 60 MB model in the APK, no extra app to install.
+The Whisper key is the same key you already use for Intelligence, and switching engines is automatic.
+
+**Two brains:**
+
+- **With a key** — the sentence goes to the model with the list of things this phone can actually
+  do. Sloppy speech, half-sentences and mixed Hindi/English are fine; there is no command list in
+  the UI to memorise. The model can only choose capabilities that exist, and anything it invents is
+  dropped before execution.
+- **Without a key** — a small silent parser handles the real-world phrasings (`call dad`,
+  `open whatsapp`, `torch on`, `alarm 7:30`, `timer 10 minutes`, `volume 40`, `again`).
+
+**What voice can do**
+
+| Say | What happens |
+| --- | --- |
+| "call dad" | Resolves the contact and calls. Without phone permission it opens the dialer and says so |
+| "whatsapp Divik say hi" | Opens the chat with the text written; presses Send if accessibility is on |
+| "open instagram" | Fuzzy-matches the installed app, remembers the alias for next time |
+| "torch on", "do not disturb on", "volume 40" | Direct device control |
+| "alarm 7:30", "timer 10 minutes" | Alarm and timer intents |
+| "again" | Re-runs the previous command |
+| anything else | Answered by the AI, or an honest "I cannot do that" — never a fake success |
+
+**Memory** is local and small: the last 50 commands, contact nicknames you used, and app aliases.
+No account, no sync, no backup.
+
+**Honest limits.** Instagram and Telegram have no link that writes a message to a contact, so those
+stay open-the-app only. Sending needs the accessibility service plus the "press on screen" tier
+switched on; without it JARVIS writes the message and asks you to tap Send. Everything voice does
+runs with a hard timeout, and a failed step stops the turn and says why.
 
 ---
 

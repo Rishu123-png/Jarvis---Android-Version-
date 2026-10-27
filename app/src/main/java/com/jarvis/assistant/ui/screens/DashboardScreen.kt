@@ -238,7 +238,7 @@ fun DashboardScreen(
         }
 
         item(key = "voice") {
-            VoiceBar()
+            VoiceBar(onClick = { onOpenModule(HudModules.all.first { it.id == HudModules.VOICE }) })
         }
 
         item(key = "footer") {
@@ -516,10 +516,11 @@ private fun DockBlock(
 }
 
 @Composable
-private fun VoiceBar() {
+private fun VoiceBar(onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .background(
                 Brush.horizontalGradient(
                     listOf(
@@ -556,11 +557,11 @@ private fun VoiceBar() {
                 color = TextPrimary,
             )
             Text(
-                text = "Voice module is not built in this version",
+                text = "Tap the orb, speak, tap again",
                 style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 0.8.sp),
                 color = TextMuted,
             )
         }
-        HudChip(text = "SOON", accent = TextMuted)
+        HudChip(text = "LIVE", accent = StatusGreen)
     }
 }

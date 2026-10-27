@@ -1,0 +1,519 @@
+package com.jarvis.assistant.voice
+
+import android.content.Context
+import com.jarvis.assistant.ai.AiClient
+import com.jarvis.assistant.ai.AiKeyStore
+import com.jarvis.assistant.ai.AiMessage
+import com.jarvis.assistant.ai.AiResult
+import com.jarvis.assistant.automation.AccessibilityStatus
+import com.jarvis.assistant.automation.ActionType
+import com.jarvis.assistant.automation.ParamKind
+import com.jarvis.assistant.data.AppRepository
+import com.jarvis.assistant.data.InstalledApp
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.URLEncoder
+import java.util.Locale
+
+/** One executable step, already resolved to something [com.jarvis.assistant.automation.StepExecutor] knows. */
+data class PlannedStep(val action: ActionType, val param: String, val label: String)
+
+data class VoicePlan(
+    val title: String,
+    val subtitle: String,
+    val steps: List<PlannedStep>,
+    val say: String,
+    val source: String,
+)
+
+/**
+ * The brain: one spoken sentence in, a short validated plan out.
+ *
+ * Two paths, in this order:
+ *
+ *  1. **AI** — used whenever a key is stored. The operator never sees a command list; the model
+ *     reads the raw words (typos, mixed language, half-finished sentences included) and picks from
+ *     the capabilities the phone actually has. Anything the model invents is dropped.
+ *  2. **Local** — a small, silent parser used when no key is stored, when the network is down, or
+ *     when the model answers with nonsense. It covers the handful of phrasings people really use
+ *     ("call dad", "open whatsapp", "torch on").
+ *
+ * Nothing here executes anything. [VoiceController] runs the steps and shows them on the card.
+ */
+object IntentRouter {
+
+    private const val VIRTUAL_SEND = "send_message"
+    private const val MAX_STEPS = 4
+    private const val MAX_SPOKEN = 240
+
+    /** Actions the voice surface may use. Shell and webhooks are excluded on purpose. */
+    private val voiceActions: List<ActionType> = ActionType.entries.filter {
+        !it.blocks && it != ActionType.SHELL && it != ActionType.WEBHOOK
+    }
+
+    fun aiReady(context: Context): Boolean = AiKeyStore.config(context) != null
+
+    suspend fun plan(context: Context, heard: String): VoicePlan {
+        val spoken = heard.trim()
+        if (spoken.isEmpty()) {
+            return VoicePlan(
+                title = "NO INPUT",
+                subtitle = "",
+                steps = emptyList(),
+                say = "I did not hear anything.",
+                source = "LOCAL",
+            )
+        }
+
+        if (aiReady(context)) {
+            val viaAi = try {
+                aiPlan(context, spoken)
+            } catch (t: Throwable) {
+                null
+            }
+            if (viaAi != null) return viaAi
+        }
+
+        return localPlan(context, spoken)
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // AI path
+    // ---------------------------------------------------------------------------------------------
+
+    private suspend fun aiPlan(context: Context, heard: String): VoicePlan? {
+        val system = systemPrompt(context)
+        val result = AiClient.chat(
+            context = context,
+            messages = listOf(AiMessage.user(heard)),
+            system = system,
+        )
+        val reply = when (result) {
+            is AiResult.Error -> return null
+            is AiResult.Ok -> result.text
+        }
+
+        val json = extractJson(reply) ?: return null
+        val title = json.optString("title").trim().uppercase(Locale.US).take(28).ifBlank { "COMMAND" }
+        val say = json.optString("say").trim().take(MAX_SPOKEN)
+
+        val steps = mutableListOf<PlannedStep>()
+        val rawSteps: JSONArray? = json.optJSONArray("steps")
+        if (rawSteps != null) {
+            for (index in 0 until minOf(rawSteps.length(), MAX_STEPS)) {
+                val item = rawSteps.optJSONObject(index) ?: continue
+                val id = item.optString("action").trim()
+                val param = item.optString("param").trim()
+                val label = item.optString("label").trim().uppercase(Locale.US).take(28)
+
+                if (id == VIRTUAL_SEND) {
+                    steps.addAll(sendSteps(context, param, label))
+                    continue
+                }
+
+                val action = voiceActions.firstOrNull { it.id == id } ?: continue
+                steps.add(PlannedStep(action, param, label.ifBlank { action.label }))
+            }
+        }
+
+        val resolved = steps.take(MAX_STEPS)
+        if (resolved.isEmpty() && say.isBlank()) return null
+
+        val sourceLabel = when (result) {
+            is AiResult.Ok -> "AI · ${result.providerLabel}"
+            else -> "AI"
+        }
+
+        return VoicePlan(
+            title = title,
+            subtitle = if (resolved.isEmpty()) "ANSWER" else "${resolved.size} STEP" + if (resolved.size == 1) "" else "S",
+            steps = resolved,
+            say = say.ifBlank { if (resolved.isEmpty()) "Done." else "On it." },
+            source = sourceLabel,
+        )
+    }
+
+    private fun systemPrompt(context: Context): String {
+        val actions = voiceActions.joinToString("\n") { action ->
+            val kind = when (action.paramKind) {
+                ParamKind.NONE -> "no param"
+                ParamKind.NUMBER -> "numeric param"
+                ParamKind.APP -> "app param (package name)"
+                ParamKind.TEXT -> "text param"
+            }
+            "- ${action.id}: ${action.label} — ${action.blurb} ($kind)"
+        }
+
+        val installed = installedAppLines(context)
+
+        val recents = VoiceMemory.recent(context, 4)
+            .joinToString("\n") { "- ${it.heard} -> ${it.summary}" }
+            .ifBlank { "- none yet" }
+
+        return """
+            You are JARVIS on the operator's own Android phone. Turn ONE spoken sentence into a
+            short list of device actions.
+
+            Reply with ONE JSON object and nothing else. No prose, no markdown, no code fence.
+
+            {
+              "title": "3 TO 5 WORD UPPERCASE SUMMARY",
+              "say": "one short sentence spoken back to the operator",
+              "steps": [ { "action": "action id", "param": "value", "label": "2 TO 4 WORD STEP" } ]
+            }
+
+            Actions you may use:
+            $actions
+            - $VIRTUAL_SEND: SEND MESSAGE — send a chat message. param is exactly
+              "app|contact|text", where app is whatsapp, telegram or sms.
+              Example: "whatsapp|Divik|hi, on my way".
+
+            Rules:
+            - To call someone use call_contact with the person's name exactly as heard. Never invent a number.
+            - To message someone use $VIRTUAL_SEND. Never invent a number either.
+            - To open an app use open_app with a package name from the installed list.
+            - The operator's speech may be sloppy, abbreviated or mixed with Hindi words. Infer intent.
+            - If the request is a question, conversation, or something a phone cannot do, return
+              "steps": [] and answer honestly in "say". Never claim an action you did not plan.
+            - Never use shell or webhook. Never return more than $MAX_STEPS steps.
+            - Keep "say" under 200 characters and do not describe every step; one sentence is enough.
+
+            Installed apps (label — package):
+            $installed
+
+            Recent commands for context:
+            $recents
+        """.trimIndent()
+    }
+
+    private suspend fun installedAppLines(context: Context): String = try {
+        AppRepository.loadApps(context)
+            .take(45)
+            .joinToString("\n") { "- ${it.label} — ${it.packageName}" }
+    } catch (t: Throwable) {
+        "- unavailable"
+    }
+
+    private fun extractJson(reply: String): JSONObject? {
+        val trimmed = reply.trim()
+        val start = trimmed.indexOf('{')
+        val end = trimmed.lastIndexOf('}')
+        if (start < 0 || end <= start) return null
+        return try {
+            JSONObject(trimmed.substring(start, end + 1))
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Messaging — the part that needs a contact, so it is resolved locally and never by the model
+    // ---------------------------------------------------------------------------------------------
+
+    private suspend fun sendSteps(context: Context, param: String, label: String): List<PlannedStep> {
+        val parts = param.split('|')
+        val app = parts.getOrNull(0)?.trim()?.lowercase(Locale.US).orEmpty().ifBlank { "whatsapp" }
+        val contact = parts.getOrNull(1)?.trim().orEmpty()
+        val text = parts.getOrNull(2)?.trim().orEmpty()
+
+        if (contact.isBlank()) {
+            return listOf(PlannedStep(ActionType.SAY, "I did not catch who to message.", "NO CONTACT"))
+        }
+
+        val match = Contacts.resolve(context, contact)
+            ?: return listOf(
+                PlannedStep(
+                    ActionType.SAY,
+                    "I could not find $contact in your contacts.",
+                    "CONTACT NOT FOUND",
+                ),
+            )
+
+        val digits = match.number.filter { it.isDigit() }
+        if (digits.length < 6) {
+            return listOf(
+                PlannedStep(
+                    ActionType.SAY,
+                    "The number saved for ${match.name} does not look complete.",
+                    "NUMBER INCOMPLETE",
+                ),
+            )
+        }
+
+        val who = if (match.how == "memory") contact.uppercase(Locale.US) else match.name.uppercase(Locale.US)
+
+        if (app == "sms") {
+            val uri = "smsto:${match.number}" + if (text.isNotBlank()) "?body=${encode(text)}" else ""
+            return listOf(PlannedStep(ActionType.DEEP_LINK, uri, "SMS · $who".take(28)))
+        }
+
+        if (app == "telegram") {
+            return listOf(
+                PlannedStep(
+                    ActionType.SAY,
+                    "Telegram has no link that opens a chat by phone number, so I can open it but not write to ${match.name}.",
+                    "TELEGRAM LIMITED",
+                ),
+                PlannedStep(ActionType.OPEN_APP, telegramPackage(), "OPEN TELEGRAM"),
+            )
+        }
+
+        val uri = "https://wa.me/$digits" + if (text.isNotBlank()) "?text=${encode(text)}" else ""
+        val steps = mutableListOf(PlannedStep(ActionType.DEEP_LINK, uri, "CHAT · $who".take(28)))
+
+        if (text.isNotBlank() && canAutoSend(context)) {
+            steps.add(PlannedStep(ActionType.WAIT, "3", "WAIT FOR CHAT"))
+            steps.add(PlannedStep(ActionType.PRESS_TEXT, "Send", "PRESS SEND"))
+        }
+        return steps
+    }
+
+    private fun telegramPackage(): String = "org.telegram.messenger/org.telegram.ui.LaunchActivity"
+
+    private fun canAutoSend(context: Context): Boolean =
+        AccessibilityStatus.isServiceEnabled(context) && AccessibilityStatus.isScreenPressAllowed(context)
+
+    private fun encode(value: String): String = try {
+        URLEncoder.encode(value, "UTF-8")
+    } catch (t: Throwable) {
+        value
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Local path — silent fallback, no menu anywhere in the UI
+    // ---------------------------------------------------------------------------------------------
+
+    private suspend fun localPlan(context: Context, heard: String): VoicePlan {
+        val clean = heard.lowercase(Locale.US)
+            .replace(Regex("[^a-z0-9 :+@./'%-]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        fun answer(title: String, say: String, steps: List<PlannedStep> = emptyList(), subtitle: String = "") =
+            VoicePlan(title, subtitle, steps, say, "LOCAL")
+
+        // People speak in chains: "open whatsapp, open chat with Divik and say hi". Flatten the
+        // sentence before parsing so the message parser sees "chat with divik say hi".
+        val spoken = clean
+            .replace("open chat with", "chat with")
+            .replace("open the chat with", "chat with")
+            .replace("open chat", "chat")
+            .replace("and say", "say")
+            .replace("and tell", "say")
+            .replace("and message", "say")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        if (clean.isBlank()) return answer("NO INPUT", "I did not hear anything.")
+
+        if (clean == "cancel" || clean == "stop" || clean == "never mind" || clean == "nevermind") {
+            return answer("CANCELLED", "Cancelled.", subtitle = "IDLE")
+        }
+
+        // "again" / "repeat" re-runs the previous command.
+        if (clean in setOf("again", "repeat", "do it again", "repeat that", "same again")) {
+            val previous = VoiceMemory.lastCommand(context)
+                ?: return answer("NOTHING TO REPEAT", "There is nothing to repeat yet.")
+            return localPlan(context, previous)
+        }
+
+        // Messaging first: "whatsapp divik hi" would otherwise be read as "open whatsapp".
+        parseMessage(spoken)?.let { (app, contact, text) ->
+            val steps = sendSteps(context, "$app|$contact|$text", "MESSAGE")
+            val say = if (text.isBlank()) {
+                "Opening the chat with $contact."
+            } else {
+                "Writing to $contact."
+            }
+            return answer("MESSAGE · $contact".take(28).uppercase(Locale.US), say, steps, "LOCAL")
+        }
+
+        // Calling.
+        Regex("^(?:call|phone|dial|ring)\\s+(?:to\\s+)?(.+)$").find(clean)?.let { match ->
+            val who = match.groupValues[1].trim()
+            return answer(
+                "CALL",
+                "Calling $who.",
+                listOf(PlannedStep(ActionType.CALL_CONTACT, who, "CALL $who".take(28).uppercase(Locale.US))),
+            )
+        }
+
+        // Torch.
+        if (clean.contains("torch") || clean.contains("flashlight")) {
+            val off = clean.contains("off") || clean.contains("band") || clean.contains("close")
+            val action = if (off) ActionType.TORCH_OFF else ActionType.TORCH_ON
+            return answer(
+                if (off) "TORCH OFF" else "TORCH ON",
+                if (off) "Torch off." else "Torch on.",
+                listOf(PlannedStep(action, "", action.label)),
+            )
+        }
+
+        // Do not disturb.
+        if (clean.contains("do not disturb") || clean.contains("dnd") || clean.contains("silent mode")) {
+            val off = clean.contains("off") || clean.contains("disable") || clean.contains("band")
+            val param = if (off) "off" else "silent"
+            return answer(
+                if (off) "DND OFF" else "DND ON",
+                if (off) "Interruptions back on." else "Do not disturb on.",
+                listOf(PlannedStep(ActionType.SET_DND, param, if (off) "DND OFF" else "DND ON")),
+            )
+        }
+
+        // Volume.
+        Regex("volume\\D{0,12}(\\d{1,3})").find(clean)?.let { match ->
+            val level = match.groupValues[1].toIntOrNull()?.coerceIn(0, 100) ?: return@let
+            return answer(
+                "VOLUME $level",
+                "Volume $level.",
+                listOf(PlannedStep(ActionType.SET_VOLUME, level.toString(), "VOLUME $level")),
+            )
+        }
+
+        // Panels.
+        Regex("^(?:open|show)\\s+(wifi|wi-fi|bluetooth|bt|display|screen brightness|battery|audio|sound)(?:\\s+(?:panel|settings|controls))?$")
+            .find(clean)?.let { match ->
+                val key = when (match.groupValues[1]) {
+                    "wi-fi" -> "wifi"
+                    "bt" -> "bluetooth"
+                    "screen brightness" -> "display"
+                    "sound" -> "volume"
+                    else -> match.groupValues[1]
+                }
+                return answer(
+                    "PANEL",
+                    "Opening $key.",
+                    listOf(PlannedStep(ActionType.OPEN_PANEL, key, "PANEL · ${key.uppercase(Locale.US)}".take(28))),
+                )
+            }
+
+        // Alarm.
+        Regex("alarm\\D{0,12}(\\d{1,2})[:. ]?(\\d{2})?\\s*(am|pm)?").find(clean)?.let { match ->
+            val hour = match.groupValues[1].toIntOrNull() ?: return@let
+            val minute = match.groupValues[2].toIntOrNull() ?: 0
+            if (hour !in 0..23 || minute !in 0..59) return@let
+            val clock = String.format(Locale.US, "%02d:%02d", hour, minute)
+            return answer(
+                "ALARM $clock",
+                "Alarm set for $clock.",
+                listOf(PlannedStep(ActionType.SET_ALARM, clock, "ALARM $clock")),
+            )
+        }
+
+        // Timer.
+        Regex("timer\\D{0,12}(\\d{1,3})\\s*(second|sec|minute|min|hour|ghanta|minat)").find(clean)?.let { match ->
+            val value = match.groupValues[1].toIntOrNull() ?: return@let
+            val unit = match.groupValues[2]
+            val seconds = when {
+                unit.startsWith("hour") || unit == "ghanta" -> value * 3_600
+                unit.startsWith("sec") -> value
+                else -> value * 60
+            }
+            if (seconds <= 0) return@let
+            return answer(
+                "TIMER",
+                "Timer set.",
+                listOf(PlannedStep(ActionType.SET_TIMER, seconds.toString(), "TIMER ${value}${unit.take(1).uppercase(Locale.US)}")),
+            )
+        }
+
+        // Speak this.
+        if (clean.startsWith("say ")) {
+            val text = heard.trim().substring(4).trim()
+            return answer("SAY", text, listOf(PlannedStep(ActionType.SAY, text, "SAY")))
+        }
+
+        // Open an app.
+        Regex("^(?:open|launch|start|run|khol)\\s+(.+)$").find(clean)?.let { match ->
+            val target = match.groupValues[1].trim()
+            if (target.contains("chat") || target.contains("message")) return@let
+            val app = matchApp(context, target)
+            if (app != null) {
+                VoiceMemory.rememberAppAlias(context, target, app.packageName)
+                return answer(
+                    "OPEN ${app.label.uppercase(Locale.US)}".take(28),
+                    "Opening ${app.label}.",
+                    listOf(
+                        PlannedStep(
+                            ActionType.OPEN_APP,
+                            "${app.packageName}/${app.activityName}",
+                            "OPEN ${app.label.uppercase(Locale.US)}".take(28),
+                        ),
+                    ),
+                )
+            }
+            return answer(
+                "APP NOT FOUND",
+                "I could not find an app called $target.",
+            )
+        }
+
+        val hint = if (aiReady(context)) {
+            "The AI did not answer, and that phrase is not one I match locally."
+        } else {
+            "Add a key in Settings → Intelligence so I understand free speech. Locally I handle call, message, open, torch, DND, volume, alarm and timer."
+        }
+        return answer("NOT UNDERSTOOD", hint)
+    }
+
+    /** Returns (app, contact, text) for the phrasings people actually use. */
+    private fun parseMessage(clean: String): Triple<String, String, String>? {
+        val app = when {
+            clean.contains("telegram") -> "telegram"
+            clean.contains("sms") || clean.contains("text message") -> "sms"
+            else -> "whatsapp"
+        }
+
+        val commandish = Regex(
+            "^(?:open\\s+)?(?:send|message|msg|text|chat|whatsapp|telegram|wa|sms|dm|write)\\b",
+        ).containsMatchIn(clean)
+        if (!commandish) return null
+
+        val body = clean
+            .replace(Regex("\\b(?:whatsapp|telegram|sms|wa|dm)\\b"), " ")
+            .replace(Regex("\\b(?:send|message|msg|text|write|open|chat|to|with)\\b"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        if (body.isEmpty()) return null
+
+        // "<contact> say <text>" / "<contact> saying <text>" / "<contact> that <text>"
+        Regex("^(.+?)\\s+(?:say|saying|that|bol|ki|likh)\\s+(.+)$").find(body)?.let { match ->
+            val contact = match.groupValues[1].trim()
+            val text = match.groupValues[2].trim()
+            if (contact.isNotBlank() && text.isNotBlank()) return Triple(app, contact, text)
+        }
+
+        // "<contact>: <text>"
+        val colon = body.split(":").map { it.trim() }
+        if (colon.size >= 2 && colon[0].isNotBlank() && colon[1].isNotBlank()) {
+            return Triple(app, colon[0], colon.drop(1).joinToString(": "))
+        }
+
+        // Just a name: open the chat without writing anything.
+        if (body.split(' ').size <= 4) return Triple(app, body, "")
+
+        return null
+    }
+
+    private suspend fun matchApp(context: Context, target: String): InstalledApp? {
+        val needle = target.lowercase(Locale.US).trim()
+        if (needle.isEmpty()) return null
+
+        val apps = try {
+            AppRepository.loadApps(context)
+        } catch (t: Throwable) {
+            return null
+        }
+
+        VoiceMemory.appAlias(context, needle)?.let { pkg ->
+            apps.firstOrNull { it.packageName == pkg }?.let { return it }
+        }
+
+        apps.firstOrNull { it.sortKey == needle }?.let { return it }
+        apps.firstOrNull { it.sortKey.startsWith(needle) }?.let { return it }
+        apps.firstOrNull { it.packageName.lowercase(Locale.US).startsWith("com.$needle") }?.let { return it }
+        apps.firstOrNull { it.sortKey.contains(needle) }?.let { return it }
+        return null
+    }
+}

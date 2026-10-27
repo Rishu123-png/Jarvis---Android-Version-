@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **1.9.2 (versionCode 12)**.
+Last updated with **2.0.0 (versionCode 13)**.
 
 ---
 
@@ -23,8 +23,10 @@ Last updated with **1.9.2 (versionCode 12)**.
 | Instagram creator analytics, views-first + AI briefing | Live |
 | Connections: Instagram OAuth, Google Drive + Gmail (read-only) | Live |
 | Privileged shell via Shizuku (optional, adb-level, no root) | Live |
-| Voice input (push-to-talk microphone) | **Not built** |
-| Memory / personal context | **Not built** |
+| Voice: tap-to-speak orb, Whisper via your key, device recognizer fallback, spoken replies | Live |
+| Voice commands: contacts, calls, WhatsApp messages, apps, device control, alarms, timers | Live |
+| Memory: last 50 commands, contact nicknames, app aliases (on device) | Live |
+| Focus home: top bar + orb only, full dashboard behind one button | Live |
 | Automated tests | **None** |
 
 ---
