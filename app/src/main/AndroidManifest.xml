@@ -13,6 +13,22 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+      Triggered automation.
+
+      RECEIVE_BOOT_COMPLETED: alarms and the watcher do not survive a reboot; this re-arms them.
+      FOREGROUND_SERVICE(+_SPECIAL_USE): armed automation watches state that Android only reports to
+      a running process, so it runs as a foreground service with a visible, quiet notification.
+      POST_NOTIFICATIONS: required to show that notification on Android 13+.
+      SCHEDULE_EXACT_ALARM: time triggers fire on the minute only if the operator allows it; without
+      it JARVIS falls back to an inexact alarm and says so in the UI.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!--
       Package visibility (Android 11+).
       Without this block, queryIntentActivities() silently returns an empty list on targetSdk 30+
       and the app drawer looks broken. Declaring the intents we query is the supported way to
@@ -96,6 +112,36 @@
           tier needs a separate in-app opt-in). onAccessibilityEvent is intentionally empty: no
           background screen reading.
         -->
+        <!-- Watches state triggers only while automation is armed. -->
+        <service
+            android:name=".automation.AutomationService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Operator-armed automation triggers" />
+        </service>
+
+        <!-- One-shot time triggers. Not exported: only the AlarmManager fires this. -->
+        <receiver
+            android:name=".automation.AutomationAlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.jarvis.assistant.action.FIRE_ROUTINE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Re-arms alarms and the watcher after a reboot or an app update. -->
+        <receiver
+            android:name=".automation.AutomationBootReceiver"
+            android:exported="true"
+            android:directBootAware="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".automation.JarvisAccessibilityService"
             android:exported="false"
