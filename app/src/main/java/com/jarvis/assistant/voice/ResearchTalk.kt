@@ -114,7 +114,7 @@ object ResearchTalk {
     fun isYes(raw: String): Boolean {
         val text = normal(raw)
         if (text.isBlank()) return false
-        if (text in YES or text.replace(".", "").trim() in YES) return true
+        if ((text in YES) || (text.replace(".", "").trim() in YES)) return true
         // "yes, go ahead" and "haan kar do" start with the word that decides it.
         return YES_PREFIX.any { text == it || text.startsWith("$it ") }
     }
