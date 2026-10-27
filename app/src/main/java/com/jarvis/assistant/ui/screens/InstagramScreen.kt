@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Autorenew
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.OpenInNew
@@ -95,6 +96,8 @@ fun InstagramScreen(onBack: () -> Unit) {
     var noteOk by remember { mutableStateOf(true) }
     var analysis by remember { mutableStateOf<String?>(null) }
     var analysing by remember { mutableStateOf(false) }
+    var diagnosis by remember { mutableStateOf<InstagramClient.Diagnosis?>(null) }
+    var diagnosing by remember { mutableStateOf(false) }
 
     fun sync() {
         if (busy) return
@@ -116,6 +119,15 @@ fun InstagramScreen(onBack: () -> Unit) {
                 }
             }
             busy = false
+        }
+    }
+
+    fun runDiagnosis() {
+        if (diagnosing) return
+        diagnosing = true
+        scope.launch {
+            diagnosis = InstagramClient.diagnose(context)
+            diagnosing = false
         }
     }
 
@@ -166,9 +178,11 @@ fun InstagramScreen(onBack: () -> Unit) {
                 platform = platform,
                 tokenDraft = tokenDraft,
                 busy = busy,
+                diagnosing = diagnosing,
                 onPlatformChange = { platform = it },
                 onTokenChange = { tokenDraft = it },
                 onConnect = { connect() },
+                onDiagnose = { runDiagnosis() },
             )
         } else {
             snapshot?.let { snap ->
@@ -484,6 +498,14 @@ fun InstagramScreen(onBack: () -> Unit) {
                         )
                         Spacer(Modifier.height(7.dp))
                         ActionRow(
+                            label = if (diagnosing) "CHECKING…" else "DIAGNOSE CONNECTION",
+                            icon = Icons.Outlined.Info,
+                            accent = Amber,
+                            enabled = !diagnosing && !busy,
+                            onClick = { runDiagnosis() },
+                        )
+                        Spacer(Modifier.height(7.dp))
+                        ActionRow(
                             label = "DISCONNECT",
                             icon = Icons.Outlined.Link,
                             accent = AlertRed,
@@ -507,6 +529,14 @@ fun InstagramScreen(onBack: () -> Unit) {
                         enabled = !busy,
                         onClick = { sync() },
                     )
+                    Spacer(Modifier.height(7.dp))
+                    ActionRow(
+                        label = if (diagnosing) "CHECKING…" else "DIAGNOSE CONNECTION",
+                        icon = Icons.Outlined.Info,
+                        accent = Amber,
+                        enabled = !diagnosing && !busy,
+                        onClick = { runDiagnosis() },
+                    )
                 }
             }
         }
@@ -517,6 +547,56 @@ fun InstagramScreen(onBack: () -> Unit) {
                     text = message,
                     style = HudType.terminal.copy(fontSize = 10.sp),
                     color = if (noteOk) TextSecondary else AlertRed,
+                )
+            }
+        }
+
+        diagnosis?.let { report ->
+            HudPanel(
+                label = "DIAGNOSIS",
+                accent = if (report.allOk) StatusGreen else Amber,
+                trailing = {
+                    HudChip(
+                        text = if (report.allOk) "PASS" else "CHECK",
+                        accent = if (report.allOk) StatusGreen else Amber,
+                    )
+                },
+            ) {
+                report.steps.forEach { step ->
+                    val tint = when (step.state) {
+                        InstagramClient.StepState.OK -> StatusGreen
+                        InstagramClient.StepState.FAIL -> AlertRed
+                        InstagramClient.StepState.SKIP -> TextMuted
+                    }
+                    Row(modifier = Modifier.padding(vertical = 3.dp)) {
+                        Text(
+                            text = when (step.state) {
+                                InstagramClient.StepState.OK -> "✔ "
+                                InstagramClient.StepState.FAIL -> "✖ "
+                                InstagramClient.StepState.SKIP -> "· "
+                            },
+                            style = HudType.terminal.copy(fontSize = 10.sp),
+                            color = tint,
+                        )
+                        Column {
+                            Text(
+                                text = step.name,
+                                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+                                color = tint,
+                            )
+                            Text(
+                                text = step.detail,
+                                style = HudType.terminal.copy(fontSize = 9.sp),
+                                color = TextSecondary,
+                            )
+                        }
+                    }
+                }
+                HudDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Text(
+                    text = report.verdict,
+                    style = HudType.terminal.copy(fontSize = 10.sp),
+                    color = if (report.allOk) TextSecondary else Amber,
                 )
             }
         }
@@ -532,10 +612,31 @@ private fun ConnectPanel(
     platform: IgPlatform,
     tokenDraft: String,
     busy: Boolean,
+    diagnosing: Boolean,
     onPlatformChange: (IgPlatform) -> Unit,
     onTokenChange: (String) -> Unit,
     onConnect: () -> Unit,
+    onDiagnose: () -> Unit,
 ) {
+    HudPanel(label = "YOU DO NOT NEED APP REVIEW OR VERIFICATION", accent = StatusGreen) {
+        Text(
+            text = "Reading your own account is Standard Access: it works while the app is in " +
+                "development mode, for accounts that hold a role on the app. No business " +
+                "verification, no App Review, no verified Meta business.",
+            style = HudType.terminal.copy(fontSize = 10.sp),
+            color = TextSecondary,
+        )
+        HudDivider(modifier = Modifier.padding(vertical = 8.dp))
+        Text(
+            text = "The trap is the button order in the dashboard: if instagram_business_manage_insights " +
+                "is not enabled BEFORE you generate the token, the token silently lacks it and " +
+                "insights (views, reach) fail while likes and comments work. Enable the permission " +
+                "first, then generate a fresh token, then paste it here.",
+            style = HudType.terminal.copy(fontSize = 9.sp),
+            color = TextMuted,
+        )
+    }
+
     HudPanel(label = "CONNECT", accent = ElectricCyan) {
         Text(
             text = "JARVIS reads your own account through Meta's official API. It needs an access token for a professional (Creator or Business) account — personal accounts have no API at all.",
@@ -634,6 +735,16 @@ private fun ConnectPanel(
             style = HudType.terminal.copy(fontSize = 9.sp),
             color = TextMuted,
         )
+        if (InstagramStore.isConnected(LocalContext.current)) {
+            Spacer(Modifier.height(8.dp))
+            ActionRow(
+                label = if (diagnosing) "CHECKING…" else "DIAGNOSE CONNECTION",
+                icon = Icons.Outlined.Info,
+                accent = Amber,
+                enabled = !diagnosing && !busy,
+                onClick = onDiagnose,
+            )
+        }
     }
 
     HudPanel(label = "NO FACEBOOK ACCOUNT? READ THIS", accent = StatusGreen) {

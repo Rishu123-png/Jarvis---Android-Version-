@@ -222,6 +222,57 @@ object OAuthFlows {
         ConnectorStore.clearGoogle(context)
     }
 
+    // ---------------------------------------------------------------------------------- preflight
+
+    /**
+     * Cheap, offline checks before the operator spends a browser round-trip on a setup that cannot
+     * work. Each line names the exact field Meta or Google will reject, because their error messages
+     * for a mistyped app id are famously unhelpful.
+     */
+    fun instagramSetupWarnings(
+        clientIdRaw: String,
+        secretRaw: String,
+        redirect: String,
+    ): List<String> {
+        val out = mutableListOf<String>()
+        val clientId = clientIdRaw.trim()
+        val secret = secretRaw.trim()
+
+        if (clientId.isBlank()) {
+            out.add("No Instagram App ID entered.")
+        } else if (!clientId.all { it.isDigit() }) {
+            out.add("The App ID is not numeric — Meta's Instagram App ID is a plain number. Copy it from Instagram → API setup with Instagram Login.")
+        }
+        if (secret.isBlank()) out.add("No Instagram App Secret entered.")
+        if (!redirect.startsWith("https://")) {
+            out.add("The redirect URI must start with https:// — Meta rejects http for Instagram Login.")
+        }
+        out.add("That exact redirect URI must be listed in the app's Business login settings.")
+        return out
+    }
+
+    fun googleSetupWarnings(
+        clientIdRaw: String,
+        secretRaw: String,
+        redirect: String,
+    ): List<String> {
+        val out = mutableListOf<String>()
+        val clientId = clientIdRaw.trim()
+        val secret = secretRaw.trim()
+
+        if (clientId.isBlank()) {
+            out.add("No Google client ID entered.")
+        } else if (!clientId.endsWith(".apps.googleusercontent.com")) {
+            out.add("The client ID should end in .apps.googleusercontent.com — check the paste.")
+        }
+        if (secret.isBlank()) out.add("No Google client secret entered.")
+        if (!redirect.startsWith("http://localhost") && !redirect.startsWith("https://")) {
+            out.add("Use http://localhost for a Desktop-app client, or an https URI registered on a Web client.")
+        }
+        out.add("Keep the OAuth consent screen in TESTING and add your own address under Test users — no verification is needed for your own account.")
+        return out
+    }
+
     // ----------------------------------------------------------------------------------- helpers
 
     /**
