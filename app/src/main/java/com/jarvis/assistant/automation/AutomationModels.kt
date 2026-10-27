@@ -83,6 +83,11 @@ enum class ActionType(
     HEALTH("health", "HEALTH CHECK", "steps, distance, water, sleep or heart", ParamKind.TEXT),
     WATER_LOG("water_log", "LOG WATER", "Add millilitres of water to today", ParamKind.NUMBER),
 
+    CALENDAR_READ("calendar", "READ CALENDAR", "Today, upcoming, or the next event", ParamKind.TEXT),
+    CALENDAR_ADD("calendar_add", "ADD EVENT", "Create an event: \"when|title\"", ParamKind.TEXT, sensitive = true),
+    CONTACT_ADD("contact_add", "SAVE CONTACT", "Save a person: \"name|number\"", ParamKind.TEXT, sensitive = true),
+    RECORD_NOTE("record_note", "VOICE NOTE", "Record a voice note into Music/JARVIS, in seconds", ParamKind.NUMBER, sensitive = true),
+
     // ---- accessibility ----
     GLOBAL_ACTION("global", "SYSTEM GESTURE", "Back, home, recents, shade, quick settings, lock", ParamKind.TEXT, needsAccessibility = true, sensitive = true),
     PRESS_TEXT("press", "PRESS ON SCREEN", "Tap a control with an exact label", ParamKind.TEXT, needsAccessibility = true, sensitive = true),

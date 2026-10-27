@@ -18,12 +18,15 @@ import com.jarvis.assistant.device.QuickControls
 import com.jarvis.assistant.ai.Translator
 import com.jarvis.assistant.device.Access
 import com.jarvis.assistant.device.AppLaunch
+import com.jarvis.assistant.device.CalendarBridge
+import com.jarvis.assistant.device.ContactsWrite
 import com.jarvis.assistant.device.Downloads
 import com.jarvis.assistant.device.Files
 import com.jarvis.assistant.device.Gallery
 import com.jarvis.assistant.device.HealthLog
 import com.jarvis.assistant.device.Messaging
 import com.jarvis.assistant.device.NotifyBrain
+import com.jarvis.assistant.device.VoiceNotes
 import com.jarvis.assistant.device.Whereabouts
 import com.jarvis.assistant.device.Reminders
 import com.jarvis.assistant.device.QuickCapture
@@ -129,6 +132,17 @@ object StepExecutor {
         ) {
             warnings.add("Needs notification access to read or reply to alerts.")
         }
+        if (all.any { it.action == ActionType.CALENDAR_READ || it.action == ActionType.CALENDAR_ADD } &&
+            !CalendarBridge.canRead(context)
+        ) {
+            warnings.add("Needs calendar access to read or create events.")
+        }
+        if (all.any { it.action == ActionType.CONTACT_ADD } && !ContactsWrite.canWrite(context)) {
+            warnings.add("Needs contact editing access to save a person.")
+        }
+        if (all.any { it.action == ActionType.RECORD_NOTE } && !VoiceNotes.canRecord(context)) {
+            warnings.add("Needs microphone access to record a note.")
+        }
         val unconfigured = all.count { !it.isConfigured }
         if (unconfigured > 0) warnings.add("$unconfigured step(s) have no value set.")
         if (workflow.steps.isEmpty()) warnings.add("This routine has no steps yet.")
@@ -143,7 +157,7 @@ object StepExecutor {
         ActionType.OPEN_APP, ActionType.OPEN_URL, ActionType.DEEP_LINK, ActionType.DIAL_NUMBER,
         ActionType.COMPOSE_SMS, ActionType.SET_TIMER, ActionType.SET_ALARM, ActionType.OPEN_PANEL,
         ActionType.OPEN_GALLERY, ActionType.NAVIGATE, ActionType.SETTINGS_PAGE, ActionType.SHARE_TEXT,
-        ActionType.OPEN_FILE, ActionType.MESSAGE,
+        ActionType.OPEN_FILE, ActionType.MESSAGE, ActionType.CALENDAR_ADD, ActionType.CONTACT_ADD,
         -> true
 
         else -> false
@@ -487,6 +501,24 @@ object StepExecutor {
                 val millilitres = step.param.trim().toIntOrNull() ?: 250
                 val total = HealthLog.addWater(context, millilitres)
                 speakAndReport(context, Language.say(lang, "water", total))
+            }
+
+            ActionType.CALENDAR_READ -> readCalendar(context, step.param)
+
+            ActionType.CALENDAR_ADD -> addCalendar(context, step.param)
+
+            ActionType.CONTACT_ADD -> {
+                val parts = step.param.split('|')
+                val name = parts.getOrNull(0)?.trim().orEmpty()
+                val number = parts.getOrNull(1)?.trim().orEmpty()
+                val outcome = ContactsWrite.save(context, name, number)
+                if (outcome.ok) Result.Ok(outcome.detail) else Result.Failed(outcome.detail)
+            }
+
+            ActionType.RECORD_NOTE -> {
+                val seconds = step.param.trim().toIntOrNull() ?: VoiceNotes.DEFAULT_SECONDS
+                val outcome = VoiceNotes.record(context, seconds)
+                if (outcome.ok) Result.Ok(outcome.detail) else Result.Failed(outcome.detail)
             }
 
             ActionType.SHELL -> runShell(context, step.param)
@@ -951,6 +983,61 @@ object StepExecutor {
                 }
             }
         }
+    }
+
+
+    private suspend fun readCalendar(context: Context, raw: String): Result {
+        val mode = raw.trim().lowercase(Locale.US).ifBlank { "today" }
+
+        if (!CalendarBridge.canRead(context)) {
+            return Result.Failed("Calendar access is off — allow it in Settings → Access.")
+        }
+
+        val events = when (mode) {
+            "next" -> CalendarBridge.next(context)?.let { listOf(it) }
+            "week", "upcoming", "next week" -> CalendarBridge.upcoming(context, days = 7, limit = 5)
+            else -> CalendarBridge.today(context)
+        }.orEmpty()
+
+        if (events.isEmpty()) {
+            return speakAndReport(context, "Nothing in the calendar.")
+        }
+
+        val spoken = if (mode == "next" && events.size == 1) {
+            val event = events.first()
+            "Next is ${event.title} at ${CalendarBridge.clockOf(event.startMillis)}."
+        } else {
+            events.joinToString("; ") { event ->
+                "${event.title} at ${CalendarBridge.clockOf(event.startMillis)}"
+            }
+        }
+        // Titles are the operator's own words and are not translated; the surrounding sentence is
+        // kept simple enough that it reads correctly in every language JARVIS speaks.
+        return speakAndReport(context, spoken)
+    }
+
+    private suspend fun addCalendar(context: Context, raw: String): Result {
+        val parts = raw.split('|')
+        val whenRaw = parts.getOrNull(0)?.trim().orEmpty()
+        val title = parts.getOrNull(1)?.trim().orEmpty().ifBlank { "Event" }
+
+        if (!CalendarBridge.canWrite(context)) {
+            return Result.Failed("Calendar access is off — allow it in Settings → Access.")
+        }
+
+        val at = try {
+            java.time.LocalDateTime.parse(whenRaw)
+        } catch (t: Throwable) {
+            null
+        } ?: return Result.Failed("I did not get the time for that event.")
+
+        val start = at.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val id = CalendarBridge.add(context, title, start)
+            ?: return Result.Failed("The calendar app would not take the event.")
+
+        return Result.Ok(
+            "Added $title " + com.jarvis.assistant.data.When.spoken(at).lowercase(Locale.US) + ".",
+        )
     }
 
     private fun performGlobal(context: Context, key: String): Result {

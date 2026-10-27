@@ -207,6 +207,18 @@ object Language {
         "heart" to "Your heart rate is %d.",
         "battery" to "Battery is %d percent.",
         "time" to "It is %s.",
+        "calendar_none" to "Nothing in the calendar%s.",
+        "calendar_next" to "Next is %s at %s.",
+        "calendar_list" to "%s",
+        "calendar_permission" to "Calendar access is off. Allow it in Advanced and I can read your schedule.",
+        "calendar_added" to "Added %s.",
+        "calendar_no_time" to "I did not catch the time for that. Say it like \"tomorrow at 4 pm\".",
+        "contact_saved" to "Saved %s.",
+        "contact_failed" to "I could not save that contact.",
+        "note_recording" to "Recording for %d seconds.",
+        "note_saved" to "Voice note saved in your Music folder.",
+        "note_failed" to "The recording stopped early, so nothing was saved.",
+        "nudge_none" to "",
     )
 
     private val HINDI = mapOf(
@@ -253,6 +265,18 @@ object Language {
         "heart" to "आपकी धड़कन %d है।",
         "battery" to "बैटरी %d प्रतिशत है।",
         "time" to "अभी %s बजे हैं।",
+        "calendar_none" to "कैलेंडर में कुछ नहीं है%s।",
+        "calendar_next" to "अगला %s, %s बजे।",
+        "calendar_list" to "%s",
+        "calendar_permission" to "कैलेंडर की अनुमति बंद है। एडवांस्ड में चालू कीजिए।",
+        "calendar_added" to "%s जोड़ दिया।",
+        "calendar_no_time" to "समय समझ नहीं आया। ऐसे कहिए: \"कल शाम 4 बजे\"।",
+        "contact_saved" to "%s सेव कर लिया।",
+        "contact_failed" to "वह संपर्क सेव नहीं हो पाया।",
+        "note_recording" to "%d सेकंड रिकॉर्ड कर रहा हूँ।",
+        "note_saved" to "वॉइस नोट म्यूज़िक फ़ोल्डर में सेव हो गया।",
+        "note_failed" to "रिकॉर्डिंग बीच में रुक गई, कुछ सेव नहीं हुआ।",
+        "nudge_none" to "",
     )
 
     private val HINGLISH = mapOf(
@@ -299,6 +323,18 @@ object Language {
         "heart" to "Aapki dhadkan %d hai.",
         "battery" to "Battery %d percent hai.",
         "time" to "Abhi %s baje hain.",
+        "calendar_none" to "Calendar mein kuch nahi hai%s.",
+        "calendar_next" to "Agla %s, %s baje.",
+        "calendar_list" to "%s",
+        "calendar_permission" to "Calendar ki permission off hai. Advanced mein on kar dijiye.",
+        "calendar_added" to "%s add kar diya.",
+        "calendar_no_time" to "Time samajh nahi aaya. Aise boliye: \"kal shaam 4 baje\".",
+        "contact_saved" to "%s save kar liya.",
+        "contact_failed" to "Woh contact save nahi ho paya.",
+        "note_recording" to "%d second record kar raha hoon.",
+        "note_saved" to "Voice note Music folder mein save ho gaya.",
+        "note_failed" to "Recording beech mein ruk gayi, kuch save nahi hua.",
+        "nudge_none" to "",
     )
 }
 

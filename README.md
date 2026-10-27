@@ -60,7 +60,9 @@ feature runs on a key *you* own, and every permission is requested at the moment
 | Health: steps, distance, water, sleep estimate, heart rate where present | Working |
 | Lock with the phone's own PIN/pattern/fingerprint, line on the lock screen | Working |
 | Answers in the language it was asked in (EN/HI/Hinglish offline) | Working |
-| Automated tests: 13 JVM suites + 1 device smoke test, run in CI before the APK | Working |
+| Calendar read/add, contact saving, voice notes, multi-turn follow-ups | Working |
+| A short brief on unlock, at most every three hours, silent otherwise | Working |
+| Automated tests: 16 JVM suites + 1 device smoke test, run in CI before the APK | Working |
 
 Every tile on the HUD is either backed by a real Android API or clearly marked as not built. Nothing
 in the interface imitates a capability the app does not have.

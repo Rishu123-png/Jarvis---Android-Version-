@@ -21,7 +21,8 @@ enum class PhraseIntent {
     MEDIA_PLAY, MEDIA_PAUSE, MEDIA_NEXT, MEDIA_PREVIOUS,
     VOLUME_UP, VOLUME_DOWN, VOLUME_SET,
     LOCK_SCREEN, HOME, BACK, RECENTS, SHADE, QUICK_SETTINGS,
-    BATTERY, STORAGE, NETWORK, TIME, DATE, READ_SCREEN,
+    BATTERY, STORAGE, NETWORK, TIME, DATE, READ_SCREEN, CALENDAR, CALENDAR_ADD,
+    CONTACT_ADD, VOICE_NOTE,
     IDENTITY, HELP, STOP, REPEAT,
     ALARM, TIMER, REMINDER, TRANSLATE, DOWNLOAD, SYSTEM_SETTINGS, CALL, MESSAGE,
 }
@@ -151,6 +152,23 @@ object PhraseBook {
         ),
         PhraseIntent.QUICK_SETTINGS to listOf(
             "quick settings", "open control center", "control panel", "quick panel",
+        ),
+        PhraseIntent.CALENDAR to listOf(
+            "calendar", "my calendar", "my schedule", "what is my schedule", "meetings",
+            "next meeting", "what is next", "my meetings today", "what is on today",
+            "aaj ka schedule", "mera schedule", "next appointment",
+        ),
+        PhraseIntent.CALENDAR_ADD to listOf(
+            "add to calendar", "add event", "create event", "schedule a meeting", "book a meeting",
+            "add meeting", "new event", "calendar mein add karo", "meeting rakho",
+        ),
+        PhraseIntent.CONTACT_ADD to listOf(
+            "save contact", "save this number", "add contact", "save number", "new contact",
+            "number save karo", "contact save karo",
+        ),
+        PhraseIntent.VOICE_NOTE to listOf(
+            "record a note", "record note", "voice note", "record my voice", "voice memo",
+            "note banao", "awaz record karo", "record this",
         ),
         PhraseIntent.READ_SCREEN to listOf(
             "read the screen", "read this screen", "read screen", "what is on the screen",

@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.jarvis.assistant.device.HealthLog
 import com.jarvis.assistant.device.LockGate
+import com.jarvis.assistant.device.Nudges
 import com.jarvis.assistant.device.NotifyBrain
 import com.jarvis.assistant.device.Whereabouts
 import androidx.lifecycle.Lifecycle
@@ -172,6 +173,7 @@ fun JarvisApp(
     var lockNoticeEnabled by remember { mutableStateOf(LockGate.noticeEnabled(context)) }
     var notifyBrainEnabled by remember { mutableStateOf(NotifyBrain.isEnabled(context)) }
     var roadRoutingEnabled by remember { mutableStateOf(Whereabouts.roadRoutingEnabled(context)) }
+    var nudgesEnabled by remember { mutableStateOf(Nudges.isEnabled(context)) }
 
     // ---- today, for the dashboard ------------------------------------------------------------
     var stepsToday by remember { mutableStateOf<Int?>(null) }
@@ -304,6 +306,14 @@ fun JarvisApp(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // The brief: said once per unlock, never during quiet hours, never twice in three hours. It runs
+    // outside the lock overlay so it fires when the gate actually opens, not while it is drawn.
+    LaunchedEffect(locked) {
+        if (!locked) {
+            scope.launch { Nudges.greet(context) }
+        }
     }
 
     // Opened from the bubble or the widget: arm the voice surface once.
@@ -618,6 +628,11 @@ fun JarvisApp(
                     onToggleRoadRouting = { enable ->
                         Whereabouts.setRoadRouting(context, enable)
                         roadRoutingEnabled = enable
+                    },
+                    nudgesEnabled = nudgesEnabled,
+                    onToggleNudges = { enable ->
+                        Nudges.setEnabled(context, enable)
+                        nudgesEnabled = enable
                     },
                     lockNoticeEnabled = lockNoticeEnabled,
                     onToggleLockNotice = { enable ->

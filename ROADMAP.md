@@ -34,7 +34,8 @@ Last updated with **1.0.0 (versionCode 18)**.
 | File search, distance by road, offline maths, settings deep links | Live |
 | Health: steps, distance, water, sleep estimate, heart rate | Live |
 | Phone's own lock, lock-screen line, language-aware replies | Live |
-| Tests: 13 JVM suites over the pure logic, run in CI before the APKs | Live |
+| Calendar, contacts, voice notes, follow-ups, brief | Live |
+| Tests: 16 JVM suites over the pure logic, run in CI before the APKs | Live |
 | Quick Settings tiles (open JARVIS, torch) | Live |
 | Reminders, screenshot action, subsystem health panel | Live |
 | Privacy lock (PBKDF2 PIN) + fingerprint/face shortcut, floating bubble, home-screen widget | Live |
