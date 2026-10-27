@@ -1,6 +1,8 @@
 package com.jarvis.assistant.ui.screens
 
 import androidx.compose.foundation.background
+import com.jarvis.assistant.ui.theme.PanelNavy
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement

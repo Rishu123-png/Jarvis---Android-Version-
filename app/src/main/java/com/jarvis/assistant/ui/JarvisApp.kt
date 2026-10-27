@@ -99,10 +99,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 
 private const val ROUTE_HOME = "home"
 private const val ROUTE_DASHBOARD = "dashboard"
