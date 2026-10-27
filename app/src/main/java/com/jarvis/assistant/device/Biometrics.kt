@@ -1,10 +1,11 @@
 package com.jarvis.assistant.device
 
+import android.app.Activity
 import android.content.Context
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
+import android.content.DialogInterface
+import android.hardware.biometrics.BiometricManager
+import android.hardware.biometrics.BiometricPrompt
+import android.os.CancellationSignal
 
 /**
  * Fingerprint and face unlock for the privacy lock.
@@ -16,6 +17,10 @@ import androidx.fragment.app.FragmentActivity
  * The PIN stays the real gate: biometrics can be unavailable (wet finger, no enrolment, sensor locked
  * out after too many attempts), and the keypad is always one tap away. Biometrics can never *replace*
  * the PIN, only save typing it.
+ *
+ * Uses the platform API directly. The app already requires Android 10 (API 29) and
+ * `android.hardware.biometrics.BiometricManager` arrived in API 29, so this costs no dependency and
+ * no fragment machinery.
  */
 object Biometrics {
 
@@ -42,8 +47,6 @@ object Biometrics {
         BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "NO SENSOR"
         BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "SENSOR BUSY"
         BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> "SECURITY UPDATE NEEDED"
-        BiometricManager.BIOMETRIC_ERROR_UNSUPPORTED -> "UNSUPPORTED"
-        BiometricManager.BIOMETRIC_STATUS_UNKNOWN -> "UNKNOWN"
         else -> "UNAVAILABLE"
     }
 
@@ -51,8 +54,9 @@ object Biometrics {
     fun canOffer(context: Context): Boolean = isEnabled(context) && isAvailable(context)
 
     private fun codeFor(context: Context): Int = try {
-        BiometricManager.from(context.applicationContext)
-            .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+        val manager = context.getSystemService(BiometricManager::class.java)
+        manager?.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+            ?: BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
     } catch (t: Throwable) {
         BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
     }
@@ -63,39 +67,52 @@ object Biometrics {
      * [onResult] receives true only on a real match. A cancel, a lockout or an error is false, and the
      * caller keeps the keypad in front. A single non-matching finger does not end the prompt — the
      * system lets the operator try again.
+     *
+     * Returns the signal needed to [cancel] a prompt that outlived its screen.
      */
     fun prompt(
-        activity: FragmentActivity,
+        activity: Activity,
         onResult: (Boolean) -> Unit,
-    ) {
-        val executor = ContextCompat.getMainExecutor(activity)
+    ): CancellationSignal? {
+        val executor = activity.mainExecutor
+        val signal = CancellationSignal()
 
-        val callback = object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                onResult(true)
-            }
-
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                onResult(false)
-            }
-
-            override fun onAuthenticationFailed() = Unit
+        val prompt = try {
+            BiometricPrompt.Builder(activity)
+                .setTitle("JARVIS")
+                .setSubtitle("Unlock with your fingerprint or face")
+                .setConfirmationRequired(false)
+                .setNegativeButton("Use PIN", executor) { _: DialogInterface, _: Int ->
+                    onResult(false)
+                }
+                .build()
+        } catch (t: Throwable) {
+            return null
         }
 
-        val prompt = BiometricPrompt(activity, executor, callback)
-        val info = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("JARVIS")
-            .setSubtitle("Unlock with your fingerprint or face")
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
-            .setNegativeButtonText("Use PIN")
-            .setConfirmationRequired(false)
-            .build()
+        return try {
+            prompt.authenticate(
+                signal,
+                executor,
+                object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(
+                        result: BiometricPrompt.AuthenticationResult?,
+                    ) {
+                        onResult(true)
+                    }
 
-        try {
-            prompt.authenticate(info)
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
+                        // Covers user cancel, lockout after too many attempts and hardware errors.
+                        onResult(false)
+                    }
+
+                    // One wrong finger does not end the prompt; the system offers another try.
+                    override fun onAuthenticationFailed() = Unit
+                },
+            )
+            signal
         } catch (t: Throwable) {
-            // The sensor vanished between the check and the call, or the activity is finishing.
-            onResult(false)
+            null
         }
     }
 }

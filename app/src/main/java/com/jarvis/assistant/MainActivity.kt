@@ -19,11 +19,7 @@ import com.jarvis.assistant.ui.theme.VoidBlack
  * Single-activity host. This activity is the Home app target, with its own
  * intent filters; for now it is a plain launcher activity.
  */
-/**
- * A FragmentActivity rather than a plain ComponentActivity: BiometricPrompt is hosted by a fragment,
- * so the lock screen's fingerprint/face prompt needs this base class. `setContent` works unchanged.
- */
-class MainActivity : FragmentActivity() {
+class MainActivity : ComponentActivity() {
 
     /**
      * Set when the app was opened from the floating bubble or the widget, which both mean "start
