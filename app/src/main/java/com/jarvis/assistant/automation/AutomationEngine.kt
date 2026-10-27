@@ -28,7 +28,7 @@ data class RunLogEntry(
     val at: Long = System.currentTimeMillis(),
 ) {
     val timeLabel: String
-        get() = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(at))
+        get() = SimpleDateFormat("h:mm:ss a", Locale.US).format(Date(at))
 }
 
 /**

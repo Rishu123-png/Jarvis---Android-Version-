@@ -79,7 +79,7 @@ data class IgMedia(
         get() = try {
             Instant.ofEpochMilli(timestampMs)
                 .atZone(ZoneId.systemDefault())
-                .format(DateTimeFormatter.ofPattern("d MMM · HH:mm"))
+                .format(DateTimeFormatter.ofPattern("d MMM · h:mm a"))
         } catch (t: Throwable) {
             "—"
         }

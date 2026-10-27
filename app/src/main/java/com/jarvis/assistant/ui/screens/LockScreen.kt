@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,31 +41,30 @@ import com.jarvis.assistant.ui.theme.TextPrimary
  * The privacy gate.
  *
  * A numeric keypad and nothing else: no app names, no AI history, no last command, no clock large
- * enough to guess what time the operator was last active. Wrong attempts are counted and throttled by
- * the caller; the PIN itself is compared against a PBKDF2 digest, never stored.
+ * enough to guess when the operator was last active.
+ *
+ * Two rules this screen exists to respect:
+ *
+ *  - **It must always be possible to submit.** The PIN can be 4 to 10 digits, so there is an explicit
+ *    UNLOCK key rather than "auto-submit at maximum length", which would have made a 4-digit PIN
+ *    impossible to enter.
+ *  - **Hashing never happens here.** PBKDF2 with 120 000 iterations takes long enough to jank a slow
+ *    phone, so the parent runs it off the main thread and drives [verifying] and [error].
  */
 @Composable
 fun LockScreen(
-    onUnlock: (String) -> Boolean,
+    verifying: Boolean,
+    error: String?,
+    onSubmit: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var entry by remember { mutableStateOf("") }
-    var failures by remember { mutableIntStateOf(0) }
-    var note by remember { mutableStateOf<String?>(null) }
 
-    fun submit(pin: String) {
-        if (pin.length < Privacy.MIN_DIGITS) {
-            note = "PIN is at least ${Privacy.MIN_DIGITS} digits"
-            return
-        }
-        if (onUnlock(pin)) {
-            entry = ""
-            note = null
-        } else {
-            failures += 1
-            entry = ""
-            note = if (failures >= 3) "Wrong PIN · $failures attempts" else "Wrong PIN"
-        }
+    fun submit() {
+        if (verifying) return
+        if (entry.length < Privacy.MIN_DIGITS) return
+        onSubmit(entry)
+        entry = ""
     }
 
     Column(
@@ -83,12 +81,20 @@ fun LockScreen(
         )
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            PulseDot(color = if (failures > 0) AlertRed else ElectricCyan, diameter = 5)
+            PulseDot(color = if (error != null) AlertRed else ElectricCyan, diameter = 5)
             Spacer(Modifier.width(7.dp))
             Text(
-                text = if (failures > 0) "ACCESS DENIED" else "LOCKED",
+                text = when {
+                    verifying -> "CHECKING"
+                    error != null -> "ACCESS DENIED"
+                    else -> "LOCKED"
+                },
                 style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 2.4.sp),
-                color = if (failures > 0) AlertRed else ElectricCyan,
+                color = when {
+                    verifying -> ElectricCyan
+                    error != null -> AlertRed
+                    else -> ElectricCyan
+                },
             )
         }
 
@@ -112,9 +118,9 @@ fun LockScreen(
 
         Spacer(Modifier.height(12.dp))
         Text(
-            text = note ?: "ENTER PIN",
+            text = error ?: if (verifying) "VERIFYING" else "ENTER PIN",
             style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.8.sp),
-            color = if (note != null) AlertRed else TextMuted,
+            color = if (error != null) AlertRed else TextMuted,
             textAlign = TextAlign.Center,
         )
 
@@ -142,15 +148,9 @@ fun LockScreen(
                             .border(1.dp, ElectricCyan.copy(alpha = 0.22f), ChipShape)
                             .clickable {
                                 when (key) {
-                                    "C" -> {
-                                        entry = ""
-                                        note = null
-                                    }
+                                    "C" -> entry = ""
                                     "<" -> entry = entry.dropLast(1)
-                                    else -> {
-                                        if (entry.length < Privacy.MAX_DIGITS) entry += key
-                                        if (entry.length == Privacy.MAX_DIGITS) submit(entry)
-                                    }
+                                    else -> if (entry.length < Privacy.MAX_DIGITS) entry += key
                                 }
                             },
                         contentAlignment = Alignment.Center,
@@ -171,6 +171,36 @@ fun LockScreen(
                     }
                 }
             }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // The key that makes any PIN length work — 4 digits or 10.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    if (entry.length >= Privacy.MIN_DIGITS && !verifying) {
+                        ElectricCyan.copy(alpha = 0.16f)
+                    } else {
+                        PanelNavy.copy(alpha = 0.7f)
+                    },
+                    ChipShape,
+                )
+                .border(
+                    1.dp,
+                    if (entry.length >= Privacy.MIN_DIGITS) ElectricCyan.copy(alpha = 0.6f) else ElectricCyan.copy(alpha = 0.15f),
+                    ChipShape,
+                )
+                .clickable { submit() }
+                .padding(vertical = 13.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = if (verifying) "CHECKING" else "UNLOCK",
+                style = HudType.label.copy(fontSize = 11.sp, letterSpacing = 2.2.sp),
+                color = if (entry.length >= Privacy.MIN_DIGITS) ElectricCyan else TextMuted,
+            )
         }
 
         Spacer(Modifier.height(18.dp))

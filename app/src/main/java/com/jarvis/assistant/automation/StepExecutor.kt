@@ -80,9 +80,11 @@ object StepExecutor {
                 warnings.add("Phone permission is off — the dialer will open instead of calling.")
             }
         }
-        if (all.any { it.action == ActionType.REMINDER } && !NotificationRepository.hasAccess(context)) {
-            // Reminders do not need notification *listener* access; only the ability to post.
-            warnings.add("Reminders post a notification — allow notifications for JARVIS.")
+        if (all.any { it.action == ActionType.REMINDER } &&
+            !androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+        ) {
+            // Posting permission, not listener access: the listener is for *reading* other apps.
+            warnings.add("Reminders post a notification — allow notifications for JARVIS in system settings.")
         }
         if (all.any { it.action == ActionType.CAPTURE_PHOTO } && !QuickCapture.hasPermission(context)) {
             warnings.add("Needs camera permission to take the photo.")

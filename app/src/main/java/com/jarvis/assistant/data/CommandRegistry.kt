@@ -90,7 +90,7 @@ object CommandRegistry {
             "time" -> Response(
                 listOf(
                     "LOCAL TIME",
-                    "  " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")),
+                    "  " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("h:mm:ss a")),
                     "  " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy")),
                 )
             )

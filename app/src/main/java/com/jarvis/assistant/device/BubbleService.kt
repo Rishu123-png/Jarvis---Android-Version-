@@ -266,13 +266,10 @@ class BubbleService : Service() {
             // A microphone: rounded stem plus a cradle.
             val cx = width / 2f
             val top = height * 0.30f
-            gc = glyph
             canvas.drawRoundRect(cx - 8f, top, cx + 8f, top + 26f, 8f, 8f, glyph)
             canvas.drawArc(cx - 14f, top + 8f, cx + 14f, top + 34f, 0f, 180f, false, glyph)
             canvas.drawLine(cx, top + 34f, cx, top + 42f, glyph)
         }
-
-        private var gc: Paint? = null
     }
 
     companion object {
