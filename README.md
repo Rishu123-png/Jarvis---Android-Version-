@@ -16,7 +16,7 @@ Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · minSdk 29 (Androi
 | Home app role, app drawer, launching apps | Working |
 | Notifications, torch, volume, media, system panels | Working |
 | Editable dock, storage telemetry | Working |
-| Automation routines with confirmation gates | Working |
+| Automation: control flow, triggers, AI-authored routines | Working |
 | Intelligence: your own AI key, any supported provider | Working |
 | Voice input and spoken replies | Not built |
 
@@ -73,35 +73,70 @@ History is capped, so a long session cannot grow the list without bound.
 
 ## Automation
 
-Routines are ordered step lists stored as JSON on the device. They run top to bottom, one at a time,
-with a 20-step ceiling. A failing step is logged and the run continues, so one unavailable action
-does not strand the rest.
+Routines are ordered step lists stored as JSON on the device. They run top to bottom, with a
+60-step budget per run, three levels of nesting, and one routine at a time.
 
-**Steps:** open app · open link · dial number (dialer only, never calls) · compose SMS (never sends) ·
-set timer · torch on/off · set media volume · play/pause · clear alerts · open a system panel · wait ·
-system gesture (back/home/recents/shade/quick settings/lock) · press a labelled control on screen.
+### Control flow
+
+A routine can now decide things. **IF / ELSE** branches on twelve live conditions (battery level,
+charging, Wi-Fi, mobile data, media playing, time window, alert count, app installed, screen state),
+**REPEAT** runs a block 1–10 times, **WAIT UNTIL** holds until a condition becomes true or times out,
+and **STOP ROUTINE** ends the run early. Every step carries its own timeout, optional retries, and a
+failure policy: continue (the default) or halt the routine.
+
+### Triggers
+
+One switch arms everything. Each routine picks its own trigger: a time (daily or weekdays), charger
+connected or removed, Wi-Fi coming up, battery dropping below a level, after a reboot, an alert from a
+chosen app, or an unlock while JARVIS is running.
+
+| Cost | Detail |
+| --- | --- |
+| A persistent notification | Armed triggers run in a foreground service, which Android requires to be visible. Disarming removes the service and the notification. |
+| A cooldown | The same routine will not re-fire within five minutes, so a flapping state cannot spam it. |
+| Approximate times by default | Time triggers fire exactly only if you allow "Alarms & reminders"; otherwise they use an inexact alarm and the screen says `APPROXIMATE`. |
+
+A trigger never bypasses a gate. If a triggered routine reaches a sensitive step it waits for you,
+and declines itself after five minutes rather than hanging.
+
+### Actions
+
+open app · open link · deep link · dial (dialer only, never calls) · compose SMS (never sends) ·
+set timer · set alarm · torch on/off · set media volume · play/pause/next/previous · clear alerts ·
+notify me · speak text · webhook (GET/POST, web schemes only) · open a system panel · wait ·
+system gesture · press a labelled control · IF · REPEAT · WAIT UNTIL · STOP.
+
+### Compose with AI
+
+Describe the routine in a sentence — *"every night at 11 turn the torch off and set volume to 20"* —
+and the model proposes a plan. It may only choose action and condition ids that already exist; every
+value is clamped, unknown actions are dropped and listed, depth and step counts are capped, and the
+result is previewed before anything is saved. Sensitive steps stay sensitive, because the model has
+no way to say otherwise.
 
 ### The safety model
 
 | Tier | Requires | Grants |
 | --- | --- | --- |
-| Nothing | — | app launching, links, dialer, SMS composer, timer, torch, volume, panels |
+| Nothing | — | apps, links, dialer, SMS composer, timer, alarm, torch, volume, panels, speech |
 | Notification access | system switch | media transport, clearing alerts |
 | Accessibility service | system switch | navigation gestures |
 | Screen pressing | separate in-app opt-in | pressing one labelled control |
+| Webhook | confirmation each run | calling a URL you own |
 
-Every **sensitive** step suspends the routine until you approve it. Decline halts the run. STOP
-cancels immediately and leaves nothing running.
-
-The accessibility service's `onAccessibilityEvent` is intentionally empty: JARVIS never reads screen
-content in the background. `pressByText` is exact-match only, bounded to the active window, and
-refuses to guess.
+Every sensitive step suspends the routine until you approve it. The accessibility service's
+`onAccessibilityEvent` is intentionally empty: JARVIS never reads screen content in the background.
 
 ### What automation deliberately cannot do
 
-It will not place a call, send a message, or move money. Those steps open the relevant screen so the
-final action stays yours. It also cannot control every app or protected system screen — a regular
-Android app cannot, and the UI says so instead of implying otherwise.
+It will not place a call, send a message, flip Wi-Fi or DND, or move money. Those steps open the
+relevant screen so the final action stays yours. It cannot run while the app has been force-stopped,
+and it cannot fire on a state Android never reports to a background app.
+
+### Run history
+
+The last 50 runs are kept on device: what fired, when, how many steps passed, and whether it was
+started by a trigger or by you. A step that failed is recorded with the executor's own reason.
 
 ---
 
@@ -234,7 +269,12 @@ app/src/main/java/com/jarvis/assistant/
 │   ├── AutomationModels.kt      actions, steps, workflows, JSON
 │   ├── AutomationStore.kt       persistence + presets
 │   ├── StepExecutor.kt          one step, against real APIs
-│   ├── AutomationEngine.kt      sequential runner, confirmation gate, run log
+│   ├── AutomationEngine.kt      interpreter: blocks, timeouts, retries, confirmation gate
+│   ├── AutomationConditions.kt  live condition + trigger evaluation
+│   ├── AutomationTriggers.kt    arming switch, exact alarms, boot re-arm
+│   ├── AutomationService.kt     foreground watcher while armed
+│   ├── SpeechOut.kt             text-to-speech for SAY
+│   ├── StepExecutor.kt          one leaf step, against real APIs
 │   └── JarvisAccessibilityService.kt
 ├── device/
 │   ├── SystemStatus.kt          battery / network / memory / uptime / build info
@@ -259,6 +299,7 @@ app/src/main/java/com/jarvis/assistant/
         ├── AppDrawerScreen.kt   installed apps, search, sections
         ├── AutomationScreen.kt  routines, run state, log
         ├── AutomationEditorScreen.kt
+        ├── ComposeScreen.kt     describe a routine in a sentence
         ├── AiSettingsScreen.kt  provider, model, key
         ├── TerminalScreen.kt    device console
         └── …
@@ -281,6 +322,12 @@ model, `ui/components/` owns the visual language, and `ui/screens/` only compose
 
 **Automation**
 
+- [ ] Compose with AI returns a plan; unknown actions are dropped and listed.
+- [ ] Arm triggers, allow exact alarms, then set a routine one minute ahead — it fires.
+- [ ] A triggered routine that hits a sensitive step waits for you, then declines after 5 min.
+- [ ] Disarming removes the persistent notification.
+- [ ] Reboot with triggers armed: the routine still fires afterwards.
+- [ ] IF/ELSE branches on real state; REPEAT and WAIT UNTIL behave.
 - [ ] Presets run with no special access (torch, volume, timer, clear alerts).
 - [ ] A gesture step asks for approval, and Decline halts the run.
 - [ ] STOP halts a running routine and the log shows HALTED.
