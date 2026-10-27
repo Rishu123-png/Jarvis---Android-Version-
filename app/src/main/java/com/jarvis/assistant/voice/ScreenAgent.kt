@@ -63,8 +63,8 @@ object ScreenAgent {
         val history = mutableListOf<String>()
 
         repeat(MAX_STEPS) { index ->
-            val app = AccessibilityStatus.currentPackage() ?: "unknown"
-            val labels = AccessibilityStatus.visibleLabels(MAX_LABELS)
+            val app = JarvisAccessibilityService.currentPackage() ?: "unknown"
+            val labels = JarvisAccessibilityService.visibleLabels(MAX_LABELS)
             if (labels.isEmpty() && index > 0) {
                 // A blank screen is usually an ad or a splash; wait once, then give up honestly.
                 delay(SETTLE_MS)
@@ -88,7 +88,7 @@ object ScreenAgent {
                     val target = decision.param
                     if (target.isBlank()) return "It tried to press nothing."
                     onEvent(Event("PRESS ${target.uppercase(Locale.US).take(22)}", decision.say.take(48)))
-                    if (!AccessibilityStatus.pressLoose(target)) {
+                    if (!JarvisAccessibilityService.pressLoose(target)) {
                         return "I could not find \"$target\" on screen."
                     }
                     history.add("pressed \"$target\"")
