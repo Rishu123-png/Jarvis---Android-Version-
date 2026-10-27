@@ -56,7 +56,7 @@ object InstagramClient {
 
     private const val MEDIA_METRICS = "reach,saved,shares,total_interactions"
 
-    private class IgFailure(val message: String, val hint: String? = null) : Exception(message)
+    private class IgFailure(override val message: String, val hint: String? = null) : Exception(message)
 
     // ---------------------------------------------------------------------------------- public
 
