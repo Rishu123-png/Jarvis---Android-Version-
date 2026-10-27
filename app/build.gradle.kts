@@ -33,8 +33,8 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 13
-        versionName = "2.0.0"
+        versionCode = 14
+        versionName = "2.1.0"
 
         vectorDrawables { useSupportLibrary = true }
     }
@@ -113,6 +113,15 @@ dependencies {
      * Shizuku: optional adb-level shell access, granted by the operator, no root involved.
      * Both artifacts are inert when Shizuku is not installed — nothing binds, nothing blocks.
      */
+    /*
+     * CameraX: powers "take a photo" as a deterministic action. The system camera intent would need
+     * the operator to press a shutter; this does not, so a spoken chain (capture -> show newest)
+     * actually completes.
+     */
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
 

@@ -15,6 +15,8 @@ import com.jarvis.assistant.R
 import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
+import com.jarvis.assistant.device.Gallery
+import com.jarvis.assistant.device.QuickCapture
 import com.jarvis.assistant.shell.ShizukuShell
 import com.jarvis.assistant.voice.Contacts
 import kotlinx.coroutines.delay
@@ -74,6 +76,9 @@ object StepExecutor {
             if (!canPlaceCalls(context)) {
                 warnings.add("Phone permission is off — the dialer will open instead of calling.")
             }
+        }
+        if (all.any { it.action == ActionType.CAPTURE_PHOTO } && !QuickCapture.hasPermission(context)) {
+            warnings.add("Needs camera permission to take the photo.")
         }
         if (all.any { it.action == ActionType.TYPE_TEXT } &&
             !AccessibilityStatus.isServiceEnabled(context)
@@ -148,6 +153,16 @@ object StepExecutor {
             }
 
             ActionType.CALL_CONTACT -> callContact(context, step.param)
+
+            ActionType.CAPTURE_PHOTO -> {
+                val (uri, error) = QuickCapture.capture(context)
+                if (uri == null) Result.Failed(error ?: "No photo was taken") else Result.Ok("Photo saved")
+            }
+
+            ActionType.OPEN_LAST_PHOTO -> {
+                val error = Gallery.openLatest(context)
+                if (error == null) Result.Ok("Opened the newest photo") else Result.Failed(error)
+            }
 
             ActionType.COMPOSE_SMS -> {
                 val number = step.param.trim()

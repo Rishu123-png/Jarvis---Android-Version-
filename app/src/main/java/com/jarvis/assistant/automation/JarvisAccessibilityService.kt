@@ -138,6 +138,134 @@ class JarvisAccessibilityService : AccessibilityService() {
             }
         }
 
+        /** What is on screen right now, in reading order, for the screen-aware planner. */
+        fun visibleLabels(limit: Int = 40): List<String> {
+            val service = instance ?: return emptyList()
+            val root: AccessibilityNodeInfo = try {
+                service.rootInActiveWindow ?: return emptyList()
+            } catch (t: Throwable) {
+                return emptyList()
+            }
+            return try {
+                val found = LinkedHashSet<String>()
+                collectLabels(root, 0, intArrayOf(0), found, limit)
+                found.toList()
+            } catch (t: Throwable) {
+                emptyList()
+            } finally {
+                @Suppress("DEPRECATION")
+                try {
+                    root.recycle()
+                } catch (t: Throwable) {
+                    // Best-effort.
+                }
+            }
+        }
+
+        private fun collectLabels(
+            node: AccessibilityNodeInfo,
+            depth: Int,
+            counter: IntArray,
+            out: MutableSet<String>,
+            limit: Int,
+        ) {
+            if (depth > 24 || counter[0] > 1_200 || out.size >= limit) return
+            counter[0]++
+            val label = node.text?.toString()?.trim()?.ifBlank { null }
+                ?: node.contentDescription?.toString()?.trim()?.ifBlank { null }
+            if (!label.isNullOrBlank() && label.length in 1..60) out.add(label)
+            for (index in 0 until node.childCount) {
+                if (out.size >= limit) return
+                val child = try {
+                    node.getChild(index)
+                } catch (t: Throwable) {
+                    null
+                } ?: continue
+                collectLabels(child, depth + 1, counter, out, limit)
+            }
+        }
+
+        /** Package name of the window in front, or null when the service is not connected. */
+        fun currentPackage(): String? {
+            val service = instance ?: return null
+            return try {
+                service.rootInActiveWindow?.packageName?.toString()
+            } catch (t: Throwable) {
+                null
+            }
+        }
+
+        /**
+         * Presses by label, exact match first, then "the shortest label containing this text".
+         *
+         * Exact stays the default because a wrong tap is worse than no tap; the loose pass exists
+         * for the screen-aware planner, which is looking at the labels it was just given.
+         */
+        fun pressLoose(label: String): Boolean {
+            if (label.isBlank()) return false
+            if (pressByText(label)) return true
+
+            val service = instance ?: return false
+            if (!AccessibilityStatus.isScreenPressAllowed(service)) return false
+            val root: AccessibilityNodeInfo = try {
+                service.rootInActiveWindow ?: return false
+            } catch (t: Throwable) {
+                return false
+            }
+            return try {
+                val needle = label.trim().lowercase()
+                val best = findContaining(root, needle, 0, intArrayOf(0))
+                val clickable = best?.let { nearestClickable(it) }
+                clickable?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+            } catch (t: Throwable) {
+                false
+            } finally {
+                @Suppress("DEPRECATION")
+                try {
+                    root.recycle()
+                } catch (t: Throwable) {
+                    // Best-effort.
+                }
+            }
+        }
+
+        private fun findContaining(
+            node: AccessibilityNodeInfo,
+            needle: String,
+            depth: Int,
+            counter: IntArray,
+        ): AccessibilityNodeInfo? {
+            if (depth > 24 || counter[0] > 1_200) return null
+            counter[0]++
+            var best: AccessibilityNodeInfo? = null
+            var bestLength = Int.MAX_VALUE
+
+            val own = listOfNotNull(node.text, node.contentDescription, node.hintText)
+                .map { it.toString().trim().lowercase() }
+                .firstOrNull { it.contains(needle) }
+            if (own != null && own.length < bestLength) {
+                best = node
+                bestLength = own.length
+            }
+
+            for (index in 0 until node.childCount) {
+                val child = try {
+                    node.getChild(index)
+                } catch (t: Throwable) {
+                    null
+                } ?: continue
+                val candidate = findContaining(child, needle, depth + 1, counter) ?: continue
+                val candidateLength = listOfNotNull(candidate.text, candidate.contentDescription)
+                    .map { it.toString().trim().length }
+                    .minOrNull() ?: continue
+                if (candidateLength < bestLength) {
+                    best = candidate
+                    bestLength = candidateLength
+                }
+            }
+            return best
+        }
+
         private fun findFocusedEditable(
             node: AccessibilityNodeInfo,
             depth: Int,

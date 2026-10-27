@@ -24,6 +24,8 @@ data class VoicePlan(
     val steps: List<PlannedStep>,
     val say: String,
     val source: String,
+    /** When set, the screen-aware loop takes over after [steps] and works towards this goal. */
+    val screenGoal: String? = null,
 )
 
 /**
@@ -43,7 +45,8 @@ data class VoicePlan(
 object IntentRouter {
 
     private const val VIRTUAL_SEND = "send_message"
-    private const val MAX_STEPS = 4
+    private const val VIRTUAL_SCREEN = "screen_task"
+    private const val MAX_STEPS = 8
     private const val MAX_SPOKEN = 240
 
     /** Actions the voice surface may use. Shell and webhooks are excluded on purpose. */
@@ -98,6 +101,7 @@ object IntentRouter {
         val say = json.optString("say").trim().take(MAX_SPOKEN)
 
         val steps = mutableListOf<PlannedStep>()
+        var screenGoal: String? = null
         val rawSteps: JSONArray? = json.optJSONArray("steps")
         if (rawSteps != null) {
             for (index in 0 until minOf(rawSteps.length(), MAX_STEPS)) {
@@ -111,25 +115,38 @@ object IntentRouter {
                     continue
                 }
 
+                if (id == VIRTUAL_SCREEN) {
+                    screenGoal = param.ifBlank { heard }
+                    continue
+                }
+
                 val action = voiceActions.firstOrNull { it.id == id } ?: continue
                 steps.add(PlannedStep(action, param, label.ifBlank { action.label }))
             }
         }
 
         val resolved = steps.take(MAX_STEPS)
-        if (resolved.isEmpty() && say.isBlank()) return null
+        if (resolved.isEmpty() && screenGoal == null && say.isBlank()) return null
 
         val sourceLabel = when (result) {
             is AiResult.Ok -> "AI · ${result.providerLabel}"
             else -> "AI"
         }
 
+        val subtitle = when {
+            resolved.isEmpty() && screenGoal != null -> "SCREEN TASK"
+            resolved.isEmpty() -> "ANSWER"
+            screenGoal != null -> "${resolved.size} STEP + SCREEN"
+            else -> "${resolved.size} STEP" + if (resolved.size == 1) "" else "S"
+        }
+
         return VoicePlan(
             title = title,
-            subtitle = if (resolved.isEmpty()) "ANSWER" else "${resolved.size} STEP" + if (resolved.size == 1) "" else "S",
+            subtitle = subtitle,
             steps = resolved,
             say = say.ifBlank { if (resolved.isEmpty()) "Done." else "On it." },
             source = sourceLabel,
+            screenGoal = screenGoal,
         )
     }
 
@@ -170,6 +187,15 @@ object IntentRouter {
 
             Rules:
             - To call someone use call_contact with the person's name exactly as heard. Never invent a number.
+            - Chained requests become several steps, in the order spoken: "open camera, capture, show me"
+              is capture_photo, wait 1, last_photo. Put a wait (2 seconds) between steps that hand over
+              to another app, and before pressing a control in it.
+            - Take a photo with capture_photo — JARVIS has its own capture surface, so there is no
+              shutter to press. Show the newest photo with last_photo.
+            - For anything that needs finding your way around inside another app (a switch on a
+              settings page, a chat buried behind a search box), use exactly one step:
+              {"action": "$VIRTUAL_SCREEN", "param": "<the goal in plain words>"}. That loop taps one
+              control at a time and reports what it sees. Never guess presses for an app you cannot see.
             - To message someone use $VIRTUAL_SEND. Never invent a number either.
             - To open an app use open_app with a package name from the installed list.
             - The operator's speech may be sloppy, abbreviated or mixed with Hindi words. Infer intent.
@@ -336,6 +362,29 @@ object IntentRouter {
                 "Calling $who.",
                 listOf(PlannedStep(ActionType.CALL_CONTACT, who, "CALL $who".take(28).uppercase(Locale.US))),
             )
+        }
+
+        // Camera chain: "open camera, capture, show me". Works with no key at all.
+        if (clean.contains("camera") || clean.contains("selfie") || clean.contains("photo")) {
+            val capture = clean.contains("capture") || clean.contains("take") ||
+                clean.contains("photo") || clean.contains("picture") || clean.contains("tasveer") ||
+                clean.contains("selfie") || clean.contains("snap")
+            val showIt = clean.contains("gallery") || clean.contains("show") ||
+                clean.contains("open it") || clean.contains("dikha")
+            if (capture) {
+                val steps = mutableListOf(
+                    PlannedStep(ActionType.CAPTURE_PHOTO, "", "TAKE PHOTO"),
+                )
+                if (showIt) {
+                    steps.add(PlannedStep(ActionType.WAIT, "1", "WAIT"))
+                    steps.add(PlannedStep(ActionType.OPEN_LAST_PHOTO, "", "SHOW PHOTO"))
+                }
+                return answer(
+                    if (showIt) "PHOTO \u00B7 SHOW" else "PHOTO",
+                    if (showIt) "Taking a photo and opening it." else "Taking a photo.",
+                    steps,
+                )
+            }
         }
 
         // Torch.

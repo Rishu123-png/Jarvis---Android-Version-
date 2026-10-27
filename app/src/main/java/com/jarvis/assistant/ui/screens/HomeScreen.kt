@@ -93,6 +93,7 @@ fun HomeScreen(
 
     var contactsGranted by remember { mutableStateOf(granted(context, Manifest.permission.READ_CONTACTS)) }
     var callsGranted by remember { mutableStateOf(granted(context, Manifest.permission.CALL_PHONE)) }
+    var cameraGranted by remember { mutableStateOf(granted(context, Manifest.permission.CAMERA)) }
 
     val microphone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
         if (allowed) {
@@ -113,6 +114,10 @@ fun HomeScreen(
 
     val callAccess = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
         callsGranted = allowed
+    }
+
+    val cameraAccess = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
+        cameraGranted = allowed
     }
 
     fun tapOrb() {
@@ -145,12 +150,14 @@ fun HomeScreen(
 
             Spacer(Modifier.weight(0.7f))
 
-            if (!contactsGranted || !callsGranted) {
+            if (!contactsGranted || !callsGranted || !cameraGranted) {
                 PermissionStrip(
                     contactsGranted = contactsGranted,
                     callsGranted = callsGranted,
+                    cameraGranted = cameraGranted,
                     onContacts = { contactAccess.launch(Manifest.permission.READ_CONTACTS) },
                     onCalls = { callAccess.launch(Manifest.permission.CALL_PHONE) },
+                    onCamera = { cameraAccess.launch(Manifest.permission.CAMERA) },
                 )
                 Spacer(Modifier.height(10.dp))
             }
@@ -369,21 +376,29 @@ private fun PhaseHint(task: VoiceTask) {
 private fun PermissionStrip(
     contactsGranted: Boolean,
     callsGranted: Boolean,
+    cameraGranted: Boolean,
     onContacts: () -> Unit,
     onCalls: () -> Unit,
+    onCamera: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         if (!contactsGranted) {
             Box(modifier = Modifier.clickable(onClick = onContacts)) {
-                HudChip(text = "ALLOW CONTACTS", accent = Amber)
+                HudChip(text = "+ CONTACTS", accent = Amber)
             }
         }
         if (!callsGranted) {
             Box(modifier = Modifier.clickable(onClick = onCalls)) {
-                HudChip(text = "ALLOW CALLS", accent = Amber)
+                HudChip(text = "+ CALLS", accent = Amber)
+            }
+        }
+        if (!cameraGranted) {
+            Box(modifier = Modifier.clickable(onClick = onCamera)) {
+                HudChip(text = "+ CAMERA", accent = Amber)
             }
         }
     }

@@ -24,6 +24,7 @@ Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · minSdk 29 (Androi
 | Intelligence: your own AI key, any supported provider | Working |
 | Voice: tap-to-speak, Whisper or on-device, spoken replies | Working |
 | Voice commands: call a contact, message on WhatsApp, open apps, torch, alarms | Working |
+| Voice chains: camera capture → gallery, multi-app sequences, screen-aware tapping | Working |
 
 Every tile on the HUD is either backed by a real Android API or clearly marked as not built. Nothing
 in the interface imitates a capability the app does not have.
@@ -91,10 +92,25 @@ The Whisper key is the same key you already use for Intelligence, and switching 
 | "call dad" | Resolves the contact and calls. Without phone permission it opens the dialer and says so |
 | "whatsapp Divik say hi" | Opens the chat with the text written; presses Send if accessibility is on |
 | "open instagram" | Fuzzy-matches the installed app, remembers the alias for next time |
+| "open camera, capture, show me in gallery" | Takes the photo itself (no shutter to press), then opens the newest one |
+| "open instagram, then search for Divik" | Falls into the screen-aware loop: one tap at a time, each step shown |
 | "torch on", "do not disturb on", "volume 40" | Direct device control |
 | "alarm 7:30", "timer 10 minutes" | Alarm and timer intents |
 | "again" | Re-runs the previous command |
 | anything else | Answered by the AI, or an honest "I cannot do that" — never a fake success |
+
+**Chains, not single commands.** A sentence can carry several actions: the planner returns an
+ordered list (up to eight steps, waits included) and JARVIS walks it, showing each step as it runs.
+"Open camera, capture the image, show me in gallery" is three steps, and the middle one does not
+need you to press anything — JARVIS opens its own capture surface, takes one frame with CameraX,
+writes it to `Pictures/JARVIS` and gets out of the way.
+
+**When the app is one it cannot predict**, the plan ends with a *screen task*: a bounded
+observe → decide → act loop. It reads the labels on screen, the model picks exactly one action
+(press / type / system gesture / open / wait), JARVIS performs it, and looks again — at most six
+actions, each displayed on the card, each stoppable. It only ever taps a label that was on screen in
+the observation the decision was made from. Without accessibility the loop refuses to start rather
+than guessing.
 
 **Memory** is local and small: the last 50 commands, contact nicknames you used, and app aliases.
 No account, no sync, no backup.
