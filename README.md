@@ -27,6 +27,8 @@ Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · minSdk 29 (Androi
 Every tile on the HUD is either backed by a real Android API or clearly marked as not built. Nothing
 in the interface imitates a capability the app does not have.
 
+What is still missing, and what comes next, is tracked in **[ROADMAP.md](ROADMAP.md)**.
+
 ---
 
 ## Intelligence — bring your own key
