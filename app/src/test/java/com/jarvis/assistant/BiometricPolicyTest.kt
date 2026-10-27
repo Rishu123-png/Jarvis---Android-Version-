@@ -40,8 +40,7 @@ class BiometricPolicyTest {
 
     @Test
     fun unlockKeySaysWhatItWillDo() {
-        assertEquals("USE PIN INSTEAD", BiometricPolicy.fallbackLabel(enabled = true, available = true))
-        assertEquals("UNLOCK", BiometricPolicy.fallbackLabel(enabled = false, available = true))
-        assertEquals("UNLOCK", BiometricPolicy.fallbackLabel(enabled = true, available = false))
+        assertEquals("USE PIN INSTEAD", BiometricPolicy.fallbackLabel(offered = true))
+        assertEquals("UNLOCK", BiometricPolicy.fallbackLabel(offered = false))
     }
 }

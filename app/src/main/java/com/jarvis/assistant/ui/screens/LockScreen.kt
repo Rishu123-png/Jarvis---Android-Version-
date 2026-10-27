@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jarvis.assistant.device.BiometricPolicy
 import com.jarvis.assistant.device.Privacy
 import com.jarvis.assistant.ui.components.HudChip
 import com.jarvis.assistant.ui.components.PulseDot
@@ -66,6 +67,12 @@ fun LockScreen(
 
     fun submit() {
         if (verifying) return
+        // With an empty entry and a prompt on screen this key reads "USE PIN INSTEAD", so it has to
+        // dismiss the sheet rather than sit there doing nothing.
+        if (entry.isEmpty() && biometricOffered) {
+            onUsePin()
+            return
+        }
         if (entry.length < Privacy.MIN_DIGITS) return
         onSubmit(entry)
         entry = ""
@@ -228,7 +235,8 @@ fun LockScreen(
             Text(
                 text = when {
                     verifying -> "CHECKING"
-                    entry.isEmpty() && biometricOffered -> "USE PIN INSTEAD"
+                    entry.isEmpty() && biometricOffered ->
+                        BiometricPolicy.fallbackLabel(offered = true)
                     else -> "UNLOCK"
                 },
                 style = HudType.label.copy(fontSize = 11.sp, letterSpacing = 2.2.sp),

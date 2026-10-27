@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.CancellationSignal
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -840,24 +841,43 @@ fun JarvisApp(
                     .background(VoidBlack)
                     .windowInsetsPadding(WindowInsets.systemBars),
             ) {
-                // One automatic attempt per lock appearance; after that only the button fires it.
-                LaunchedEffect(locked, biometricFailures) {
-                    val activity = context as? android.app.Activity
-                    if (locked && activity != null && !biometricTried &&
-                        BiometricPolicy.shouldAutoPrompt(biometricEnabled, biometricAvailable, biometricFailures)
-                    ) {
-                        biometricTried = true
-                        biometricPending = true
-                        Biometrics.prompt(activity) { ok ->
-                            biometricPending = false
-                            if (ok) {
+                // The prompt outlives the composable if the screen goes away (a PIN unlocking the
+                // app while the sheet is still up, or the process being backgrounded), so the signal
+                // is held and cancelled on the way out instead of leaving an orphan system dialog.
+                var biometricSignal by remember { mutableStateOf<CancellationSignal?>(null) }
+
+                fun offerBiometric() {
+                    val activity = context as? android.app.Activity ?: return
+                    if (biometricPending) return
+                    biometricPending = true
+                    biometricTried = true
+                    biometricSignal = Biometrics.prompt(activity) { outcome ->
+                        biometricPending = false
+                        biometricSignal = null
+                        when (outcome) {
+                            Biometrics.Outcome.SUCCESS -> {
                                 pinError = null
                                 biometricFailures = 0
                                 locked = false
-                            } else {
-                                biometricFailures += 1
                             }
+                            // Choosing the keypad is not a sensor failure, so it must not burn one
+                            // of the automatic attempts.
+                            Biometrics.Outcome.CANCELLED -> Unit
+                            Biometrics.Outcome.FAILED -> biometricFailures += 1
                         }
+                    }
+                }
+
+                DisposableEffect(locked) {
+                    onDispose { Biometrics.cancel(biometricSignal) }
+                }
+
+                // One automatic attempt per lock appearance; after that only the button fires it.
+                LaunchedEffect(locked, biometricFailures) {
+                    if (locked && !biometricTried &&
+                        BiometricPolicy.shouldAutoPrompt(biometricEnabled, biometricAvailable, biometricFailures)
+                    ) {
+                        offerBiometric()
                     }
                 }
 
@@ -866,24 +886,14 @@ fun JarvisApp(
                     error = pinError,
                     biometricOffered = BiometricPolicy.canOffer(biometricEnabled, biometricAvailable),
                     biometricPending = biometricPending,
-                    onUsePin = { biometricTried = true },
-                    onBiometric = {
-                        val activity = context as? android.app.Activity
-                        if (activity != null && !biometricPending) {
-                            biometricPending = true
-                            biometricTried = true
-                            Biometrics.prompt(activity) { ok ->
-                                biometricPending = false
-                                if (ok) {
-                                    pinError = null
-                                    biometricFailures = 0
-                                    locked = false
-                                } else {
-                                    biometricFailures += 1
-                                }
-                            }
-                        }
+                    onUsePin = {
+                        // Dismiss the sheet so the keypad is actually usable.
+                        biometricTried = true
+                        Biometrics.cancel(biometricSignal)
+                        biometricSignal = null
+                        biometricPending = false
                     },
+                    onBiometric = { offerBiometric() },
                     onSubmit = { pin ->
                         if (!pinChecking) {
                             pinChecking = true

@@ -7,6 +7,8 @@ import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
 import android.os.CancellationSignal
 
+import java.util.concurrent.atomic.AtomicBoolean
+
 /**
  * Fingerprint and face unlock for the privacy lock.
  *
@@ -23,6 +25,18 @@ import android.os.CancellationSignal
  * no fragment machinery.
  */
 object Biometrics {
+
+    /** What the system prompt came back with. */
+    enum class Outcome {
+        /** A real match in secure hardware. */
+        SUCCESS,
+
+        /** The operator chose the PIN, or backed out. Not a sensor failure. */
+        CANCELLED,
+
+        /** Lockout after too many attempts, hardware error, or no match within the system's limit. */
+        FAILED,
+    }
 
     private const val PREFS = "jarvis_biometrics"
     private const val KEY_ENABLED = "enabled"
@@ -50,9 +64,6 @@ object Biometrics {
         else -> "UNAVAILABLE"
     }
 
-    /** Whether the lock screen should attempt biometrics at all. */
-    fun canOffer(context: Context): Boolean = isEnabled(context) && isAvailable(context)
-
     private fun codeFor(context: Context): Int = try {
         val manager = context.getSystemService(BiometricManager::class.java)
         manager?.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
@@ -64,18 +75,28 @@ object Biometrics {
     /**
      * Shows the system prompt from [activity].
      *
-     * [onResult] receives true only on a real match. A cancel, a lockout or an error is false, and the
-     * caller keeps the keypad in front. A single non-matching finger does not end the prompt — the
-     * system lets the operator try again.
+     * [onResult] receives [Outcome.SUCCESS] only on a real match. [Outcome.CANCELLED] means the
+     * operator asked for the keypad instead — that must not count against the sensor, or pressing
+     * "Use PIN" twice would quietly disable the automatic attempt. Everything else is
+     * [Outcome.FAILED]: a lockout, a missing sensor, or the system giving up.
      *
-     * Returns the signal needed to [cancel] a prompt that outlived its screen.
+     * A single non-matching finger does not end the prompt — the system lets the operator try again.
+     * [onResult] is called exactly once per prompt.
+     *
+     * Returns the signal needed to [cancel] a prompt that outlived its screen; null if the prompt
+     * could not be shown at all.
      */
     fun prompt(
         activity: Activity,
-        onResult: (Boolean) -> Unit,
+        onResult: (Outcome) -> Unit,
     ): CancellationSignal? {
         val executor = activity.mainExecutor
         val signal = CancellationSignal()
+        val answered = AtomicBoolean(false)
+
+        fun answer(outcome: Outcome) {
+            if (answered.compareAndSet(false, true)) onResult(outcome)
+        }
 
         val prompt = try {
             BiometricPrompt.Builder(activity)
@@ -83,7 +104,7 @@ object Biometrics {
                 .setSubtitle("Unlock with your fingerprint or face")
                 .setConfirmationRequired(false)
                 .setNegativeButton("Use PIN", executor) { _: DialogInterface, _: Int ->
-                    onResult(false)
+                    answer(Outcome.CANCELLED)
                 }
                 .build()
         } catch (t: Throwable) {
@@ -98,12 +119,21 @@ object Biometrics {
                     override fun onAuthenticationSucceeded(
                         result: BiometricPrompt.AuthenticationResult?,
                     ) {
-                        onResult(true)
+                        answer(Outcome.SUCCESS)
                     }
 
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
-                        // Covers user cancel, lockout after too many attempts and hardware errors.
-                        onResult(false)
+                        answer(
+                            when (errorCode) {
+                                BiometricPrompt.ERROR_USER_CANCELED,
+                                BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+                                BiometricPrompt.ERROR_CANCELED,
+                                -> Outcome.CANCELLED
+                                // Lockout after too many attempts, hardware gone, timeout: all
+                                // leave the keypad as the only way in.
+                                else -> Outcome.FAILED
+                            },
+                        )
                     }
 
                     // One wrong finger does not end the prompt; the system offers another try.
@@ -113,6 +143,15 @@ object Biometrics {
             signal
         } catch (t: Throwable) {
             null
+        }
+    }
+
+    /** Dismisses a prompt that is still on screen without counting it as a failure. */
+    fun cancel(signal: CancellationSignal?) {
+        try {
+            signal?.cancel()
+        } catch (t: Throwable) {
+            Unit
         }
     }
 }
@@ -136,9 +175,9 @@ object BiometricPolicy {
     /** Whether to show the biometric button at all. */
     fun canOffer(enabled: Boolean, available: Boolean): Boolean = enabled && available
 
-    /** What the fallback key should say. */
-    fun fallbackLabel(enabled: Boolean, available: Boolean): String =
-        if (canOffer(enabled, available)) "USE PIN INSTEAD" else "UNLOCK"
+    /** What the keypad's submit key should say: it dismisses the sheet when one is offered. */
+    fun fallbackLabel(offered: Boolean): String =
+        if (offered) "USE PIN INSTEAD" else "UNLOCK"
 
     const val MAX_AUTO_FAILURES = 2
 }
