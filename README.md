@@ -125,6 +125,29 @@ The token is encrypted with the Android Keystore, sent only to Meta, and revocab
 Instagram → Settings → Apps and websites. Disconnecting deletes the token, the cache and the growth
 series.
 
+### If a connection does not work
+
+The Instagram panel has **DIAGNOSE CONNECTION**, which runs six tiny probes and prints the exact
+failure — no guessing, no server logs to hunt for:
+
+| Probe | What a failure means |
+| --- | --- |
+| ACCESS TOKEN | nothing stored, or the paste contains a space / is truncated |
+| PROFILE (`/me`) | token invalid, expired, or minted for a different app |
+| COUNTS | token lacks `instagram_business_basic` |
+| POSTS | the account is still **personal** — switch it to Creator |
+| ACCOUNT INSIGHTS | `instagram_business_manage_insights` was not enabled *before* the token was generated |
+| POST INSIGHTS | per-post metrics refused for that post type; the module falls back to `reach` |
+
+**Neither Meta nor Google asks for verification for your own account.** Meta: Standard Access works
+while the app is in development mode for accounts with a role on the app. Google: keep the consent
+screen in *Testing* and add your own address under *Test users*. App Review, business verification and
+Google's verification review only apply when you serve *other people's* accounts.
+
+The most common Meta failure by far is the order of two clicks in the dashboard: the insights
+permission must be added **before** the token is generated, otherwise the token silently lacks it and
+only likes and comments come back.
+
 ---
 
 ## Terminal — real commands

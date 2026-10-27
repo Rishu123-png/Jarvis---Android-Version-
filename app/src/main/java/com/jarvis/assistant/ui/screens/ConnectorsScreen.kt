@@ -171,6 +171,27 @@ fun ConnectorsScreen(onBack: () -> Unit) {
             }
         }
 
+        val storedIgSecret = storedIg.secret
+        val storedGoogleSecret = storedGoogle.secret
+        val igWarnings = remember(igId, igSecret, igRedirect, storedIgSecret) {
+            OAuthFlows.instagramSetupWarnings(
+                clientIdRaw = igId,
+                secretRaw = igSecret.ifBlank { storedIgSecret },
+                redirect = igRedirect,
+            )
+        }
+        if (igWarnings.isNotEmpty()) {
+            HudPanel(label = "INSTAGRAM PREFLIGHT", accent = Amber) {
+                igWarnings.forEach { line ->
+                    Text(
+                        text = "· $line",
+                        style = HudType.terminal.copy(fontSize = 9.sp),
+                        color = TextSecondary,
+                    )
+                }
+            }
+        }
+
         // ------------------------------------------------------------------ Instagram
         HudPanel(
             label = "INSTAGRAM · LOGIN",
@@ -518,10 +539,32 @@ fun ConnectorsScreen(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "Use a Desktop-app OAuth client in Google Cloud and add yourself as a test user. Read-only scopes only: drive.metadata.readonly and gmail.readonly.",
+                text = "Google also needs no verification for personal use: keep the OAuth consent " +
+                    "screen in TESTING and add your own address under Test users. A Desktop-app " +
+                    "client with http://localhost as the redirect works as-is. Read-only scopes " +
+                    "only: drive.metadata.readonly and gmail.readonly.",
                 style = HudType.terminal.copy(fontSize = 9.sp),
                 color = TextMuted,
             )
+        }
+
+        val gWarnings = remember(gId, gSecret, gRedirect, storedGoogleSecret) {
+            OAuthFlows.googleSetupWarnings(
+                clientIdRaw = gId,
+                secretRaw = gSecret.ifBlank { storedGoogleSecret },
+                redirect = gRedirect,
+            )
+        }
+        if (gWarnings.isNotEmpty()) {
+            HudPanel(label = "GOOGLE PREFLIGHT", accent = Amber) {
+                gWarnings.forEach { line ->
+                    Text(
+                        text = "· $line",
+                        style = HudType.terminal.copy(fontSize = 9.sp),
+                        color = TextSecondary,
+                    )
+                }
+            }
         }
 
         // ------------------------------------------------------------------ WhatsApp

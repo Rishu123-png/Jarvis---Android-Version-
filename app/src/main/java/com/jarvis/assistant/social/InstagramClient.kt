@@ -65,7 +65,13 @@ object InstagramClient {
         "reach",
     )
 
-    private class IgFailure(override val message: String, val hint: String? = null) : Exception(message)
+    private class IgFailure(
+        override val message: String,
+        val hint: String? = null,
+        val httpCode: Int = 0,
+        val errorCode: Int = 0,
+        val subCode: Int = 0,
+    ) : Exception(message)
 
     // ---------------------------------------------------------------------------------- public
 
@@ -390,32 +396,256 @@ object InstagramClient {
         }
     }
 
-    private fun explain(code: Int, body: String): IgFailure {
+    /**
+     * Turns Meta's error object into an actionable sentence.
+     *
+     * The numeric codes are kept in the message on purpose: when the operator reports "it does not
+     * work", the code is the only thing that says *which* of the six requirements is missing.
+     */
+    private fun explain(httpCode: Int, body: String): IgFailure {
         val error = try {
             JSONObject(body).optJSONObject("error")
         } catch (t: Throwable) {
             null
-        } ?: return IgFailure("Meta refused the request (HTTP $code).", null)
+        } ?: return IgFailure("Meta refused the request (HTTP $httpCode).", null, httpCode)
 
-        val message = error.optString("message").ifBlank { "Meta refused the request (HTTP $code)." }
+        val raw = error.optString("message").ifBlank { "Meta refused the request (HTTP $httpCode)." }
         val errorCode = error.optInt("code")
         val subCode = error.optInt("error_subcode")
+        val tagged = buildString {
+            append("HTTP ").append(httpCode)
+            if (errorCode != 0) append(" · code ").append(errorCode)
+            if (subCode != 0) append("/").append(subCode)
+            append(" · ").append(raw)
+        }
+
         val hint = when {
             errorCode == 190 || subCode == 463 || subCode == 467 ->
-                "The token is expired or revoked. Generate a fresh one and connect again."
+                "The token is expired or revoked. Generate a fresh one and paste it again."
 
             errorCode == 4 || errorCode == 17 || errorCode == 32 || errorCode == 613 ->
-                "Rate limit reached. Wait a few minutes, then refresh."
+                "Rate limit reached. Wait a few minutes, then retry."
 
-            errorCode == 10 || errorCode == 200 ->
-                "The token is missing a permission. Insights need instagram_business_manage_insights."
+            errorCode == 10 || errorCode == 200 || httpCode == 403 ->
+                "The token is missing a permission. In the dashboard click 'Add all required " +
+                    "permissions', enable instagram_business_manage_insights, then generate a NEW token."
 
             errorCode == 100 ->
-                "Meta rejected a parameter. The account must be Creator or Business, not personal."
+                "Meta rejected a parameter. Check that the account is Creator or Business (not " +
+                    "personal) and that the token belongs to the same app."
+
+            errorCode == 1 || httpCode == 500 ->
+                "Meta had a server problem. Retry in a minute."
 
             else -> null
         }
-        return IgFailure(message, hint)
+        return IgFailure(tagged, hint, httpCode, errorCode, subCode)
+    }
+
+    // ------------------------------------------------------------------------------ diagnostics
+
+    enum class StepState { OK, FAIL, SKIP }
+
+    data class DiagStep(val name: String, val state: StepState, val detail: String)
+
+    data class Diagnosis(val verdict: String, val steps: List<DiagStep>) {
+        val allOk: Boolean get() = steps.none { it.state == StepState.FAIL }
+    }
+
+    /**
+     * Runs the smallest possible request for each requirement, in order, and reports exactly where
+     * the chain breaks.
+     *
+     * This exists because "it does not work" is not diagnosable from the outside: Meta returns
+     * different errors for an expired token, a missing permission, a personal account and an app
+     * that was never given the Instagram product, and the fixes are different. Six tiny probes cost
+     * a handful of requests and turn a guess into a list.
+     *
+     * Nothing here is required for normal use — the sync does not call it.
+     */
+    suspend fun diagnose(context: Context): Diagnosis = withContext(Dispatchers.IO) {
+        val steps = mutableListOf<DiagStep>()
+
+        // ---- 1 · is there a token, and does it look like one ----
+        val token = InstagramStore.token(context)
+        if (token == null) {
+            steps.add(
+                DiagStep(
+                    "ACCESS TOKEN",
+                    StepState.FAIL,
+                    "No token stored. Use QUICK · PASTE TOKEN above, or finish the login flow.",
+                ),
+            )
+            return@withContext Diagnosis(
+                "Nothing is connected yet — start with the token step.",
+                steps,
+            )
+        }
+        val shape = when {
+            token.any { it.isWhitespace() } -> "FAIL: the token contains a space."
+            token.length < 60 -> "Length ${token.length} — unusually short for a Meta token."
+            token.startsWith("IGAA") -> "Instagram-Login token (IGAA…), ${token.length} chars."
+            token.startsWith("EAAG") || token.startsWith("EAA") -> "Facebook-Login token (EA…), ${token.length} chars."
+            else -> "Token present, ${token.length} chars, prefix ${token.take(4)}…"
+        }
+        steps.add(DiagStep("ACCESS TOKEN", StepState.OK, shape))
+
+        val platform = InstagramStore.platform(context)
+        val base = platform.host
+        steps.add(DiagStep("HOST", StepState.OK, "$base · ${platform.label}"))
+
+        // ---- 2 · can the token read the account at all ----
+        var mediaId: String? = null
+        var accountType = ""
+        try {
+            val json = get("$base/me?fields=id,username,account_type&access_token=${encode(token)}")
+            val id = json.optString("id")
+            accountType = json.optString("account_type")
+            steps.add(
+                DiagStep(
+                    "PROFILE",
+                    StepState.OK,
+                    "@" + json.optString("username").ifBlank { "?" } + " · id $id · type " +
+                        accountType.ifBlank { "unknown" },
+                ),
+            )
+            if (accountType.isBlank()) {
+                steps.add(
+                    DiagStep(
+                        "ACCOUNT TYPE",
+                        StepState.SKIP,
+                        "Meta did not report a type. If posts fail next, the account is still personal " +
+                            "— switch to Creator in the Instagram app.",
+                    ),
+                )
+            }
+        } catch (failure: IgFailure) {
+            steps.add(DiagStep("PROFILE", StepState.FAIL, failure.message))
+            val verdict = when {
+                failure.hint != null -> failure.hint
+                else -> "The token cannot read this account. Regenerate it for the right app."
+            }
+            steps.add(DiagStep("RESULT", StepState.FAIL, verdict))
+            return@withContext Diagnosis(verdict, steps)
+        } catch (t: Throwable) {
+            steps.add(DiagStep("PROFILE", StepState.FAIL, t.message ?: t.javaClass.simpleName))
+            return@withContext Diagnosis(
+                "Could not reach Meta. Check the connection and try again.",
+                steps,
+            )
+        }
+
+        // ---- 3 · counts ----
+        try {
+            val json = get(
+                "$base/me?fields=followers_count,media_count&access_token=${encode(token)}",
+            )
+            steps.add(
+                DiagStep(
+                    "COUNTS",
+                    StepState.OK,
+                    "${json.optInt("followers_count")} followers · " +
+                        "${json.optInt("media_count")} posts",
+                ),
+            )
+        } catch (failure: IgFailure) {
+            steps.add(DiagStep("COUNTS", StepState.FAIL, failure.message))
+        }
+
+        // ---- 4 · posts ----
+        try {
+            val json = get(
+                "$base/me/media?fields=$MEDIA_FIELDS&limit=1&access_token=${encode(token)}",
+            )
+            val data = json.optJSONArray("data")
+            mediaId = data?.optJSONObject(0)?.optString("id")?.takeIf { it.isNotBlank() }
+            steps.add(
+                DiagStep(
+                    "POSTS",
+                    StepState.OK,
+                    if (mediaId == null) "Readable, but this account has no posts yet." else "Readable.",
+                ),
+            )
+        } catch (failure: IgFailure) {
+            steps.add(DiagStep("POSTS", StepState.FAIL, failure.message))
+        }
+
+        // ---- 5 · account insights: the permission people actually miss ----
+        var insightsOk = false
+        try {
+            get("$base/me/insights?metric=reach&period=day&access_token=${encode(token)}")
+            insightsOk = true
+            steps.add(DiagStep("ACCOUNT INSIGHTS", StepState.OK, "reach returned."))
+        } catch (failure: IgFailure) {
+            steps.add(
+                DiagStep(
+                    "ACCOUNT INSIGHTS",
+                    StepState.FAIL,
+                    failure.message + " — " + (
+                        failure.hint
+                            ?: "Add instagram_business_manage_insights to the app, then make a new token."
+                        ),
+                ),
+            )
+        }
+
+        // ---- 6 · per-post insights (views) ----
+        if (mediaId == null) {
+            steps.add(DiagStep("POST INSIGHTS", StepState.SKIP, "No post to test against."))
+        } else if (!insightsOk) {
+            steps.add(DiagStep("POST INSIGHTS", StepState.SKIP, "Blocked by the step above."))
+        } else {
+            try {
+                var found: String? = null
+                var lastFailure: IgFailure? = null
+                for (metrics in MEDIA_METRIC_ATTEMPTS) {
+                    try {
+                        val json = get("$base/$mediaId/insights?metric=$metrics&access_token=${encode(token)}")
+                        val names = buildList {
+                            val data = json.optJSONArray("data") ?: return@buildList
+                            for (i in 0 until data.length()) {
+                                val name = data.optJSONObject(i)?.optString("name").orEmpty()
+                                if (name.isNotBlank()) add(name)
+                            }
+                        }
+                        found = if (names.isEmpty()) "reachable, no metrics in the reply" else names.joinToString(", ")
+                        break
+                    } catch (failure: IgFailure) {
+                        lastFailure = failure
+                    }
+                }
+                if (found != null) {
+                    steps.add(DiagStep("POST INSIGHTS", StepState.OK, "Metrics: $found"))
+                } else {
+                    steps.add(
+                        DiagStep(
+                            "POST INSIGHTS",
+                            StepState.FAIL,
+                            lastFailure?.message ?: "No metrics returned.",
+                        ),
+                    )
+                }
+            } catch (t: Throwable) {
+                steps.add(DiagStep("POST INSIGHTS", StepState.FAIL, t.message ?: "failed"))
+            }
+        }
+
+        val verdict = when {
+            steps.all { it.state == StepState.OK || it.state == StepState.SKIP } ->
+                "Everything works. Sync should fill the module."
+
+            steps.firstOrNull { it.name == "POSTS" }?.state == StepState.FAIL ->
+                "The token reads the profile but not the posts. The account is almost certainly " +
+                    "still personal — switch it to Creator in the Instagram app, then retry."
+
+            steps.firstOrNull { it.name == "ACCOUNT INSIGHTS" }?.state == StepState.FAIL ->
+                "Profile and posts work; insights do not. Add instagram_business_manage_insights " +
+                    "in the dashboard ('Add all required permissions'), then generate a NEW token. " +
+                    "Views need that permission — without it the module shows likes and comments only."
+
+            else -> "See the failing step above."
+        }
+        Diagnosis(verdict, steps)
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
