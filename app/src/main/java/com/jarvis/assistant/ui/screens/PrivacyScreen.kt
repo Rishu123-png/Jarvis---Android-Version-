@@ -56,6 +56,9 @@ fun PrivacyScreen(
     onOpenOverlaySettings: () -> Unit,
     onSelectRoute: (SpeechRoute) -> Unit,
     onAddWidget: () -> Unit,
+    biometricStatus: String,
+    biometricEnabled: Boolean,
+    onToggleBiometric: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     var pinDraft by remember { mutableStateOf("") }
@@ -151,6 +154,45 @@ fun PrivacyScreen(
                     color = TextMuted,
                 )
             }
+        }
+
+        // ---------------------------------------------------------------- biometrics
+        HudPanel(
+            label = "FINGERPRINT / FACE",
+            accent = if (biometricEnabled && biometricStatus == "READY") StatusGreen else Amber,
+            trailing = {
+                HudChip(
+                    text = if (biometricEnabled && biometricStatus == "READY") "ON" else "OFF",
+                    accent = if (biometricEnabled && biometricStatus == "READY") StatusGreen else TextMuted,
+                )
+            },
+        ) {
+            Text(
+                text = "Unlock JARVIS with the fingerprint or face your phone already knows. Android " +
+                    "does the matching in its own secure hardware — JARVIS never sees, stores or sends " +
+                    "biometric data, so there is nothing here to leak.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            ReadoutRow(
+                label = "SENSOR",
+                value = biometricStatus,
+                valueColor = if (biometricStatus == "READY") StatusGreen else Amber,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey(
+                    if (biometricEnabled) "TURN OFF" else "TURN ON",
+                ) { onToggleBiometric(!biometricEnabled) }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Your PIN is always the fallback. Biometrics can never replace it — a wet " +
+                    "finger or a locked-out sensor must not be able to strand you outside your own app.",
+                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+                color = TextMuted,
+            )
         }
 
         // ---------------------------------------------------------------- bubble

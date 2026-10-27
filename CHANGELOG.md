@@ -4,6 +4,15 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 2.3.1 — versionCode 17
+
+- **Fingerprint / face unlock** for the privacy lock, through Android's own biometric hardware. One
+  automatic attempt when the lock appears, then a button; it stops auto-firing after two failures and
+  never replaces the PIN. No new dependency — the platform API is used directly.
+- New settings panel showing the sensor state (`READY`, `NO FINGERPRINT SAVED`, `NO SENSOR`, `SENSOR BUSY`).
+
+---
+
 ## 2.3.0 — versionCode 16
 
 **Twelve-hour time.** Every clock the operator sees is 12-hour with AM/PM: the home orb, the dashboard,

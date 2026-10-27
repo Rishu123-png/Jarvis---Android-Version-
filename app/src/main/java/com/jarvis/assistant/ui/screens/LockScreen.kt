@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jarvis.assistant.device.BiometricPolicy
 import com.jarvis.assistant.device.Privacy
 import com.jarvis.assistant.ui.components.HudChip
 import com.jarvis.assistant.ui.components.PulseDot
@@ -57,11 +58,21 @@ fun LockScreen(
     error: String?,
     onSubmit: (String) -> Unit,
     modifier: Modifier = Modifier,
+    biometricOffered: Boolean = false,
+    biometricPending: Boolean = false,
+    onBiometric: () -> Unit = {},
+    onUsePin: () -> Unit = {},
 ) {
     var entry by remember { mutableStateOf("") }
 
     fun submit() {
         if (verifying) return
+        // With an empty entry and a prompt on screen this key reads "USE PIN INSTEAD", so it has to
+        // dismiss the sheet rather than sit there doing nothing.
+        if (entry.isEmpty() && biometricOffered) {
+            onUsePin()
+            return
+        }
         if (entry.length < Privacy.MIN_DIGITS) return
         onSubmit(entry)
         entry = ""
@@ -123,6 +134,31 @@ fun LockScreen(
             color = if (error != null) AlertRed else TextMuted,
             textAlign = TextAlign.Center,
         )
+
+        if (biometricOffered) {
+            Spacer(Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(ElectricCyan.copy(alpha = 0.12f), ChipShape)
+                    .border(1.dp, ElectricCyan.copy(alpha = 0.5f), ChipShape)
+                    .clickable(enabled = !biometricPending) { onBiometric() }
+                    .padding(vertical = 13.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (biometricPending) "WAITING FOR SENSOR" else "FINGERPRINT / FACE",
+                    style = HudType.label.copy(fontSize = 10.sp, letterSpacing = 2.sp),
+                    color = ElectricCyan,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "or enter your PIN",
+                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.4.sp),
+                color = TextMuted,
+            )
+        }
 
         Spacer(Modifier.height(24.dp))
 
@@ -197,7 +233,12 @@ fun LockScreen(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = if (verifying) "CHECKING" else "UNLOCK",
+                text = when {
+                    verifying -> "CHECKING"
+                    entry.isEmpty() && biometricOffered ->
+                        BiometricPolicy.fallbackLabel(offered = true)
+                    else -> "UNLOCK"
+                },
                 style = HudType.label.copy(fontSize = 11.sp, letterSpacing = 2.2.sp),
                 color = if (entry.length >= Privacy.MIN_DIGITS) ElectricCyan else TextMuted,
             )

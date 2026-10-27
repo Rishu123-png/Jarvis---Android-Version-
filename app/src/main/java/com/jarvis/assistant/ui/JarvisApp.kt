@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.CancellationSignal
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -50,6 +51,8 @@ import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.DockPrefs
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
+import com.jarvis.assistant.device.BiometricPolicy
+import com.jarvis.assistant.device.Biometrics
 import com.jarvis.assistant.device.Bubble
 import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.JarvisWidget
@@ -148,6 +151,11 @@ fun JarvisApp(
     // ---- privacy lock ----
     var locked by remember { mutableStateOf(Privacy.isEnabled(context)) }
     var pinChecking by remember { mutableStateOf(false) }
+    var biometricAvailable by remember { mutableStateOf(Biometrics.isAvailable(context)) }
+    var biometricEnabled by remember { mutableStateOf(Biometrics.isEnabled(context)) }
+    var biometricPending by remember { mutableStateOf(false) }
+    var biometricFailures by remember { mutableIntStateOf(0) }
+    var biometricTried by remember { mutableStateOf(false) }
     var pinError by remember { mutableStateOf<String?>(null) }
     var leftAt by remember { mutableLongStateOf(0L) }
     var pinEnabled by remember { mutableStateOf(Privacy.isEnabled(context)) }
@@ -229,8 +237,11 @@ fun JarvisApp(
                         System.currentTimeMillis() - leftAt > Privacy.LOCK_AFTER_MS
                     ) {
                         locked = true
+                        biometricTried = false
+                        biometricFailures = 0
                         route = ROUTE_HOME
                     }
+                    biometricAvailable = Biometrics.isAvailable(context)
                     leftAt = 0L
                 }
                 else -> Unit
@@ -517,6 +528,13 @@ fun JarvisApp(
                     onSelectRoute = { picked ->
                         VoiceSettings.setRoute(context, picked)
                         speechRoute = picked
+                    },
+                    biometricStatus = Biometrics.availability(context),
+                    biometricEnabled = biometricEnabled,
+                    onToggleBiometric = { enable ->
+                        Biometrics.setEnabled(context, enable)
+                        biometricEnabled = enable
+                        if (enable) biometricTried = false
                     },
                     onAddWidget = { requestWidget(context) },
                     onBack = { route = ROUTE_SETTINGS },
@@ -823,9 +841,59 @@ fun JarvisApp(
                     .background(VoidBlack)
                     .windowInsetsPadding(WindowInsets.systemBars),
             ) {
+                // The prompt outlives the composable if the screen goes away (a PIN unlocking the
+                // app while the sheet is still up, or the process being backgrounded), so the signal
+                // is held and cancelled on the way out instead of leaving an orphan system dialog.
+                var biometricSignal by remember { mutableStateOf<CancellationSignal?>(null) }
+
+                fun offerBiometric() {
+                    val activity = context as? android.app.Activity ?: return
+                    if (biometricPending) return
+                    biometricPending = true
+                    biometricTried = true
+                    biometricSignal = Biometrics.prompt(activity) { outcome ->
+                        biometricPending = false
+                        biometricSignal = null
+                        when (outcome) {
+                            Biometrics.Outcome.SUCCESS -> {
+                                pinError = null
+                                biometricFailures = 0
+                                locked = false
+                            }
+                            // Choosing the keypad is not a sensor failure, so it must not burn one
+                            // of the automatic attempts.
+                            Biometrics.Outcome.CANCELLED -> Unit
+                            Biometrics.Outcome.FAILED -> biometricFailures += 1
+                        }
+                    }
+                }
+
+                DisposableEffect(locked) {
+                    onDispose { Biometrics.cancel(biometricSignal) }
+                }
+
+                // One automatic attempt per lock appearance; after that only the button fires it.
+                LaunchedEffect(locked, biometricFailures) {
+                    if (locked && !biometricTried &&
+                        BiometricPolicy.shouldAutoPrompt(biometricEnabled, biometricAvailable, biometricFailures)
+                    ) {
+                        offerBiometric()
+                    }
+                }
+
                 LockScreen(
                     verifying = pinChecking,
                     error = pinError,
+                    biometricOffered = BiometricPolicy.canOffer(biometricEnabled, biometricAvailable),
+                    biometricPending = biometricPending,
+                    onUsePin = {
+                        // Dismiss the sheet so the keypad is actually usable.
+                        biometricTried = true
+                        Biometrics.cancel(biometricSignal)
+                        biometricSignal = null
+                        biometricPending = false
+                    },
+                    onBiometric = { offerBiometric() },
                     onSubmit = { pin ->
                         if (!pinChecking) {
                             pinChecking = true
