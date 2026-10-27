@@ -18,6 +18,7 @@ import com.jarvis.assistant.device.Access
 import com.jarvis.assistant.device.AppLaunch
 import com.jarvis.assistant.device.Files
 import com.jarvis.assistant.device.HealthLog
+import com.jarvis.assistant.device.Messaging
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.NotifyBrain
 import com.jarvis.assistant.device.Whereabouts
@@ -373,14 +374,49 @@ object IntentRouter {
             if (who.isBlank()) {
                 return said("MESSAGE", "who_reply", "contact", "", subtitle = "MESSAGE")
             }
-            val say = if (text.isBlank()) {
-                Language.say(lang, "message", who)
-            } else {
-                Language.say(lang, "message", who)
+            // Resolve the person before deciding *how* to reach them. Three cases, in order of
+            // reliability: a live chat to answer, a number to open, or nothing at all — in which
+            // case JARVIS searches inside the app rather than refusing.
+            val people = try {
+                Messaging.resolve(context, who)
+            } catch (t: Throwable) {
+                emptyList()
             }
+            val reachable = people.any { !it.number.isNullOrBlank() } ||
+                NotifyBrain.findReplyTarget(who) != null
+
+            if (!reachable && text.isNotBlank()) {
+                val screenReady = AccessibilityStatus.isServiceEnabled(context)
+                return if (screenReady) {
+                    VoicePlan(
+                        title = "FIND ${upper(who, 16)}",
+                        subtitle = "SCREEN TASK",
+                        steps = listOf(
+                            step(
+                                ActionType.OPEN_APP,
+                                if (app == "telegram") "org.telegram.messenger" else "com.whatsapp",
+                                "OPEN ${app.uppercase(Locale.US)}",
+                            ),
+                        ),
+                        say = "I have no number for $who, so I am searching inside the app.",
+                        source = "LOCAL",
+                        screenGoal = "search for $who, open the chat, type \"$text\" and press send",
+                    )
+                } else {
+                    VoicePlan(
+                        title = "NO NUMBER",
+                        subtitle = "MESSAGE",
+                        steps = emptyList(),
+                        say = "I have no number for $who. Save them in contacts, or turn on " +
+                            "screen access in Advanced and I will search inside the app myself.",
+                        source = "LOCAL",
+                    )
+                }
+            }
+
             return answer(
                 "MESSAGE \u00B7 ${upper(who, 16)}",
-                say,
+                Language.say(lang, "message", who),
                 listOf(step(ActionType.MESSAGE, "$app|$who|$text", "MESSAGE ${upper(who, 14)}")),
                 "MESSAGE",
             )
