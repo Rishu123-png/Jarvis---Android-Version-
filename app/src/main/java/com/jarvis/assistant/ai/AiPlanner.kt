@@ -54,7 +54,7 @@ object AiPlanner {
             is AiResult.Ok -> result.text
         }
 
-        val json = extractJson(reply)
+        val json = JsonReply.extractObject(reply)
             ?: return PlanResult.Error(
                 "The model did not return a routine.",
                 "Try rephrasing, e.g. \"every night at 11 turn the torch off and drop volume to 20\".",
@@ -159,20 +159,6 @@ object AiPlanner {
     // Parsing + validation
     // -----------------------------------------------------------------------------------------
 
-    private fun extractJson(reply: String): JSONObject? {
-        val cleaned = reply
-            .replace("```json", "")
-            .replace("```", "")
-            .trim()
-        val start = cleaned.indexOf('{')
-        val end = cleaned.lastIndexOf('}')
-        if (start < 0 || end <= start) return null
-        return try {
-            JSONObject(cleaned.substring(start, end + 1))
-        } catch (t: Throwable) {
-            null
-        }
-    }
 
     private fun parse(context: Context, json: JSONObject): PlanResult {
         val notes = mutableListOf<String>()

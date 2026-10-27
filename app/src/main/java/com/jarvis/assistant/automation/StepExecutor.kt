@@ -16,6 +16,7 @@ import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
 import com.jarvis.assistant.device.Gallery
+import com.jarvis.assistant.device.Reminders
 import com.jarvis.assistant.device.QuickCapture
 import com.jarvis.assistant.shell.ShizukuShell
 import com.jarvis.assistant.voice.Contacts
@@ -76,6 +77,10 @@ object StepExecutor {
             if (!canPlaceCalls(context)) {
                 warnings.add("Phone permission is off — the dialer will open instead of calling.")
             }
+        }
+        if (all.any { it.action == ActionType.REMINDER } && !NotificationRepository.hasAccess(context)) {
+            // Reminders do not need notification *listener* access; only the ability to post.
+            warnings.add("Reminders post a notification — allow notifications for JARVIS.")
         }
         if (all.any { it.action == ActionType.CAPTURE_PHOTO } && !QuickCapture.hasPermission(context)) {
             warnings.add("Needs camera permission to take the photo.")
@@ -157,6 +162,20 @@ object StepExecutor {
             ActionType.CAPTURE_PHOTO -> {
                 val (uri, error) = QuickCapture.capture(context)
                 if (uri == null) Result.Failed(error ?: "No photo was taken") else Result.Ok("Photo saved")
+            }
+
+            ActionType.SCREENSHOT -> {
+                val (uri, error) = JarvisAccessibilityService.screenshot(context)
+                if (uri == null) Result.Failed(error ?: "No screenshot was taken") else Result.Ok("Screenshot saved")
+            }
+
+            ActionType.REMINDER -> {
+                val parts = step.param.split('|')
+                val seconds = parts.getOrNull(0)?.trim()?.toLongOrNull()?.takeIf { it > 0 }
+                val clock = parts.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
+                val text = parts.drop(2).joinToString("|").trim()
+                val outcome = Reminders.schedule(context, seconds, clock, text)
+                if (outcome.ok) Result.Ok(outcome.message) else Result.Failed(outcome.message)
             }
 
             ActionType.OPEN_LAST_PHOTO -> {

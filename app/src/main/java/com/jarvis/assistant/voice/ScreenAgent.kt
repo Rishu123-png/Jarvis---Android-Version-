@@ -199,7 +199,7 @@ object ScreenAgent {
             }
         } ?: return null
 
-        val json = extractJson(reply) ?: return null
+        val json = com.jarvis.assistant.ai.JsonReply.extractObject(reply) ?: return null
         return Decision(
             action = json.optString("action").trim().lowercase(Locale.US),
             param = json.optString("param").trim(),
@@ -210,14 +210,4 @@ object ScreenAgent {
     private suspend fun <T> withTimeoutOrNull(ms: Long, block: suspend () -> T): T? =
         kotlinx.coroutines.withTimeoutOrNull(ms) { block() }
 
-    private fun extractJson(reply: String): JSONObject? {
-        val start = reply.indexOf('{')
-        val end = reply.lastIndexOf('}')
-        if (start < 0 || end <= start) return null
-        return try {
-            JSONObject(reply.substring(start, end + 1))
-        } catch (t: Throwable) {
-            null
-        }
-    }
 }

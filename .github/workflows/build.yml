@@ -77,10 +77,17 @@ jobs:
           sys.exit(1 if failures else 0)
           EOF
 
+      # Tests run before the APKs are built: a failing test should stop the release, and the
+      # androidTest sources are compiled so they cannot rot without anyone noticing.
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --console=plain testDebugUnitTest 2>&1 | tee build.log
+
       - name: Build debug + release APKs
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --console=plain assembleDebug assembleRelease 2>&1 | tee build.log
+          ./gradlew --no-daemon --console=plain assembleDebug assembleRelease assembleDebugAndroidTest 2>&1 | tee -a build.log
 
       - name: Verify APK signatures and manifest (launcher intent filters)
         run: |
@@ -99,6 +106,31 @@ jobs:
               | grep -iE "android.intent.category.(HOME|LAUNCHER|DEFAULT)" | head -6 | tee -a "$OUT"
             echo '```' >> "$OUT"
           done
+
+      - name: Unit test report
+        if: always()
+        run: |
+          OUT="$GITHUB_STEP_SUMMARY"
+          echo "## Unit tests" >> "$OUT"
+          python3 - <<'EOF' >> "$OUT"
+          import glob, xml.etree.ElementTree as ET
+          rows, total, failed = [], 0, 0
+          for path in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
+              try:
+                  root = ET.parse(path).getroot()
+              except Exception:
+                  continue
+              for suite in ([root] if root.tag == "testsuite" else root.iter("testsuite")):
+                  name = suite.get("name", "?")
+                  t = int(suite.get("tests", 0)); f = int(suite.get("failures", 0)) + int(suite.get("errors", 0))
+                  total += t; failed += f
+                  rows.append((name.split(".")[-1], t, f))
+          print(f"{total} tests, {failed} failed\n")
+          print("| Suite | Tests | Failed |")
+          print("| --- | --- | --- |")
+          for name, t, f in sorted(rows):
+              print(f"| {name} | {t} | {f} |")
+          EOF
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

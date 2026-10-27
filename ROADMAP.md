@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **2.1.0 (versionCode 14)**.
+Last updated with **2.2.0 (versionCode 15)**.
 
 ---
 
@@ -29,6 +29,9 @@ Last updated with **2.1.0 (versionCode 14)**.
 | Focus home: top bar + orb only, full dashboard behind one button | Live |
 | Chained voice tasks: 8-step plans, waits, CameraX capture, open newest photo | Live |
 | Screen-aware loop: observe → decide → act across apps (accessibility tier, 6 actions max) | Live |
+| Tests: 5 JVM suites over the pure logic, run in CI before the APKs | Live |
+| Quick Settings tiles (open JARVIS, torch) | Live |
+| Reminders, screenshot action, subsystem health panel | Live |
 | Automated tests | **None** |
 
 ---
@@ -38,27 +41,25 @@ Last updated with **2.1.0 (versionCode 14)**.
 Voice, memory and voice chains all shipped in 2.0.0 / 2.1.0, so the list below is what remains after
 them. Four phases, in the order I would do them.
 
-### Phase A — Tests (recommended next)
+### Phase A — Tests ✔ shipped in 2.2.0
 
-The single largest risk in this project is that nothing is verified except by compiling. Every bug
-so far was found by CI or by you, never by a test.
+Extracted the parsers out of the Android classes so they could be tested at all, then covered them:
 
-- **JVM tests, no device needed** over the pure logic: `InstagramAnalytics.buildNextMoves`, condition
-  evaluation, `ActionType`/`Workflow` JSON round-trips, the voice local parser (`IntentRouter`),
-  `VoiceMemory` alias matching, `Contacts` name normalisation, WAV header generation.
-- **A fake-AI harness** so `AiPlanner` / `IntentRouter` prompt→JSON validation can be tested without
-  a key or a network.
-- **One instrumentation smoke test** that opens the app and confirms Home renders.
-- CI already runs Gradle, so this costs about one pass and then pays for itself every release.
+- `VoiceParsingTest` — message / call / volume / alarm / timer / camera / reminder phrasing, including
+  the negatives ("show me my photos" must not fire the camera).
+- `JsonReplyTest` — code fences, prose, braces inside strings, invalid objects before valid ones.
+- `WavTest` — RIFF header arithmetic against the payload.
+- `WorkflowJsonTest` — routine round-trip, nested blocks, conditions, time windows, unique action ids.
+- `AppLaunchTest` (androidTest) — compiles in CI, runs on a device with `connectedDebugAndroidTest`.
 
-### Phase B — Small additions (one pass, they belong together)
+CI runs `testDebugUnitTest` **before** building the APKs, and publishes a per-suite table in the run
+summary, so a red test stops a release.
 
-| Item | Why it matters | Risk |
-| --- | --- | --- |
-| Quick Settings tile | Torch / DND / voice from the shade, no app launch | Low |
-| Reminders | "remind me at 6 to call X" — a real notification, not a clock alarm | Low |
-| Screenshot action | `AccessibilityService.takeScreenshot()` on API 30+, saved and shareable | Low |
-| Diagnostics depth | FPS, AI latency, per-subsystem health instead of battery/storage only | Low |
+### Phase B — Small additions ✔ shipped in 2.2.0
+
+Quick Settings tiles (open JARVIS, torch), reminders as real notifications (exact alarms, reboot-safe),
+screenshot via the accessibility API, and a SUBSYSTEMS panel in DIAGNOSTICS that reports every
+permission-gated capability honestly.
 
 ### Phase C — Medium (one pass each)
 
@@ -121,8 +122,8 @@ ideas are worth more than the code — everything below is a rewrite, not a port
 | Phase | Contents | State |
 | --- | --- | --- |
 | — | Voice, memory, focus home, voice chains, screen loop | **Shipped** (2.0.0, 2.1.0) |
-| A | Tests over the pure logic + fake-AI harness | Next |
-| B | Quick Settings tile, reminders, screenshot, diagnostics depth | Queued |
+| A | Tests over the pure logic | **Shipped** (2.2.0) |
+| B | Quick Settings tile, reminders, screenshot, diagnostics depth | **Shipped** (2.2.0) |
 | C | Widget, bubble, app lock, downloads, translate | Queued |
 | D | Offline Whisper, VERIFY step, OCR fallback, multi-turn voice | Later |
 

@@ -7,7 +7,6 @@ import android.provider.ContactsContract
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.Locale
 
 /**
  * Turns "dad", "Divik" or "mom's phone" into a number.
@@ -127,9 +126,5 @@ object Contacts {
         return fresh
     }
 
-    private fun normalise(value: String): String =
-        value.lowercase(Locale.getDefault())
-            .replace(Regex("[^a-z0-9 ]"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+    private fun normalise(value: String): String = VoiceParsing.normaliseName(value)
 }
