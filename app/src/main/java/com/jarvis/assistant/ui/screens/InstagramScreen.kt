@@ -223,7 +223,29 @@ fun InstagramScreen(onBack: () -> Unit) {
                         else -> AlertRed
                     }
 
-                    HudPanel(label = "ENGAGEMENT", accent = StatusGreen) {
+                    HudPanel(label = "VIEWS & ENGAGEMENT", accent = StatusGreen) {
+                        ReadoutRow(
+                            label = "TOTAL VIEWS",
+                            value = if (analysisStats.hasViews) {
+                                analysisStats.totalViews.toString()
+                            } else {
+                                "NOT RETURNED"
+                            },
+                            valueColor = if (analysisStats.hasViews) StatusGreen else TextMuted,
+                        )
+                        ReadoutRow(
+                            label = "AVG VIEWS / POST",
+                            value = if (analysisStats.hasViews) {
+                                analysisStats.averageViews.toInt().toString()
+                            } else {
+                                "—"
+                            },
+                        )
+                        ReadoutRow(
+                            label = "VIEWS OF REACH",
+                            value = analysisStats.viewRate?.let { percent(it) } ?: "NOT RETURNED",
+                            valueColor = if (analysisStats.viewRate == null) TextMuted else TextPrimary,
+                        )
                         ReadoutRow(
                             label = "AVG RATE",
                             value = percent(analysisStats.engagementRate),
@@ -331,6 +353,31 @@ fun InstagramScreen(onBack: () -> Unit) {
                                     style = HudType.terminal.copy(fontSize = 10.sp),
                                     color = TextSecondary,
                                 )
+                            }
+                        }
+                    }
+
+                    if (analysisStats.nextMoves.isNotEmpty()) {
+                        HudPanel(label = "NEXT POST", accent = Amber) {
+                            Text(
+                                text = "Built from this account's own numbers, weighted to views.",
+                                style = HudType.terminal.copy(fontSize = 9.sp),
+                                color = TextMuted,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            analysisStats.nextMoves.forEach { move ->
+                                Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                    Text(
+                                        text = "▸ ",
+                                        style = HudType.terminal.copy(fontSize = 10.sp),
+                                        color = Amber,
+                                    )
+                                    Text(
+                                        text = move,
+                                        style = HudType.terminal.copy(fontSize = 10.sp),
+                                        color = TextSecondary,
+                                    )
+                                }
                             }
                         }
                     }
@@ -643,7 +690,8 @@ private fun PostRow(
         Spacer(Modifier.height(3.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "♥ ${stat.media.likes}   ✎ ${stat.media.comments}" +
+                text = (stat.media.views?.let { "▶ $it   " } ?: "") +
+                    "♥ ${stat.media.likes}   ✎ ${stat.media.comments}" +
                     (stat.media.saved?.let { "   ⤓ $it" } ?: ""),
                 style = HudType.terminal.copy(fontSize = 9.sp),
                 color = TextSecondary,

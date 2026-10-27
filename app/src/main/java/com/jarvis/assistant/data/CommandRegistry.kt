@@ -4,6 +4,7 @@ import android.content.Context
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.automation.AutomationEngine
 import com.jarvis.assistant.automation.AutomationStore
+import com.jarvis.assistant.connect.ConnectorStore
 import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
@@ -40,7 +41,7 @@ object CommandRegistry {
     private val COMMANDS = listOf(
         "help", "status", "battery", "network", "storage", "apps",
         "alerts", "torch", "volume", "panel", "dnd", "routines", "run", "stop",
-        "modules", "ai", "insta", "time", "clear", "shizuku", "shell",
+        "modules", "ai", "insta", "connect", "time", "clear", "shizuku", "shell",
     )
 
     fun banner(aiConfigured: Boolean, aiLabel: String?): List<String> = buildList {
@@ -85,6 +86,7 @@ object CommandRegistry {
             "modules" -> Response(moduleLines())
             "ai" -> Response(aiLines(app))
             "insta", "instagram" -> Response(instaLines(app))
+            "connect", "connections" -> Response(connectLines(app))
             "time" -> Response(
                 listOf(
                     "LOCAL TIME",
@@ -157,7 +159,8 @@ object CommandRegistry {
         add("  stop                halt the running routine")
         add("  modules             HUD modules")
         add("  ai                  intelligence status")
-        add("  insta               instagram creator summary")
+        add("  insta                instagram creator summary")
+        add("  connect             linked accounts and services")
         add("  time                clock")
         add("  clear               wipe this session")
         add("Unrecognised input goes to the AI core when a key is configured.")
@@ -456,6 +459,33 @@ object CommandRegistry {
                 minutes < 1_440 -> "${minutes / 60} h ago"
                 else -> "${minutes / 1_440} d ago"
             },
+        )
+    }
+
+    /** Linked-account status. Offline, like every other terminal command. */
+    private fun connectLines(context: Context): List<String> {
+        val instagram = InstagramStore.isConnected(context)
+        val instagramSetup = ConnectorStore.instagramApp(context).isSet
+        val google = ConnectorStore.googleSession(context)
+        val googleSetup = ConnectorStore.googleClient(context).isSet
+
+        val instagramState = when {
+            instagram -> "LINKED · " + (InstagramStore.cachedSnapshot(context)?.profile?.handle ?: "reading pending")
+            instagramSetup -> "READY · open CONNECTIONS to log in"
+            else -> "NOT SET UP"
+        }
+        val googleState = when {
+            google.connected -> "LINKED · " + google.email.ifBlank { "authorised" }
+            googleSetup -> "READY · open CONNECTIONS to log in"
+            else -> "NOT SET UP"
+        }
+        return listOf(
+            "CONNECTIONS",
+            "  INSTAGRAM   $instagramState",
+            "  GOOGLE      $googleState",
+            "  WHATSAPP    NOT AVAILABLE · no API for personal chats",
+            "  SHELL       " + ShizukuShell.describe(),
+            "open HUD > CONNECTIONS to link an account",
         )
     }
 

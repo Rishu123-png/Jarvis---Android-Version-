@@ -19,7 +19,8 @@ Package `com.jarvis.assistant` · Kotlin · Jetpack Compose · minSdk 29 (Androi
 | Editable dock, storage telemetry | Working |
 | Automation: control flow, triggers, AI-authored routines | Working |
 | Privileged shell via Shizuku (optional, adb-level, no root) | Working |
-| Instagram creator analytics (your own account, your token) | Working |
+| Instagram creator analytics, views-first (your own account) | Working |
+| Account linking: Instagram login, Google Drive + Gmail | Working |
 | Intelligence: your own AI key, any supported provider | Working |
 | Voice input and spoken replies | Not built |
 
@@ -55,6 +56,37 @@ panel stuck.
 
 ---
 
+## Connections — log in, don't paste tokens
+
+*HUD → CONNECTIONS* links accounts the way any other app does: you approve access on the provider's
+**own login page** in the browser.
+
+**The part that matters for honesty.** An OAuth client id and secret belong to whoever registered the
+app, so a secret shipped in a public repository is a leaked secret. JARVIS therefore asks you to
+register a free app with each provider once and paste *your* id and secret in; they are encrypted with
+the Android Keystore and never leave the phone. Nothing secret lives in this repository.
+
+**Why a code is pasted instead of a link caught by the app.** Meta only accepts `https` redirect URIs
+and Google requires a pre-registered one, so a self-hosted app cannot receive the redirect directly.
+So: tap *OPEN LOGIN PAGE* → approve on the real site → copy the short-lived `code` from the address bar
+→ paste → JARVIS exchanges it with the provider on the device. That is a genuine authorization-code
+exchange, with no server in the middle and no deep-link surface other apps could poke.
+
+| Service | What works | Notes |
+| --- | --- | --- |
+| **Instagram** | Profile, posts, views, reach, insights → the whole analytics module | Login path refreshes to 60 days; the module can extend it |
+| **Google Drive** | Newest files (name, type, modified date) | `drive.metadata.readonly` |
+| **Gmail** | Unread estimate + recent subjects | `gmail.readonly` |
+| **WhatsApp** | Opening WhatsApp only | There is no API for a personal account — see below |
+
+**WhatsApp is listed on purpose.** It is the connection people ask for first and the one that cannot
+be done: WhatsApp Business Cloud API belongs to a business number you register, not your chats, and
+"linked devices" pairing is a private protocol whose libraries break on WhatsApp's schedule. Doing it
+would put the whole app's stability at risk and violate the ToS, so JARVIS says no on the same screen
+rather than hiding it.
+
+---
+
 ## Instagram analytics
 
 A creator module, built on Meta's official API and nothing else.
@@ -69,8 +101,13 @@ A creator module, built on Meta's official API and nothing else.
 - **Computed on device:** engagement rate per post and per format, average interactions, interaction
   rate on reached audience, format ranking, best posting day and hour (only when two posts share the
   bucket), cadence, days since last post, and follower change since the first sync.
+- **Views first.** The module optimises **views, not followers**: view totals, average views per post
+  and views as a share of reach lead the screen, formats are ranked by average views, timing is
+  chosen from the highest-view bucket, and a *NEXT POST* panel states the next format, hour and hook
+  to try — all from your own numbers.
 - **AI briefing.** *ANALYSE WITH AI* sends that compact table to **your** AI key and returns a short
-  plan — what works, what does not, one format test, one timing change, one hook change. The prompt
+  plan: what drives views, what wastes effort, the exact next post (format, angle, hook line), the
+  publishing time, and one change to the first second. The prompt is explicitly views-first and
   forbids inventing metrics, competitors or demographics.
 - **Honest by construction.** A metric Meta refuses is listed under *MISSING METRICS*, never
   rendered as zero. The age of every reading is on screen, so a cached count is never mistaken for a
@@ -93,7 +130,7 @@ status      battery     network    storage     apps       alerts [clear]
 torch [on|off]          volume [0-100|up|down]          time
 panel wifi|bt|dnd|display|volume|notification|battery
 dnd [status|on|off|priority|alarms|silent]
-shizuku                 shell <command>          insta
+shizuku                 shell <command>          insta          connect
 routines    run <name>  stop       modules    ai         help
 ```
 
@@ -328,6 +365,11 @@ app/src/main/java/com/jarvis/assistant/
 │   ├── ShizukuShell.kt          optional adb-level shell: status, permission, timeouts
 │   └── ShellUserService.kt      runs in the Shizuku process as shell/root, one command at a time
 │   (app/src/main/aidl/…/IShellService.aidl  the one-method interface between the two)
+├── connect/
+│   ├── Connectors.kt            connector state + Keystore-encrypted credentials and tokens
+│   ├── OAuthFlows.kt            Instagram and Google authorization-code exchanges, PKCE-free
+│   ├── GoogleData.kt            read-only Drive list and Gmail summary
+│   └── Web.kt                   bounded HTTP with provider error translation
 ├── social/
 │   ├── InstagramModels.kt       profile, media, snapshot, growth point + JSON
 │   ├── InstagramStore.kt        Keystore-encrypted token, cached snapshot, growth series
@@ -405,6 +447,19 @@ model, `ui/components/` owns the visual language, and `ui/screens/` only compose
 - [ ] *EXTEND TOKEN* works for an Instagram Login token and is disabled for a Facebook Login token.
 - [ ] DISCONNECT removes the token; re-opening shows the connect panel again.
 
+**Connections**
+
+- [ ] With no credentials, both providers show *NOT LINKED* and nothing crashes.
+- [ ] *OPEN LOGIN PAGE* opens the provider's real login in the browser.
+- [ ] A pasted redirect URL is accepted; a pasted bare code is accepted; garbage fails with a
+      sentence, not a crash.
+- [ ] Instagram: after the exchange the module fills itself and the token shows as `••••`.
+- [ ] Google: after the exchange the email shows, *READ DRIVE* lists recent files and *READ GMAIL*
+      shows an unread estimate with recent subjects.
+- [ ] An expired Google access token refreshes silently on the next read.
+- [ ] `connect` lists every connector's state offline.
+- [ ] The WhatsApp panel explains the limits and never pretends to connect.
+
 **Launcher**
 
 - [ ] Settings shows *not the home app*; *Set JARVIS as home* opens Android's dialog.
@@ -434,6 +489,9 @@ model, `ui/components/` owns the visual language, and `ui/screens/` only compose
 - The Instagram access token is encrypted with the Android Keystore, sent only to Meta, and can be
   revoked from the Instagram app at any time. No Instagram credential is ever stored in this
   repository.
+- OAuth client secrets for Instagram and Google are entered by the operator, encrypted with the
+  Android Keystore, and used only to exchange a code on the device. Google scopes are read-only
+  (`drive.metadata.readonly`, `gmail.readonly`); JARVIS never writes, deletes or sends.
 - Shizuku is entirely optional. If it is not installed, its manifest provider never answers and every
   privileged path reports "not available"; nothing binds, nothing waits, nothing crashes. No root is
   required — Shizuku is started once over adb or wireless debugging.
@@ -457,3 +515,8 @@ The Instagram module reads **your own** professional account through Meta's API.
 grants "all access" to Instagram — DMs, other people's accounts, audience demographics, hashtag trends
 and ad spend are either separate APIs or not exposed at all, and anything claiming otherwise is
 scraping. Personal accounts have no API; the account must be Creator or Business.
+
+WhatsApp cannot be linked for reading. There is no official API for a personal account, and the
+unofficial route (pairing as a linked device) is a private protocol that breaks without warning — the
+kind of dependency that would take this app's stability down with it. The connections screen offers to
+open WhatsApp and says why that is all it can do.

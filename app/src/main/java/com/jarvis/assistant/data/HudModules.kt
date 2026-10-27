@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BatteryFull
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.PhotoCamera
@@ -45,6 +46,7 @@ object HudModules {
     const val VOICE = "voice"
     const val AUTOMATION = "automation"
     const val INSTAGRAM = "instagram"
+    const val CONNECT = "connect"
 
     val all: List<HudModule> = listOf(
         HudModule(
@@ -116,6 +118,14 @@ object HudModules {
             title = "INSTAGRAM",
             caption = "Creator analytics",
             icon = Icons.Outlined.PhotoCamera,
+            accent = IceBlue,
+            isLive = true,
+        ),
+        HudModule(
+            id = CONNECT,
+            title = "CONNECTIONS",
+            caption = "Accounts · Drive · Gmail",
+            icon = Icons.Outlined.Link,
             accent = IceBlue,
             isLive = true,
         ),
