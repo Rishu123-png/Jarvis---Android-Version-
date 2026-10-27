@@ -87,6 +87,7 @@ import com.jarvis.assistant.ui.screens.DashboardScreen
 import com.jarvis.assistant.ui.screens.DiagnosticsScreen
 import com.jarvis.assistant.ui.screens.DockPickerScreen
 import com.jarvis.assistant.ui.screens.HomeScreen
+import com.jarvis.assistant.ui.screens.KnowledgeScreen
 import com.jarvis.assistant.ui.screens.LauncherSettingsScreen
 import com.jarvis.assistant.ui.screens.ModuleScaffold
 import com.jarvis.assistant.ui.screens.NetworkScreen
@@ -794,6 +795,10 @@ fun JarvisApp(
                 )
 
                 HudModules.CONNECT -> ConnectorsScreen(
+                    onBack = { route = ROUTE_DASHBOARD },
+                )
+
+                HudModules.KNOWLEDGE -> KnowledgeScreen(
                     onBack = { route = ROUTE_DASHBOARD },
                 )
 

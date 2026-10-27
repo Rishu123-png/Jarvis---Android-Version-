@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-17%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-20%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -87,6 +87,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 
 - [What he actually is](#what-he-actually-is)
 - [The brain](#the-brain)
+- [The curiosity](#the-curiosity)
 - [What he can do](#what-he-can-do)
 - [The lock, honestly](#the-lock-honestly)
 - [Install the APK](#install-the-apk)
@@ -182,6 +183,29 @@ through the model, with the matching text-to-speech voice.
 
 </td></tr>
 </table>
+
+---
+
+## The curiosity
+
+He can go and find something out — and he asks first, because that is the only thing he does that
+leaves the phone.
+
+Say *"look up Nikola Tesla"*, *"what is a black hole"*, *"photosynthesis kya hai"* or *"define
+serendipity"* and he answers from a named source: Wikipedia's REST API and a free dictionary. **No
+API key, no account, no bill.** Those two endpoints are public, documented, and free at any volume a
+person can speak.
+
+| | |
+| --- | --- |
+| **He asks first** | Three positions, on the Knowledge page: *ask everything*, *ask once per topic* (default), *don't ask*. Nothing is fetched before a yes. |
+| **He remembers** | Every answer is kept as a card — topic, two sentences, source, date. Ask again and it is instant, offline, and silent. |
+| **He summarises without a model** | The paragraph is cut to the two sentences that answer *your* question by counting overlapping words and rewarding the opening sentence. Dumb, deterministic, and it needs no download. |
+| **It is all visible** | The Knowledge page lists every card. Delete one, or clear the shelf; the words he learned about you are separate and untouched. |
+| **What it cannot do** | Log in anywhere, post, send, follow a link it was not given, or reach a site that forbids it. One JSON document in, two fields read, stop. |
+
+With an AI key stored, the model still answers general conversation — the shelf is the part that
+works with nothing configured at all, and the part that makes the next identical question free.
 
 ---
 
@@ -326,7 +350,7 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 17 JVM suites
+./gradlew :app:testDebugUnitTest    # 20 JVM suites
 ```
 
 Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
@@ -347,7 +371,7 @@ no assistant.
 | Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
 | Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |
 
-**Verified by CI:** compilation, 17 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 20 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -417,7 +441,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-17 JVM suites, run before every APK in CI.
+20 JVM suites, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|

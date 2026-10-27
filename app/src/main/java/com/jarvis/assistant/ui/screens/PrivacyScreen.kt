@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jarvis.assistant.data.Knowledge
+import com.jarvis.assistant.data.ResearchDesk
 import com.jarvis.assistant.device.Access
 import com.jarvis.assistant.device.Privacy
 import com.jarvis.assistant.ui.components.HudChip
@@ -35,6 +37,7 @@ import com.jarvis.assistant.ui.theme.Amber
 import com.jarvis.assistant.ui.theme.ChipShape
 import com.jarvis.assistant.ui.theme.ElectricCyan
 import com.jarvis.assistant.ui.theme.HudType
+import com.jarvis.assistant.ui.theme.IceBlue
 import com.jarvis.assistant.ui.theme.PanelNavy
 import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.TextMuted
@@ -86,6 +89,7 @@ fun PrivacyScreen(
     var accessRefresh by remember { mutableStateOf(0) }
 
     val context = LocalContext.current
+    var learnedCards by remember { mutableStateOf(Knowledge.count(context)) }
     val accessRows = remember(accessRefresh) { Access.snapshot(context) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -529,6 +533,43 @@ fun PrivacyScreen(
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 KeypadKey("FORGET EVERYTHING") { onForgetMemory() }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // ---------------------------------------------------------------- knowledge shelf
+        HudPanel(
+            label = "WHAT HE LEARNED",
+            accent = StatusGreen,
+            trailing = {
+                HudChip(
+                    text = if (learnedCards == 0) "EMPTY" else "$learnedCards CARDS",
+                    accent = if (learnedCards == 0) Amber else StatusGreen,
+                )
+            },
+        ) {
+            Text(
+                text = "Questions he answered by looking them up, kept on this phone with their " +
+                    "source and date. The shelf answers instantly and offline, and the switch for " +
+                    "whether he asks first lives on the Knowledge page.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "PERMISSION · " + ResearchDesk.mode(context).label,
+                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.4.sp),
+                color = IceBlue,
+            )
+            if (learnedCards > 0) {
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    KeypadKey("CLEAR THE SHELF") {
+                        Knowledge.clear(context)
+                        learnedCards = 0
+                    }
+                }
             }
         }
 
