@@ -153,7 +153,11 @@ fun JarvisApp(
     var route by rememberSaveable { mutableStateOf(ROUTE_HOME) }
 
     // ---- privacy lock ----
-    var locked by remember { mutableStateOf(Privacy.isEnabled(context)) }
+    var locked by remember {
+        mutableStateOf(
+            Privacy.isEnabled(context) || LockGate.mode(context) == LockGate.Mode.PHONE_LOCK,
+        )
+    }
     var pinChecking by remember { mutableStateOf(false) }
     var biometricAvailable by remember { mutableStateOf(Biometrics.isAvailable(context)) }
     var biometricEnabled by remember { mutableStateOf(Biometrics.isEnabled(context)) }
@@ -168,6 +172,16 @@ fun JarvisApp(
     var lockNoticeEnabled by remember { mutableStateOf(LockGate.noticeEnabled(context)) }
     var notifyBrainEnabled by remember { mutableStateOf(NotifyBrain.isEnabled(context)) }
     var roadRoutingEnabled by remember { mutableStateOf(Whereabouts.roadRoutingEnabled(context)) }
+
+    // ---- today, for the dashboard ------------------------------------------------------------
+    var stepsToday by remember { mutableStateOf<Int?>(null) }
+    var waterToday by remember { mutableIntStateOf(0) }
+    LaunchedEffect(route) {
+        if (route == ROUTE_DASHBOARD) {
+            stepsToday = HealthLog.stepsToday(context)
+            waterToday = HealthLog.waterToday(context)
+        }
+    }
 
     // The phone's own lock, shown through the system's credential screen. Android tells JARVIS
     // only pass or fail; the PIN, pattern or fingerprint itself is never visible to the app.
@@ -255,7 +269,9 @@ fun JarvisApp(
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     bubbleAllowed = Bubble.canDraw(context)
-                    if (Privacy.isEnabled(context) && leftAt > 0 &&
+                    val gateOn = Privacy.isEnabled(context) ||
+                        LockGate.mode(context) == LockGate.Mode.PHONE_LOCK
+                    if (gateOn && leftAt > 0 &&
                         System.currentTimeMillis() - leftAt > Privacy.LOCK_AFTER_MS
                     ) {
                         locked = true
@@ -458,6 +474,12 @@ fun JarvisApp(
                 )
 
                 ROUTE_DASHBOARD -> DashboardScreen(
+                    stepsToday = stepsToday,
+                    waterToday = waterToday,
+                    onAddWater = {
+                        waterToday = HealthLog.addWater(context, 250)
+                        waterToday = HealthLog.waterToday(context)
+                    },
                     clock = clock,
                     status = status,
                     storage = storage,
@@ -886,6 +908,12 @@ fun JarvisApp(
                     appCount = installedApps.size,
                     isHomeApp = isHomeApp,
                     notificationCount = notifications.size,
+                    stepsToday = stepsToday,
+                    waterToday = waterToday,
+                    onAddWater = {
+                        HealthLog.addWater(context, 250)
+                        waterToday = HealthLog.waterToday(context)
+                    },
                     isDockCustom = isDockCustom,
                     onLaunchApp = launchApp,
                     onEditDock = { slot -> dockEditSlot = slot; route = ROUTE_DOCK },
@@ -957,6 +985,10 @@ fun JarvisApp(
                 LockScreen(
                     verifying = pinChecking,
                     error = pinError,
+                    systemUnlockOnly = lockMode == LockGate.Mode.PHONE_LOCK && !Privacy.isEnabled(context),
+                    onSystemUnlock = {
+                        LockGate.credentialIntent(context)?.let { credentialLauncher.launch(it) }
+                    },
                     biometricOffered = BiometricPolicy.canOffer(biometricEnabled, biometricAvailable),
                     biometricPending = biometricPending,
                     onUsePin = {

@@ -58,6 +58,9 @@ fun LockScreen(
     error: String?,
     onSubmit: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** True when the phone's own lock is the gate and there is no JARVIS PIN to fall back to. */
+    systemUnlockOnly: Boolean = false,
+    onSystemUnlock: () -> Unit = {},
     biometricOffered: Boolean = false,
     biometricPending: Boolean = false,
     onBiometric: () -> Unit = {},
@@ -109,6 +112,33 @@ fun LockScreen(
             )
         }
 
+        if (systemUnlockOnly) {
+            Spacer(Modifier.height(26.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(ElectricCyan.copy(alpha = 0.12f), ChipShape)
+                    .border(1.dp, ElectricCyan.copy(alpha = 0.5f), ChipShape)
+                    .clickable { onSystemUnlock() }
+                    .padding(vertical = 15.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "UNLOCK WITH YOUR PHONE",
+                    style = HudType.label.copy(fontSize = 11.sp, letterSpacing = 2.2.sp),
+                    color = ElectricCyan,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "Your own PIN, pattern or fingerprint. JARVIS only learns whether it passed.",
+                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+                color = TextMuted,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(26.dp))
+            HudChip(text = "PHONE LOCK", accent = StatusGreen)
+        } else {
         Spacer(Modifier.height(30.dp))
 
         // Entry dots.
@@ -246,5 +276,6 @@ fun LockScreen(
 
         Spacer(Modifier.height(18.dp))
         HudChip(text = "PRIVACY LOCK", accent = StatusGreen)
+        }
     }
 }

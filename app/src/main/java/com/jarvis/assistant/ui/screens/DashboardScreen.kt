@@ -1,5 +1,7 @@
 package com.jarvis.assistant.ui.screens
 
+import java.util.Locale
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -89,6 +91,10 @@ fun DashboardScreen(
     appCount: Int,
     isHomeApp: Boolean,
     notificationCount: Int,
+    /** null when this phone cannot count steps, or the permission is off. */
+    stepsToday: Int?,
+    waterToday: Int,
+    onAddWater: () -> Unit,
     isDockCustom: Boolean,
     onLaunchApp: (InstalledApp) -> Unit,
     onEditDock: (slot: Int) -> Unit,
@@ -162,6 +168,52 @@ fun DashboardScreen(
                     progress = storage.percentUsed / 100f,
                     modifier = Modifier.weight(1f),
                 )
+            }
+        }
+
+        item(key = "today") {
+            HudPanel(
+                label = "TODAY",
+                accent = ElectricCyan,
+                trailing = {
+                    HudChip(
+                        text = if (stepsToday == null) "NO SENSOR" else "$stepsToday STEPS",
+                        accent = if (stepsToday == null) TextMuted else StatusGreen,
+                    )
+                },
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TelemetryStat(
+                        label = "WALKED",
+                        value = stepsToday?.let { String.format(Locale.US, "%.2f km", it * 0.72 / 1000.0) }
+                            ?: "—",
+                        accent = ElectricCyan,
+                        caption = "ESTIMATE",
+                        modifier = Modifier.weight(1f),
+                    )
+                    TelemetryStat(
+                        label = "WATER",
+                        value = "$waterToday ml",
+                        accent = if (waterToday >= 2000) StatusGreen else IceBlue,
+                        caption = "LOGGED",
+                        modifier = Modifier.weight(1f),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(ElectricCyan.copy(alpha = 0.12f), ChipShape)
+                            .border(1.dp, ElectricCyan.copy(alpha = 0.4f), ChipShape)
+                            .clickable { onAddWater() }
+                            .padding(vertical = 14.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "+250 ML",
+                            style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.4.sp),
+                            color = ElectricCyan,
+                        )
+                    }
+                }
             }
         }
 
