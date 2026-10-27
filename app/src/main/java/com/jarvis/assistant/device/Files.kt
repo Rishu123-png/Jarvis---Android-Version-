@@ -141,7 +141,7 @@ object Files {
                     Found(
                         name = name,
                         uri = Uri.fromFile(child).toString(),
-                        folder = child.parent?.let { shortFolder(it.absolutePath) }.orEmpty(),
+                        folder = child.parentFile?.absolutePath?.let { shortFolder(it) }.orEmpty(),
                         bytes = child.length(),
                         modified = child.lastModified(),
                     ),

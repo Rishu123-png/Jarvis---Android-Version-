@@ -13,7 +13,7 @@ import java.util.Locale
  *
  * Pure Kotlin, no Android: every rule here is covered by `PhrasesTest` in CI.
  */
-enum class PhraseIntent(val id: String) {
+enum class PhraseIntent {
     TORCH, DND, SCREENSHOT, PHOTO, LAST_PHOTO, GALLERY, LAUNCHER, OPEN_APP,
     FILES_SEARCH, OPEN_FILE, DISTANCE, NAVIGATE, WHERE_AM_I,
     STEPS, WATER, HEART, SLEEP, HEALTH,
@@ -21,7 +21,7 @@ enum class PhraseIntent(val id: String) {
     MEDIA_PLAY, MEDIA_PAUSE, MEDIA_NEXT, MEDIA_PREVIOUS,
     VOLUME_UP, VOLUME_DOWN, VOLUME_SET,
     LOCK_SCREEN, HOME, BACK, RECENTS, SHADE, QUICK_SETTINGS,
-    BATTERY, STORAGE, NETWORK, TIME, DATE,
+    BATTERY, STORAGE, NETWORK, TIME, DATE, READ_SCREEN,
     IDENTITY, HELP, STOP, REPEAT,
     ALARM, TIMER, REMINDER, TRANSLATE, DOWNLOAD, SYSTEM_SETTINGS, CALL, MESSAGE,
 }
@@ -151,6 +151,10 @@ object PhraseBook {
         ),
         PhraseIntent.QUICK_SETTINGS to listOf(
             "quick settings", "open control center", "control panel", "quick panel",
+        ),
+        PhraseIntent.READ_SCREEN to listOf(
+            "read the screen", "read this screen", "read screen", "what is on the screen",
+            "read it to me", "screen padho", "read this page",
         ),
         PhraseIntent.BATTERY to listOf(
             "battery", "battery status", "how much battery", "kitni battery", "battery level",

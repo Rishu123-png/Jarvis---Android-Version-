@@ -165,7 +165,9 @@ object AppLaunch {
                 Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(flags)
 
             target in setOf("hotspot", "hotspot settings", "tethering") ->
-                Intent(Settings.ACTION_TETHER_SETTINGS).addFlags(flags)
+                // There is no public tethering-settings action on every API level, so this opens
+                // the network page that contains it.
+                Intent(Settings.ACTION_WIRELESS_SETTINGS).addFlags(flags)
 
             target in setOf("battery", "battery settings", "battery saver") ->
                 Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS).addFlags(flags)

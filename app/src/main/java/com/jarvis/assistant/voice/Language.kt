@@ -99,16 +99,16 @@ object Language {
      */
     fun detect(text: String): Lang {
         val script = scriptOf(text)
-        if (script != Lang.OTHER && script != EN) return script
+        if (script != Lang.OTHER && script != Lang.EN) return script
 
         val words = text.lowercase(Locale.US)
             .split(Regex("[^\\p{L}\\p{N}]+"))
             .filter { it.isNotBlank() }
-        if (words.isEmpty()) return EN
+        if (words.isEmpty()) return Lang.EN
 
-        if (words.any { it in HINGLISH_CORE }) return HINGLISH
+        if (words.any { it in HINGLISH_CORE }) return Lang.HINGLISH
         val fillers = words.count { it in HINGLISH_FILLER }
-        return if (fillers >= 2) HINGLISH else EN
+        return if (fillers >= 2) Lang.HINGLISH else Lang.EN
     }
 
     /** The script a text is written in, mapped to the language that owns it. */
