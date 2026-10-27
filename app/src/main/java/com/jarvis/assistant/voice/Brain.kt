@@ -556,15 +556,24 @@ object MemoryRules {
                 return Learned(fact = Brain.Fact("name", value))
             }
 
-        // "remember that Khushi is my sister"
-        Regex(
-            "^(?:remember(?: that)?\\s+)?([\\p{L}][\\p{L} .]{0,28}?)\\s+(?:is|are)\\s+my\\s+([a-z ]{3,20})$",
-            RegexOption.IGNORE_CASE,
-        ).find(lower)?.let { match ->
-            val relation = match.groupValues[2].trim()
-            if (relation !in RELATIONS) return@let
-            return Learned(person = Brain.Person(titleCase(match.groupValues[1].trim()), relation))
-        }
+        // "remember that Khushi is my sister"  —  the relation is matched by name, not by a regex
+        // wildcard, so "my sister is Khushi" (the other word order) can be handled just below
+        // instead of the wildcard swallowing "my sister" as a name.
+        Regex("^(?:remember(?: that)?\\s+)?(.+?)\\s+(?:is|are)\\s+my\\s+(.+)$", RegexOption.IGNORE_CASE)
+            .find(lower)?.let { match ->
+                val who = match.groupValues[1].trim()
+                val relation = match.groupValues[2].trim()
+                if (relation !in RELATIONS) return@let
+                return Learned(person = Brain.Person(titleCase(who), relation))
+            }
+
+        // "my sister is Khushi" / "meri behen khushi hai"
+        Regex("^my\\s+([a-z ]{3,20})\\s+(?:is|are)\\s+(.+)$", RegexOption.IGNORE_CASE)
+            .find(lower)?.let { match ->
+                val relation = match.groupValues[1].trim()
+                if (relation !in RELATIONS) return@let
+                return Learned(person = Brain.Person(titleCase(match.groupValues[2].trim()), relation))
+            }
 
         // "Khushi meri behen hai" / "khushi meri behen hai"
         Regex("^([\\p{L}][\\p{L} .]{0,28}?)\\s+meri\\s+([a-z]+)\\s+hai$", RegexOption.IGNORE_CASE)
