@@ -4,6 +4,66 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 18
+
+**The version number restarts here.** From this release on, JARVIS is **1.0.0** and stays there in
+every build; `versionCode` is what increases. The earlier 2.x names were internal scaffolding, and a
+family member released to family should not be called 2.4.
+
+Everything below is new in this release.
+
+**It answers everything now.** The old router was a chain of regexes: "open gallery" worked, "gallery
+kholo" and "show my photos" did not, and a miss produced "I could not find an app called gallery".
+A phrase book of ~400 wordings across ~50 intents replaces it, matched exact → prefix → word-set →
+Jaro-Winkler fuzzy, so "open galery", "kitne steps" and "tumhe kisne banaya" all land. A request that
+still misses gets the closest real app as a "did you mean", never a dead end.
+
+**Opening anything.** Gallery, camera, files, ~25 settings pages, Play Store and every installed app
+are opened through documented system intents rather than guessed labels, with the skin-specific
+gallery packages (ColorOS, MIUI, One UI, Google) tried by package name.
+
+**Messaging that actually sends.** "Send message Khushi saying hi" no longer needs a saved contact:
+the person is resolved from contacts, remembered names, or a live chat notification. Sending prefers
+answering the notification through its own `RemoteInput` action — the supported path, no screen
+taps — then the `wa.me` link with the text pre-filled, and only presses send after it can see the
+chat. If it cannot confirm, it says exactly that.
+
+**Notifications with judgement.** With one switch on, JARVIS reads a message aloud and offers three
+replies that fit it; an advertisement gets one dry line and is then ignored for the day; an OTP is
+read with its code, because that is the one alert people actually need. Quiet hours, per-app mute,
+and everything process-only — nothing is stored.
+
+**Files, distance, maths.** "Find my aadhaar pdf" searches the whole phone with All-files access
+(falling back to MediaStore, and asking for the permission instead of failing), opens the file when
+there is exactly one match and lists them when there are several. "How far is India Gate" answers by
+road through OSRM, and says *straight line* out loud when the router cannot be reached. Arithmetic
+and unit conversion run offline: no key, no network, no hesitation.
+
+**Health, honestly.** Steps from the hardware counter (and "this phone cannot count steps" when it
+cannot), distance labelled an estimate, water only what was logged, sleep as a screen-off estimate,
+heart rate only where the sensor exists.
+
+**The phone's own lock.** *Advanced → Which lock* switches the gate to your real PIN, pattern or
+fingerprint through the system credential screen — JARVIS learns only pass or fail. The keypad stays
+as the fallback. A lock-screen line shows steps, water and unread messages as a public notification;
+Android does not allow any app to replace the keyguard, and the settings page says so in plain words
+instead of implying otherwise.
+
+**Language.** The language of the question is detected from its script and words, and the answer
+comes back in it. English, Hindi and Hinglish are answered completely offline; every other language
+is answered by the model when a key is set, in that language, with the matching TTS voice.
+
+**Family, not a product.** Asked who built him, JARVIS answers "Rishu Jaswar" and nothing else — and
+that answer never leaves the phone. Provider names, key-shaped strings and "as an AI language model"
+are scrubbed from every spoken reply before it is heard.
+
+**Also in this release**: 15 new automation actions (message, reply, read alerts, find file, open
+file, open gallery, location, distance, navigate, calculate, settings page, read screen, share, health,
+log water) available to routines and to the AI planner; one ACCESS panel that states every permission
+and what breaks without it; 7 new JVM test suites (13 in total).
+
+---
+
 ## 2.3.1 — versionCode 17
 
 - **Fingerprint / face unlock** for the privacy lock, through Android's own biometric hardware. One

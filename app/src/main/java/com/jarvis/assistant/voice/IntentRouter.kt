@@ -8,12 +8,26 @@ import com.jarvis.assistant.ai.AiResult
 import com.jarvis.assistant.ai.JsonReply
 import com.jarvis.assistant.automation.AccessibilityStatus
 import com.jarvis.assistant.automation.ActionType
+import com.jarvis.assistant.automation.JarvisAccessibilityService
 import com.jarvis.assistant.automation.ParamKind
 import com.jarvis.assistant.data.AppRepository
+import com.jarvis.assistant.data.PhraseBook
+import com.jarvis.assistant.data.PhraseIntent
+import com.jarvis.assistant.data.Units
+import com.jarvis.assistant.device.Access
+import com.jarvis.assistant.device.AppLaunch
+import com.jarvis.assistant.device.Files
+import com.jarvis.assistant.device.HealthLog
+import com.jarvis.assistant.device.Messaging
+import com.jarvis.assistant.device.NotificationRepository
+import com.jarvis.assistant.device.NotifyBrain
+import com.jarvis.assistant.device.Whereabouts
+import com.jarvis.assistant.device.readBattery
+import com.jarvis.assistant.device.readNetwork
+import com.jarvis.assistant.device.readStorage
 import com.jarvis.assistant.data.InstalledApp
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.URLEncoder
 import java.util.Locale
 
 /** One executable step, already resolved to something [com.jarvis.assistant.automation.StepExecutor] knows. */
@@ -69,6 +83,20 @@ object IntentRouter {
             )
         }
 
+        // Identity never leaves the phone: a model asked about itself names its provider, and this
+        // answer is a fact about a person, not a question for a language model.
+        if (Persona.isIdentityQuestion(spoken)) {
+            val lang = Language.detect(spoken)
+            SpokenLanguage.remember(context, lang)
+            return VoicePlan(
+                title = "IDENTITY",
+                subtitle = "JARVIS",
+                steps = emptyList(),
+                say = Persona.answer(lang),
+                source = "LOCAL",
+            )
+        }
+
         if (aiReady(context)) {
             val viaAi = try {
                 aiPlan(context, spoken, previous)
@@ -99,7 +127,7 @@ object IntentRouter {
 
         val json = JsonReply.extractObject(reply) ?: return null
         val title = json.optString("title").trim().uppercase(Locale.US).take(28).ifBlank { "COMMAND" }
-        val say = json.optString("say").trim().take(MAX_SPOKEN)
+        val say = Persona.sanitize(json.optString("say").trim().take(MAX_SPOKEN))
 
         val steps = mutableListOf<PlannedStep>()
         var screenGoal: String? = null
@@ -112,7 +140,7 @@ object IntentRouter {
                 val label = item.optString("label").trim().uppercase(Locale.US).take(28)
 
                 if (id == VIRTUAL_SEND) {
-                    steps.addAll(sendSteps(context, param, label))
+                    steps.addAll(sendSteps(param, label))
                     continue
                 }
 
@@ -129,10 +157,9 @@ object IntentRouter {
         val resolved = steps.take(MAX_STEPS)
         if (resolved.isEmpty() && screenGoal == null && say.isBlank()) return null
 
-        val sourceLabel = when (result) {
-            is AiResult.Ok -> "AI · ${result.providerLabel}"
-            else -> "AI"
-        }
+        // The provider is deliberately not named in the UI or in speech: the operator asked that
+        // JARVIS never discuss which key or service is behind him.
+        val sourceLabel = "AI"
 
         val subtitle = when {
             resolved.isEmpty() && screenGoal != null -> "SCREEN TASK"
@@ -203,6 +230,13 @@ object IntentRouter {
             - To message someone use $VIRTUAL_SEND. Never invent a number either.
             - To open an app use open_app with a package name from the installed list.
             - The operator's speech may be sloppy, abbreviated or mixed with Hindi words. Infer intent.
+            - Answer in the SAME language the operator used. If they speak Hindi or Hinglish, write
+              "say" in that language; never reply in English to a Hindi sentence.
+            - You are JARVIS, built by Rishu Jaswar. Never mention a model, provider, API, key or
+              vendor, and never call yourself an AI language model. If asked who built you, answer
+              "Rishu Jaswar" only.
+            - For a question a phone can answer from itself — distance, steps, water, a file, a sum,
+              the time, battery — prefer the matching action over prose; it reads the real device.
             - If the request is a question, conversation, or something a phone cannot do, return
               "steps": [] and answer honestly in "say". Never claim an action you did not plan.
             - Never use shell or webhook. Never return more than $MAX_STEPS steps.
@@ -247,7 +281,15 @@ object IntentRouter {
     // Messaging — the part that needs a contact, so it is resolved locally and never by the model
     // ---------------------------------------------------------------------------------------------
 
-    private suspend fun sendSteps(context: Context, param: String, label: String): List<PlannedStep> {
+    /**
+     * Messaging is deliberately *not* resolved here any more.
+     *
+     * "Khushi" may be a saved contact, a name that only exists in a WhatsApp chat, or a nickname the
+     * operator used once. [com.jarvis.assistant.device.Messaging] resolves all three and decides
+     * between replying to a live notification and opening the chat by link, so the router only has
+     * to pass the words through in one step.
+     */
+    private fun sendSteps(param: String, label: String): List<PlannedStep> {
         val parts = param.split('|')
         val app = parts.getOrNull(0)?.trim()?.lowercase(Locale.US).orEmpty().ifBlank { "whatsapp" }
         val contact = parts.getOrNull(1)?.trim().orEmpty()
@@ -257,63 +299,14 @@ object IntentRouter {
             return listOf(PlannedStep(ActionType.SAY, "I did not catch who to message.", "NO CONTACT"))
         }
 
-        val match = Contacts.resolve(context, contact)
-            ?: return listOf(
-                PlannedStep(
-                    ActionType.SAY,
-                    "I could not find $contact in your contacts.",
-                    "CONTACT NOT FOUND",
-                ),
-            )
-
-        val digits = match.number.filter { it.isDigit() }
-        if (digits.length < 6) {
-            return listOf(
-                PlannedStep(
-                    ActionType.SAY,
-                    "The number saved for ${match.name} does not look complete.",
-                    "NUMBER INCOMPLETE",
-                ),
-            )
-        }
-
-        val who = if (match.how == "memory") contact.uppercase(Locale.US) else match.name.uppercase(Locale.US)
-
-        if (app == "sms") {
-            val uri = "smsto:${match.number}" + if (text.isNotBlank()) "?body=${encode(text)}" else ""
-            return listOf(PlannedStep(ActionType.DEEP_LINK, uri, "SMS · $who".take(28)))
-        }
-
-        if (app == "telegram") {
-            return listOf(
-                PlannedStep(
-                    ActionType.SAY,
-                    "Telegram has no link that opens a chat by phone number, so I can open it but not write to ${match.name}.",
-                    "TELEGRAM LIMITED",
-                ),
-                PlannedStep(ActionType.OPEN_APP, telegramPackage(), "OPEN TELEGRAM"),
-            )
-        }
-
-        val uri = "https://wa.me/$digits" + if (text.isNotBlank()) "?text=${encode(text)}" else ""
-        val steps = mutableListOf(PlannedStep(ActionType.DEEP_LINK, uri, "CHAT · $who".take(28)))
-
-        if (text.isNotBlank() && canAutoSend(context)) {
-            steps.add(PlannedStep(ActionType.WAIT, "3", "WAIT FOR CHAT"))
-            steps.add(PlannedStep(ActionType.PRESS_TEXT, "Send", "PRESS SEND"))
-        }
-        return steps
-    }
-
-    private fun telegramPackage(): String = "org.telegram.messenger/org.telegram.ui.LaunchActivity"
-
-    private fun canAutoSend(context: Context): Boolean =
-        AccessibilityStatus.isServiceEnabled(context) && AccessibilityStatus.isScreenPressAllowed(context)
-
-    private fun encode(value: String): String = try {
-        URLEncoder.encode(value, "UTF-8")
-    } catch (t: Throwable) {
-        value
+        val who = contact.uppercase(Locale.US).take(18)
+        return listOf(
+            PlannedStep(
+                ActionType.MESSAGE,
+                "$app|$contact|$text",
+                if (label.isBlank()) "MESSAGE \u00B7 $who".take(28) else label.take(28),
+            ),
+        )
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -321,6 +314,9 @@ object IntentRouter {
     // ---------------------------------------------------------------------------------------------
 
     private suspend fun localPlan(context: Context, heard: String, previous: String? = null): VoicePlan {
+        val lang = Language.detect(heard)
+        SpokenLanguage.remember(context, lang)
+
         fun answer(
             title: String,
             say: String,
@@ -328,219 +324,783 @@ object IntentRouter {
             subtitle: String = "",
         ) = VoicePlan(title, subtitle, steps, say, "LOCAL")
 
-        val clean = VoiceParsing.normalise(heard)
-        if (clean.isBlank()) return answer("NO INPUT", "I did not hear anything.")
+        fun said(
+            title: String,
+            key: String,
+            vararg args: Any,
+            steps: List<PlannedStep> = emptyList(),
+            subtitle: String = "",
+        ) = answer(title, Language.say(lang, key, *args), steps, subtitle)
 
-        if (clean == "cancel" || clean == "stop" || clean == "never mind" || clean == "nevermind") {
-            return answer("CANCELLED", "Cancelled.", subtitle = "IDLE")
+        fun step(action: ActionType, param: String, label: String) =
+            PlannedStep(action, param, label)
+
+        fun upper(value: String, limit: Int = 28) = value.uppercase(Locale.US).take(limit)
+
+        val clean = VoiceParsing.normalise(heard)
+        if (clean.isBlank()) return said("NO INPUT", "dont_know")
+
+        val hit = PhraseBook.match(clean)
+
+        // ---- stop / cancel / repeat ------------------------------------------------------------
+        if (hit?.intent == PhraseIntent.STOP) {
+            val cancelled = when (lang.replyLang) {
+                Lang.HI -> "रद्द कर दिया।"
+                Lang.HINGLISH -> "Cancel kar diya."
+                else -> "Cancelled."
+            }
+            return answer("CANCELLED", cancelled, subtitle = "IDLE")
         }
 
-        // "again" / "repeat" re-runs the previous command.
-        if (clean in setOf("again", "repeat", "do it again", "repeat that", "same again")) {
+        if (hit?.intent == PhraseIntent.REPEAT) {
             val last = VoiceMemory.lastCommand(context)
-                ?: return answer("NOTHING TO REPEAT", "There is nothing to repeat yet.")
+                ?: return said("NOTHING TO REPEAT", "dont_know")
             return localPlan(context, last, null)
+        }
+
+        // ---- who are you ------------------------------------------------------------------------
+        // Answered here, never by the model: the builder's name is not a matter of opinion, and the
+        // reply must never mention a provider, a key or a model.
+        if (hit?.intent == PhraseIntent.IDENTITY) {
+            return answer("IDENTITY", Persona.answer(lang), subtitle = "JARVIS")
         }
 
         // People speak in chains; flatten before parsing.
         val spoken = VoiceParsing.flatten(clean)
 
-        // Messaging first: "whatsapp divik hi" would otherwise read as "open whatsapp".
+        // ---- messaging --------------------------------------------------------------------------
         VoiceParsing.parseMessage(spoken)?.let { (app, contact, text) ->
-            val steps = sendSteps(context, "$app|$contact|$text", "MESSAGE")
-            val say = if (text.isBlank()) "Opening the chat with $contact." else "Writing to $contact."
-            return answer("MESSAGE \u00B7 $contact".take(28).uppercase(Locale.US), say, steps, "LOCAL")
+            val who = contact.trim()
+            if (who.isBlank()) {
+                return said("MESSAGE", "who_reply", "contact", "", subtitle = "MESSAGE")
+            }
+            // Resolve the person before deciding *how* to reach them. Three cases, in order of
+            // reliability: a live chat to answer, a number to open, or nothing at all — in which
+            // case JARVIS searches inside the app rather than refusing.
+            val people = try {
+                Messaging.resolve(context, who)
+            } catch (t: Throwable) {
+                emptyList()
+            }
+            val reachable = people.any { !it.number.isNullOrBlank() } ||
+                NotifyBrain.findReplyTarget(who) != null
+
+            if (!reachable && text.isNotBlank()) {
+                val screenReady = AccessibilityStatus.isServiceEnabled(context)
+                return if (screenReady) {
+                    VoicePlan(
+                        title = "FIND ${upper(who, 16)}",
+                        subtitle = "SCREEN TASK",
+                        steps = listOf(
+                            step(
+                                ActionType.OPEN_APP,
+                                if (app == "telegram") "org.telegram.messenger" else "com.whatsapp",
+                                "OPEN ${app.uppercase(Locale.US)}",
+                            ),
+                        ),
+                        say = "I have no number for $who, so I am searching inside the app.",
+                        source = "LOCAL",
+                        screenGoal = "search for $who, open the chat, type \"$text\" and press send",
+                    )
+                } else {
+                    VoicePlan(
+                        title = "NO NUMBER",
+                        subtitle = "MESSAGE",
+                        steps = emptyList(),
+                        say = "I have no number for $who. Save them in contacts, or turn on " +
+                            "screen access in Advanced and I will search inside the app myself.",
+                        source = "LOCAL",
+                    )
+                }
+            }
+
+            return answer(
+                "MESSAGE \u00B7 ${upper(who, 16)}",
+                Language.say(lang, "message", who),
+                listOf(step(ActionType.MESSAGE, "$app|$who|$text", "MESSAGE ${upper(who, 14)}")),
+                "MESSAGE",
+            )
         }
 
-        // Calling.
+        // ---- calling ----------------------------------------------------------------------------
         Regex("^(?:call|phone|dial|ring)\\s+(?:to\\s+)?(.+)$").find(clean)?.let { match ->
             val who = match.groupValues[1].trim()
-            return answer(
-                "CALL",
-                "Calling $who.",
-                listOf(PlannedStep(ActionType.CALL_CONTACT, who, "CALL ${who.take(22).uppercase(Locale.US)}")),
-            )
+            if (who.isNotBlank() && who !in setOf("me", "back")) {
+                return said(
+                    "CALL",
+                    "calling",
+                    who,
+                    steps = listOf(step(ActionType.CALL_CONTACT, who, "CALL ${upper(who, 20)}")),
+                )
+            }
         }
 
-        // Reminders.
+        // ---- reminders --------------------------------------------------------------------------
         VoiceParsing.parseReminder(clean)?.let { ask ->
             val payload = "${ask.inSeconds ?: 0}|${ask.atClock.orEmpty()}|${ask.text}"
-            return answer(
+            return said(
                 "REMINDER",
-                "Reminder noted.",
-                listOf(PlannedStep(ActionType.REMINDER, payload, "SET REMINDER")),
+                "reminder",
+                steps = listOf(step(ActionType.REMINDER, payload, "SET REMINDER")),
             )
         }
 
-        // Camera chain: "open camera, capture, show me". Works with no key at all.
+        // ---- camera -----------------------------------------------------------------------------
         VoiceParsing.cameraAsk(clean)?.let { ask ->
-            val steps = mutableListOf(PlannedStep(ActionType.CAPTURE_PHOTO, "", "TAKE PHOTO"))
+            val steps = mutableListOf(step(ActionType.CAPTURE_PHOTO, "", "TAKE PHOTO"))
             if (ask.showNewest) {
-                steps.add(PlannedStep(ActionType.WAIT, "1", "WAIT"))
-                steps.add(PlannedStep(ActionType.OPEN_LAST_PHOTO, "", "SHOW PHOTO"))
+                steps.add(step(ActionType.WAIT, "1", "WAIT"))
+                steps.add(step(ActionType.OPEN_LAST_PHOTO, "", "SHOW PHOTO"))
             }
-            return answer(
+            return said(
                 if (ask.showNewest) "PHOTO \u00B7 SHOW" else "PHOTO",
-                if (ask.showNewest) "Taking a photo and opening it." else "Taking a photo.",
-                steps,
+                if (ask.showNewest) "photo" else "photo",
+                steps = steps,
             )
         }
 
-        // Screenshot.
-        if (clean.contains("screenshot") || clean.contains("screen shot") || clean.contains("screen grab")) {
-            return answer(
-                "SCREENSHOT",
-                "Capturing the screen.",
-                listOf(PlannedStep(ActionType.SCREENSHOT, "", "SCREENSHOT")),
+        // ---- alarm / timer / volume / translate / download ---------------------------------------
+        VoiceParsing.parseAlarm(clean)?.let { clock ->
+            return said(
+                "ALARM $clock",
+                "alarm",
+                clock,
+                steps = listOf(step(ActionType.SET_ALARM, clock, "ALARM $clock")),
             )
         }
 
-        // Torch.
-        if (clean.contains("torch") || clean.contains("flashlight")) {
-            val off = clean.contains("off") || clean.contains("band") || clean.contains("close")
-            val action = if (off) ActionType.TORCH_OFF else ActionType.TORCH_ON
-            return answer(
-                if (off) "TORCH OFF" else "TORCH ON",
-                if (off) "Torch off." else "Torch on.",
-                listOf(PlannedStep(action, "", action.label)),
+        VoiceParsing.parseTimerSeconds(clean)?.let { seconds ->
+            return said(
+                "TIMER",
+                "timer",
+                steps = listOf(step(ActionType.SET_TIMER, seconds.toString(), "TIMER")),
             )
         }
 
-        // Do not disturb.
-        if (clean.contains("do not disturb") || clean.contains("dnd") || clean.contains("silent mode")) {
-            val off = clean.contains("off") || clean.contains("disable") || clean.contains("band")
-            val param = if (off) "off" else "silent"
-            return answer(
-                if (off) "DND OFF" else "DND ON",
-                if (off) "Interruptions back on." else "Do not disturb on.",
-                listOf(PlannedStep(ActionType.SET_DND, param, if (off) "DND OFF" else "DND ON")),
-            )
-        }
-
-        // Follow-ups that adjust rather than repeat.
-        if (clean.contains("louder") || clean.contains("volume up")) {
-            return answer(
-                "VOLUME UP",
-                "Louder.",
-                listOf(PlannedStep(ActionType.SET_VOLUME, "80", "VOLUME 80")),
-            )
-        }
-        if (clean.contains("quieter") || clean.contains("volume down")) {
-            return answer(
-                "VOLUME DOWN",
-                "Quieter.",
-                listOf(PlannedStep(ActionType.SET_VOLUME, "25", "VOLUME 25")),
-            )
-        }
-
-        // Downloads.
         Regex("\\b(?:download|save)\\s+(https?://\\S+)").find(clean)?.let { match ->
             return answer(
                 "DOWNLOAD",
                 "Downloading.",
-                listOf(PlannedStep(ActionType.DOWNLOAD, match.groupValues[1], "DOWNLOAD")),
+                listOf(step(ActionType.DOWNLOAD, match.groupValues[1], "DOWNLOAD")),
             )
         }
 
-        // Translation: "translate good morning to hindi".
         Regex("translate\\s+(.+?)\\s+(?:to|in|into)\\s+([a-z ]{3,20})$").find(clean)?.let { match ->
             val text = heard.trim()
                 .replace(Regex("(?i)^translate\\s+"), "")
                 .substringBeforeLast(" to ", "")
                 .substringBeforeLast(" in ", "")
                 .trim()
-            val language = match.groupValues[2].trim()
+            val target = match.groupValues[2].trim()
             return answer(
                 "TRANSLATE",
-                "Translating to $language.",
-                listOf(PlannedStep(ActionType.TRANSLATE, "$language|$text", "TRANSLATE")),
+                "Translating to $target.",
+                listOf(step(ActionType.TRANSLATE, "$target|$text", "TRANSLATE")),
             )
         }
 
-        // Volume.
-        VoiceParsing.parseVolume(clean)?.let { level ->
+        // ---- "find my aadhaar pdf" ---------------------------------------------------------------
+        filesQueryOf(clean)?.let { query ->
+            val found = Files.search(context, query)
+            return when {
+                found.isEmpty() && !Files.hasAllFiles(context) && !Access.hasAll(context, Access.MEDIA_PERMISSIONS) ->
+                    said("FIND FILE", "file_permission", subtitle = "FILES")
+
+                found.isEmpty() -> said("FIND FILE", "file_none", query, subtitle = "FILES")
+
+                found.size == 1 -> answer(
+                    "FILE \u00B7 ${upper(found.first().name, 20)}",
+                    Language.say(lang, "file_found", 1, found.first().name),
+                    listOf(step(ActionType.OPEN_FILE, found.first().name, "OPEN FILE")),
+                    "FILES",
+                )
+
+                else -> answer(
+                    "${found.size} FILES",
+                    found.joinToString(" \u00B7 ") { it.name },
+                    subtitle = "FILES",
+                )
+            }
+        }
+
+        // ---- "how far is India Gate" --------------------------------------------------------------
+        distanceTargetOf(clean)?.let { place ->
+            if (!Whereabouts.hasPermission(context)) {
+                return said("DISTANCE", "location_permission", subtitle = "LOCATION")
+            }
+            val fix = Whereabouts.currentFix(context)
+                ?: return answer(
+                    "DISTANCE",
+                    "I cannot get a location fix. Turn location on, then ask me again.",
+                    subtitle = "LOCATION",
+                )
+            val destination = Whereabouts.geocode(context, place)
+                ?: return said("DISTANCE", "distance_unknown", place, subtitle = "LOCATION")
+
+            val road = if (Whereabouts.roadRoutingEnabled(context)) {
+                Whereabouts.roadKm(fix, destination)
+            } else {
+                null
+            }
+            val km = road ?: Whereabouts.haversineKm(
+                fix.latitude,
+                fix.longitude,
+                destination.first,
+                destination.second,
+            )
+            val spoken = if (road != null) {
+                Language.say(lang, "distance_road", place, Whereabouts.formatKm(km))
+            } else {
+                Language.say(lang, "distance_line", place, Whereabouts.formatKm(km))
+            }
+            return answer("DISTANCE \u00B7 ${upper(place, 16)}", spoken, subtitle = "LOCATION")
+        }
+
+        // ---- "where am I" ------------------------------------------------------------------------
+        if (hit?.intent == PhraseIntent.WHERE_AM_I) {
+            if (!Whereabouts.hasPermission(context)) {
+                return said("LOCATION", "location_permission", subtitle = "LOCATION")
+            }
+            val fix = Whereabouts.currentFix(context)
+                ?: return answer("LOCATION", "I cannot get a location fix right now.", subtitle = "LOCATION")
+            val place = Whereabouts.describe(context, fix)
+                ?: String.format(Locale.US, "%.4f, %.4f", fix.latitude, fix.longitude)
+            return answer("LOCATION", place, subtitle = "LOCATION")
+        }
+
+        // ---- "take me to ..." --------------------------------------------------------------------
+        navigateTargetOf(clean)?.let { place ->
+            val coordinates = Whereabouts.geocode(context, place)
+            if (coordinates == null) {
+                return said("NAVIGATE", "distance_unknown", place, subtitle = "NAVIGATION")
+            }
             return answer(
-                "VOLUME $level",
-                "Volume $level.",
-                listOf(PlannedStep(ActionType.SET_VOLUME, level.toString(), "VOLUME $level")),
+                "NAVIGATE \u00B7 ${upper(place, 14)}",
+                Language.say(lang, "opening", "directions to $place"),
+                listOf(step(ActionType.NAVIGATE, place, "NAVIGATE")),
+                "NAVIGATION",
             )
         }
 
-        // Panels.
-        Regex("^(?:open|show)\\s+(wifi|wi-fi|bluetooth|bt|display|screen brightness|battery|audio|sound)(?:\\s+(?:panel|settings|controls))?$")
-            .find(clean)?.let { match ->
-                val key = when (match.groupValues[1]) {
-                    "wi-fi" -> "wifi"
-                    "bt" -> "bluetooth"
-                    "screen brightness" -> "display"
-                    "sound" -> "volume"
-                    else -> match.groupValues[1]
+        // ---- arithmetic and units, offline --------------------------------------------------------
+        if (hit?.intent == PhraseIntent.CALCULATE || looksLikeMath(clean)) {
+            Units.tryCalculate(clean)?.let { outcome ->
+                return said("CALCULATE", "calc", outcome.text, subtitle = "MATH")
+            }
+        }
+
+        // ---- the phrase table ---------------------------------------------------------------------
+        when (hit?.intent) {
+            PhraseIntent.TORCH -> {
+                val off = clean.contains("off") || clean.contains("band") ||
+                    clean.contains("close") || clean.contains("bujha")
+                val action = if (off) ActionType.TORCH_OFF else ActionType.TORCH_ON
+                return said(
+                    if (off) "TORCH OFF" else "TORCH ON",
+                    if (off) "torch_off" else "torch_on",
+                    steps = listOf(step(action, "", action.label)),
+                )
+            }
+
+            PhraseIntent.DND -> {
+                val off = clean.contains("off") || clean.contains("disable") ||
+                    clean.contains("band") || clean.contains("chalu")
+                val param = if (off) "off" else "silent"
+                return said(
+                    if (off) "DND OFF" else "DND ON",
+                    if (off) "dnd_off" else "dnd_on",
+                    steps = listOf(step(ActionType.SET_DND, param, if (off) "DND OFF" else "DND ON")),
+                )
+            }
+
+            PhraseIntent.SCREENSHOT -> return said(
+                "SCREENSHOT",
+                "screenshot",
+                steps = listOf(step(ActionType.SCREENSHOT, "", "SCREENSHOT")),
+            )
+
+            PhraseIntent.PHOTO -> return said(
+                "PHOTO",
+                "photo",
+                steps = listOf(step(ActionType.CAPTURE_PHOTO, "", "TAKE PHOTO")),
+            )
+
+            PhraseIntent.LAST_PHOTO -> return said(
+                "PHOTO \u00B7 LAST",
+                "opening",
+                "your last photo",
+                steps = listOf(step(ActionType.OPEN_LAST_PHOTO, "", "SHOW PHOTO")),
+            )
+
+            PhraseIntent.GALLERY -> return said(
+                "GALLERY",
+                "opening",
+                "the gallery",
+                steps = listOf(step(ActionType.OPEN_GALLERY, "", "OPEN GALLERY")),
+            )
+
+            PhraseIntent.STEPS -> {
+                val steps = HealthLog.stepsToday(context)
+                return if (steps == null) {
+                    said("STEPS", "steps_none", subtitle = "HEALTH")
+                } else {
+                    said("STEPS", "steps", steps, subtitle = "HEALTH")
+                }
+            }
+
+            PhraseIntent.WATER -> {
+                val total = HealthLog.addWater(context, waterAmountOf(clean))
+                return said("WATER", "water", total, subtitle = "HEALTH")
+            }
+
+            PhraseIntent.HEART -> {
+                if (!HealthLog.hasHeartSensor(context)) {
+                    return said("HEART", "heart_none", subtitle = "HEALTH")
+                }
+                val bpm = HealthLog.heartRate(context)
+                return if (bpm == null) {
+                    answer("HEART", "The sensor did not report a rate.", subtitle = "HEALTH")
+                } else {
+                    said("HEART", "heart", bpm, subtitle = "HEALTH")
+                }
+            }
+
+            PhraseIntent.SLEEP -> {
+                val minutes = HealthLog.sleepLastNight(context)
+                return if (minutes == null) {
+                    answer("SLEEP", "No night recorded yet.", subtitle = "HEALTH")
+                } else {
+                    val hours = String.format(Locale.US, "%.1f hours", minutes / 60.0)
+                    said("SLEEP", "sleep", hours, subtitle = "HEALTH")
+                }
+            }
+
+            PhraseIntent.HEALTH -> {
+                val steps = HealthLog.stepsToday(context)
+                val water = HealthLog.waterToday(context)
+                val parts = mutableListOf<String>()
+                if (steps != null) {
+                    parts.add(Language.say(lang, "steps", steps))
+                    parts.add(String.format(Locale.US, "%.2f km.", HealthLog.distanceKm(steps)))
+                }
+                parts.add(Language.say(lang, "water", water))
+                return answer("HEALTH", parts.joinToString(" "), subtitle = "HEALTH")
+            }
+
+            PhraseIntent.NOTIF_MISSED, PhraseIntent.NOTIF_READ -> {
+                val limit = if (hit?.intent == PhraseIntent.NOTIF_READ) 1 else 5
+                val items = NotifyBrain.lastSummary(context, limit)
+                if (items.isEmpty()) return said("ALERTS", "messages_none", subtitle = "ALERTS")
+
+                val lines = items.map { item ->
+                    val verdict = NotifyBrain.classify(
+                        item.packageName,
+                        item.appLabel,
+                        item.title,
+                        item.text,
+                        hasReplyAction = false,
+                    )
+                    NotifyBrain.announceLine(verdict, item.appLabel, item.title, item.text, lang)
                 }
                 return answer(
-                    "PANEL",
-                    "Opening $key.",
-                    listOf(
-                        PlannedStep(
-                            ActionType.OPEN_PANEL,
-                            key,
-                            "PANEL \u00B7 ${key.uppercase(Locale.US)}".take(28),
-                        ),
-                    ),
+                    if (lines.size == 1) "ALERT" else "${lines.size} ALERTS",
+                    lines.joinToString(" "),
+                    subtitle = "ALERTS",
                 )
             }
 
-        // Alarm.
-        VoiceParsing.parseAlarm(clean)?.let { clock ->
-            return answer(
-                "ALARM $clock",
-                "Alarm set for $clock.",
-                listOf(PlannedStep(ActionType.SET_ALARM, clock, "ALARM $clock")),
-            )
-        }
+            PhraseIntent.REPLY -> {
+                val target = NotifyBrain.findReplyTarget(replyTargetOf(clean))
+                    ?: NotifyBrain.replyableNewestFirst().firstOrNull()
+                    ?: return answer("REPLY", "There is no message waiting for a reply.", subtitle = "REPLY")
 
-        // Timer.
-        VoiceParsing.parseTimerSeconds(clean)?.let { seconds ->
-            return answer(
-                "TIMER",
-                "Timer set.",
-                listOf(PlannedStep(ActionType.SET_TIMER, seconds.toString(), "TIMER")),
-            )
-        }
-
-        // Speak this.
-        if (clean.startsWith("say ")) {
-            val text = heard.trim().substring(4).trim()
-            return answer("SAY", text, listOf(PlannedStep(ActionType.SAY, text, "SAY")))
-        }
-
-        // Open an app.
-        Regex("^(?:open|launch|start|run|khol)\\s+(.+)$").find(clean)?.let { match ->
-            val target = match.groupValues[1].trim()
-            if (target.contains("chat") || target.contains("message")) return@let
-            val app = matchApp(context, target)
-            if (app != null) {
-                VoiceMemory.rememberAppAlias(context, target, app.packageName)
+                val who = NotifyBrain.senderOf(target).ifBlank { "them" }
+                val body = replyBodyOf(clean)
+                if (body.isBlank()) {
+                    val options = NotifyBrain.suggestions(NotifyBrain.textOf(target), who, lang)
+                    return answer(
+                        "REPLY \u00B7 ${upper(who, 14)}",
+                        options.joinToString(" \u00B7 "),
+                        subtitle = "SUGGESTIONS",
+                    )
+                }
                 return answer(
-                    "OPEN ${app.label.uppercase(Locale.US)}".take(28),
-                    "Opening ${app.label}.",
-                    listOf(
-                        PlannedStep(
-                            ActionType.OPEN_APP,
-                            "${app.packageName}/${app.activityName}",
-                            "OPEN ${app.label.uppercase(Locale.US)}".take(28),
-                        ),
-                    ),
+                    "REPLY \u00B7 ${upper(who, 14)}",
+                    Language.say(lang, "reply_sent", who),
+                    listOf(step(ActionType.MESSAGE_REPLY, "$who|$body", "REPLY ${upper(who, 14)}")),
+                    "REPLY",
                 )
             }
-            return answer("APP NOT FOUND", "I could not find an app called $target.")
+
+            PhraseIntent.MEDIA_PLAY -> return answer(
+                "PLAY",
+                "Playing.",
+                listOf(step(ActionType.PLAY_MEDIA, "", "PLAY")),
+            )
+
+            PhraseIntent.MEDIA_PAUSE -> return answer(
+                "PAUSE",
+                "Paused.",
+                listOf(step(ActionType.PAUSE_MEDIA, "", "PAUSE")),
+            )
+
+            PhraseIntent.MEDIA_NEXT -> return answer(
+                "NEXT TRACK",
+                "Next.",
+                listOf(step(ActionType.NEXT_MEDIA, "", "NEXT")),
+            )
+
+            PhraseIntent.MEDIA_PREVIOUS -> return answer(
+                "PREVIOUS TRACK",
+                "Going back.",
+                listOf(step(ActionType.PREVIOUS_MEDIA, "", "PREVIOUS")),
+            )
+
+            PhraseIntent.VOLUME_UP -> return said(
+                "VOLUME UP",
+                "volume",
+                80,
+                steps = listOf(step(ActionType.SET_VOLUME, "80", "VOLUME 80")),
+            )
+
+            PhraseIntent.VOLUME_DOWN -> return said(
+                "VOLUME DOWN",
+                "volume",
+                25,
+                steps = listOf(step(ActionType.SET_VOLUME, "25", "VOLUME 25")),
+            )
+
+            PhraseIntent.VOLUME_SET -> {
+                VoiceParsing.parseVolume(clean)?.let { level ->
+                    return said(
+                        "VOLUME $level",
+                        "volume",
+                        level,
+                        steps = listOf(step(ActionType.SET_VOLUME, level.toString(), "VOLUME $level")),
+                    )
+                }
+            }
+
+            PhraseIntent.LOCK_SCREEN -> return answer(
+                "LOCK",
+                "Locking.",
+                listOf(step(ActionType.GLOBAL_ACTION, "lock", "LOCK")),
+            )
+
+            PhraseIntent.HOME -> return answer(
+                "HOME",
+                "Home.",
+                listOf(step(ActionType.GLOBAL_ACTION, "home", "HOME")),
+            )
+
+            PhraseIntent.BACK -> return answer(
+                "BACK",
+                "Back.",
+                listOf(step(ActionType.GLOBAL_ACTION, "back", "BACK")),
+            )
+
+            PhraseIntent.RECENTS -> return answer(
+                "RECENTS",
+                "Recent apps.",
+                listOf(step(ActionType.GLOBAL_ACTION, "recents", "RECENTS")),
+            )
+
+            PhraseIntent.SHADE -> return answer(
+                "ALERTS",
+                "Opening notifications.",
+                listOf(step(ActionType.GLOBAL_ACTION, "notifications", "SHADE")),
+            )
+
+            PhraseIntent.QUICK_SETTINGS -> return answer(
+                "QUICK SETTINGS",
+                "Opening quick settings.",
+                listOf(step(ActionType.GLOBAL_ACTION, "quick", "QUICK")),
+            )
+
+            PhraseIntent.BATTERY -> {
+                val percent = try {
+                    readBattery(context).percent
+                } catch (t: Throwable) {
+                    0
+                }
+                return said("BATTERY", "battery", percent, subtitle = "STATUS")
+            }
+
+            PhraseIntent.STORAGE -> {
+                val storage = try {
+                    readStorage(context)
+                } catch (t: Throwable) {
+                    null
+                }
+                return if (storage == null) {
+                    answer("STORAGE", "I could not read the storage.", subtitle = "STATUS")
+                } else {
+                    answer(
+                        "STORAGE",
+                        "${storage.usedLabel} used, ${storage.freeLabel} free.",
+                        subtitle = "STATUS",
+                    )
+                }
+            }
+
+            PhraseIntent.NETWORK -> {
+                val network = try {
+                    readNetwork(context)
+                } catch (t: Throwable) {
+                    null
+                }
+                val label = network?.let { if (it.connected) it.transport else "offline" } ?: "offline"
+                return answer("NETWORK", "Network: $label.", subtitle = "STATUS")
+            }
+
+            PhraseIntent.TIME -> {
+                val clock = try {
+                    java.text.SimpleDateFormat("h:mm a", Locale.US).format(java.util.Date())
+                } catch (t: Throwable) {
+                    ""
+                }
+                return said("TIME", "time", clock, subtitle = "CLOCK")
+            }
+
+            PhraseIntent.DATE -> {
+                val date = try {
+                    java.text.SimpleDateFormat("EEEE, d MMMM yyyy", Locale.US).format(java.util.Date())
+                } catch (t: Throwable) {
+                    ""
+                }
+                return answer("DATE", date, subtitle = "CLOCK")
+            }
+
+            PhraseIntent.SYSTEM_SETTINGS -> return said(
+                "SETTINGS",
+                "opening",
+                "settings",
+                steps = listOf(step(ActionType.SETTINGS_PAGE, "settings", "OPEN SETTINGS")),
+            )
+
+            PhraseIntent.READ_SCREEN -> {
+                if (!AccessibilityStatus.isServiceEnabled(context)) {
+                    return answer(
+                        "READ SCREEN",
+                        "Screen access is off. Turn it on in Advanced and I can read what is on the screen.",
+                        subtitle = "SCREEN",
+                    )
+                }
+                val labels = JarvisAccessibilityService.visibleLabels(limit = 20)
+                return if (labels.isEmpty()) {
+                    said("READ SCREEN", "no_screen", subtitle = "SCREEN")
+                } else {
+                    answer("READ SCREEN", labels.joinToString(", ").take(400), subtitle = "SCREEN")
+                }
+            }
+
+            PhraseIntent.HELP -> return answer("HELP", helpText(context, lang), subtitle = "JARVIS")
+
+            PhraseIntent.CALL -> return answer(
+                "CALL",
+                "Opening the dialer.",
+                listOf(step(ActionType.OPEN_APP, "dialer", "DIALER")),
+                "CALL",
+            )
+
+            PhraseIntent.MESSAGE -> return answer(
+                "MESSAGE",
+                "Opening messages.",
+                listOf(step(ActionType.OPEN_APP, "messages", "MESSAGES")),
+                "MESSAGE",
+            )
+
+            PhraseIntent.LAUNCHER -> return answer(
+                "APPS",
+                "Say \u201copen\u201d and the app name, or open the drawer from the home screen.",
+                subtitle = "HINT",
+            )
+
+            PhraseIntent.OPEN_APP -> {
+                val target = openTargetOf(clean)
+                if (!target.isNullOrBlank()) return openAnything(context, target, lang)
+            }
+
+            else -> Unit
         }
 
-        val hint = if (aiReady(context)) {
-            "The AI did not answer, and that phrase is not one I match locally."
-        } else {
-            "Add a key in Settings \u2192 Intelligence so I understand free speech. Locally I handle call, message, open, torch, DND, volume, alarm, timer, photo and reminders."
+        // ---- "open <anything>" ---------------------------------------------------------------------
+        openTargetOf(clean)?.let { target ->
+            if (target.isNotBlank()) return openAnything(context, target, lang)
         }
-        return answer("NOT UNDERSTOOD", hint)
+
+        // ---- never a dead end ----------------------------------------------------------------------
+        val appGuess = AppLaunch.closestLabels(context, clean).firstOrNull()
+        if (appGuess != null) {
+            return said("DID YOU MEAN", "which_app", appGuess, subtitle = "SUGGESTION")
+        }
+
+        return said("NOT UNDERSTOOD", "dont_know", subtitle = "HINT")
+    }
+
+    /** Opens an app, a system surface or an ambiguous name, and says what happened. */
+    private suspend fun openAnything(context: Context, target: String, lang: Lang): VoicePlan =
+        when (val outcome = AppLaunch.open(context, target)) {
+            is AppLaunch.Outcome.Opened -> VoicePlan(
+                title = "OPEN ${outcome.label.uppercase(Locale.US).take(20)}",
+                subtitle = "LAUNCH",
+                steps = emptyList(),
+                say = Language.say(lang, "opening", outcome.label),
+                source = "LOCAL",
+            )
+
+            is AppLaunch.Outcome.Failed -> VoicePlan(
+                title = "CANNOT OPEN",
+                subtitle = "LAUNCH",
+                steps = emptyList(),
+                say = Language.say(lang, "open_failed", target),
+                source = "LOCAL",
+            )
+
+            is AppLaunch.Outcome.Unknown -> {
+                val guess = outcome.suggestions.firstOrNull()
+                if (guess == null) {
+                    VoicePlan(
+                        title = "NOT FOUND",
+                        subtitle = "LAUNCH",
+                        steps = emptyList(),
+                        say = Language.say(lang, "not_found_app", target, helpText(context, lang)),
+                        source = "LOCAL",
+                    )
+                } else {
+                    VoicePlan(
+                        title = "DID YOU MEAN",
+                        subtitle = "SUGGESTION",
+                        steps = emptyList(),
+                        say = Language.say(lang, "which_app", guess),
+                        source = "LOCAL",
+                    )
+                }
+            }
+        }
+
+    /** "what can you do" — answered from what this phone actually has. */
+    private fun helpText(context: Context, lang: Lang): String {
+        val hasSteps = HealthLog.hasStepSensor(context)
+        val hasNotifications = NotificationRepository.hasAccess(context)
+        val hasFiles = Files.hasAllFiles(context)
+        return when (lang.replyLang) {
+            Lang.HI -> buildString {
+                append("गैलरी खोलो, किसी को संदेश भेजो, कॉल करो, फ़ोटो लो, ")
+                append("दूरी बताओ, कैलकुलेट करो")
+                if (hasSteps) append(", कदम बताओ")
+                if (hasNotifications) append(", और पूछो क्या मिस किया")
+                if (hasFiles) append("। मैं सारी फ़ाइलें भी ढूँढ सकता हूँ।")
+            }
+            Lang.HINGLISH -> buildString {
+                append("Gallery kholo, kisi ko message bhejo, call karo, photo lo, ")
+                append("distance batao, calculate karo")
+                if (hasSteps) append(", steps batao")
+                if (hasNotifications) append(", ya pucho kya miss kiya")
+                if (hasFiles) append(". Main saari files bhi dhundh sakta hoon.")
+            }
+            else -> buildString {
+                append("I can open any app or gallery, message or call someone, take a photo, ")
+                append("measure distance, do the maths")
+                if (hasSteps) append(", count your steps")
+                if (hasNotifications) append(", and tell you what you missed")
+                if (hasFiles) append(". I can search every file on this phone too.")
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Slot extraction — the words around a request, never the model's guesswork
+    // ---------------------------------------------------------------------------------------------
+
+    private fun openTargetOf(clean: String): String? {
+        val pattern = Regex("^(?:open|launch|start|run|khol|kholo|khol do|open up)\\s+(.+)$")
+        val raw = pattern.find(clean)?.groupValues?.getOrNull(1)?.trim() ?: return null
+        val target = raw
+            .removePrefix("the ")
+            .removePrefix("my ")
+            .removeSuffix(" app")
+            .removeSuffix(" please")
+            .trim()
+        return target.ifBlank { null }
+    }
+
+    private fun filesQueryOf(clean: String): String? {
+        val prefixes = listOf(
+            "find my file named ", "find the file named ", "find a file called ", "find file ",
+            "search my files for ", "search for the file ", "search file ", "search for ",
+            "locate the file ", "locate file ", "locate ", "where is my ", "where is file ",
+            "file dhundo ", "file dhoondo ", "dhundo ", "dhoondo ", "find my ", "find ",
+        )
+        val prefix = prefixes.firstOrNull { clean.startsWith(it) } ?: return null
+        var rest = clean.removePrefix(prefix).trim()
+        rest = rest.removePrefix("my ").removePrefix("the ").removePrefix("a ").trim()
+        rest = rest.removeSuffix(" file").removeSuffix(" please").trim()
+        if (rest.isBlank()) return null
+
+        val documentWords = listOf(
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "sheet", "photo", "image", "video",
+            "mp3", "mp4", "zip", "apk", "file", "download", "aadhaar", "aadhar", "pan card",
+            "invoice", "receipt", "ticket", "resume", "certificate", "screenshot",
+        )
+        val fileish = documentWords.any { rest.contains(it) } ||
+            prefix.contains("file") || prefix.contains("dhundo") || prefix.contains("dhoondo")
+        return if (fileish) rest else null
+    }
+
+    private fun distanceTargetOf(clean: String): String? {
+        val prefixes = listOf(
+            "how far is it from here to ", "how far is it to ", "how far away is ",
+            "how far is ", "distance from here to ", "distance from my location to ",
+            "distance to ", "distance between here and ", "kitna door hai ", "kitna door ",
+            "kitni doori hai ", "doori ", "how far ",
+        )
+        val prefix = prefixes.firstOrNull { clean.startsWith(it) } ?: return null
+        var rest = clean.removePrefix(prefix).trim()
+        rest = rest.removePrefix("the ").removePrefix("my ").trim()
+        rest = rest.removeSuffix(" from here").removeSuffix(" se").removeSuffix(" hai").trim()
+        rest = rest.removePrefix("to ").trim()
+        if (rest.isBlank()) return null
+        // "how far is my battery" is not a distance question.
+        if (rest in setOf("battery", "storage", "internet")) return null
+        return rest
+    }
+
+    private fun navigateTargetOf(clean: String): String? {
+        val prefixes = listOf(
+            "navigate to ", "navigate ", "take me to ", "directions to ", "drive me to ",
+            "guide me to ", "how do i get to ", "raasta ", "le chalo ",
+        )
+        val prefix = prefixes.firstOrNull { clean.startsWith(it) } ?: return null
+        var rest = clean.removePrefix(prefix).trim()
+        rest = rest.removePrefix("the ").removePrefix("my ").trim()
+        return rest.ifBlank { null }
+    }
+
+    private fun replyTargetOf(clean: String): String {
+        val match = Regex("^reply\\s+(?:to\\s+)?([^:]+?)(?:\\s+(?:with|saying|saying:|:)\\s+.*)?$")
+            .find(clean) ?: return ""
+        return match.groupValues.getOrNull(1)?.trim().orEmpty()
+    }
+
+    private fun replyBodyOf(clean: String): String {
+        val marker = Regex("\\b(?:with|saying|bolo|kehdo)\\b|:")
+        val parts = marker.split(clean, limit = 2)
+        return if (parts.size == 2) parts[1].trim() else ""
+    }
+
+    private fun waterAmountOf(clean: String): Int = when {
+        clean.contains("bottle") -> 750
+        clean.contains("glass") || clean.contains("gilas") -> 250
+        else -> 250
+    }
+
+    private fun looksLikeMath(clean: String): Boolean {
+        val digits = clean.count { it.isDigit() }
+        val operators = clean.count { it in "+-*/^%" } +
+            (if (clean.contains(" plus ") || clean.contains(" minus ")) 1 else 0) +
+            (if (clean.contains(" times ") || clean.contains(" into ")) 1 else 0)
+        return digits >= 2 && operators >= 1
     }
 
     private suspend fun matchApp(context: Context, target: String): InstalledApp? {
