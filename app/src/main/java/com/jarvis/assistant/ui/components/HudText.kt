@@ -46,6 +46,14 @@ data class ClockSnapshot(
     val meridiem: String = "",
     val date: String = "",
     val time24: String = "--:--",
+    /**
+     * The wall clock in epoch milliseconds.
+     *
+     * Carried alongside the strings so anything that needs a real instant — the day ruler's cursor,
+     * for one — can have it without starting a second timer. This ticks once a second with the
+     * clock that is already on screen.
+     */
+    val millis: Long = 0L,
 ) {
     /** "2:52 PM" — the form used in speech and in one-line readouts. */
     val label: String get() = "$time $meridiem".trim()
@@ -66,6 +74,7 @@ data class ClockSnapshot(
             meridiem = meridiemFmt.format(now).uppercase(Locale.US),
             date = dateFmt.format(now).uppercase(Locale.US),
             time24 = time24Fmt.format(now),
+            millis = now.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
         )
     }
 }

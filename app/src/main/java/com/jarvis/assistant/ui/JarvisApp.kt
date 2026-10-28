@@ -55,6 +55,7 @@ import com.jarvis.assistant.automation.Workflow
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.DockPrefs
+import com.jarvis.assistant.data.HudGeometry
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
 import com.jarvis.assistant.device.BiometricPolicy
@@ -194,6 +195,8 @@ fun JarvisApp(
     var stepsToday by remember { mutableStateOf<Int?>(null) }
     var waterToday by remember { mutableIntStateOf(0) }
     var nextEvent by remember { mutableStateOf<String?>(null) }
+    var dayBlocks by remember { mutableStateOf<List<HudGeometry.DayBlock>>(emptyList()) }
+    var hasCalendar by remember { mutableStateOf(false) }
     LaunchedEffect(route) {
         if (route == ROUTE_DASHBOARD) {
             stepsToday = HealthLog.stepsToday(context)
@@ -205,6 +208,22 @@ fun JarvisApp(
                 }
             } catch (t: Throwable) {
                 null
+            }
+
+            // The day ruler wants the whole day, not the next event, and it wants it as fractions
+            // so the drawing code never has to know about time zones.
+            hasCalendar = CalendarBridge.canRead(context)
+            dayBlocks = try {
+                val zone = java.time.ZoneId.systemDefault()
+                val startOfDay = java.time.LocalDateTime.now(zone).toLocalDate()
+                    .atStartOfDay(zone).toInstant().toEpochMilli()
+                CalendarBridge.today(context, limit = 20)
+                    .orEmpty()
+                    .filterNot { it.allDay }
+                    .map { HudGeometry.Span(it.startMillis, it.endMillis) }
+                    .let { spans -> HudGeometry.dayBlocks(spans, dayStart = startOfDay) }
+            } catch (t: Throwable) {
+                emptyList()
             }
         }
     }
@@ -505,6 +524,9 @@ fun JarvisApp(
                     onOpenModules = { route = ROUTE_DASHBOARD },
                     onOpenDrawer = { route = ROUTE_DRAWER },
                     onOpenSettings = { route = ROUTE_SETTINGS },
+                    onOpenModule = { module ->
+                        route = if (module.id == HudModules.VOICE) ROUTE_HOME else module.id
+                    },
                 )
 
                 ROUTE_DASHBOARD -> DashboardScreen(
@@ -515,6 +537,8 @@ fun JarvisApp(
                         waterToday = HealthLog.waterToday(context)
                     },
                     nextEvent = nextEvent,
+                    dayBlocks = dayBlocks,
+                    hasCalendar = hasCalendar,
                     clock = clock,
                     status = status,
                     storage = storage,
@@ -968,6 +992,8 @@ fun JarvisApp(
                         waterToday = HealthLog.waterToday(context)
                     },
                     nextEvent = nextEvent,
+                    dayBlocks = dayBlocks,
+                    hasCalendar = hasCalendar,
                     isDockCustom = isDockCustom,
                     onLaunchApp = launchApp,
                     onEditDock = { slot -> dockEditSlot = slot; route = ROUTE_DOCK },

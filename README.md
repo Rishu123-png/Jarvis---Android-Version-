@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-22%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-23%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -88,6 +88,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [What he actually is](#what-he-actually-is)
 - [The brain](#the-brain)
 - [The curiosity](#the-curiosity)
+- [The dial](#the-dial)
 - [The eyes](#the-eyes)
 - [What he can do](#what-he-can-do)
 - [The lock, honestly](#the-lock-honestly)
@@ -207,6 +208,29 @@ person can speak.
 
 With an AI key stored, the model still answers general conversation — the shelf is the part that
 works with nothing configured at all, and the part that makes the next identical question free.
+
+---
+
+## The dial
+
+The reactor is the navigation now, not a picture of one.
+
+Every module sits on a ring around it — eleven labelled keys, rotated along the arc, flipped on the
+lower half so nothing is ever read upside down. Tap one and it opens. The centre of the dial is the
+microphone and nothing else, because the ring is built from eleven real touch targets rather than one
+clever full-screen hit test; the orb keeps its tap by construction, not by luck.
+
+Around it, the instrument furniture that makes a HUD feel alive rather than decorated:
+
+| | |
+| --- | --- |
+| **Micro-readings** | A strip of the smallest numbers on the screen — `BAT 84 · MEM 61 · STO 44 · LINK · LIVE 11/11`. Every value is measured. A reading that is not available is dropped, never filled in with something plausible. |
+| **Crosshairs** | One hairline pass through the dial and four cardinal ticks. Cheapest way to make a circle read as an instrument. |
+| **The day ruler** | The whole day as one bar: your events as blocks, six-hour marks, and a cursor at now. The dashboard used to answer "what is next", which is the least useful form of the question at four in the afternoon. |
+
+**What it costs:** nothing measurable. The ring canvas reads no animation state, so it paints when
+the module list changes and not per frame; label text is measured once per list, not inside `onDraw`.
+No service, no worker, no new dependency — it is drawing, and it stops when the screen is off.
 
 ---
 
@@ -369,7 +393,7 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 22 JVM suites
+./gradlew :app:testDebugUnitTest    # 23 JVM suites
 ```
 
 Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
@@ -390,7 +414,7 @@ no assistant.
 | Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
 | Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |
 
-**Verified by CI:** compilation, 22 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 23 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -460,7 +484,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-22 JVM suites, run before every APK in CI.
+23 JVM suites, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|
