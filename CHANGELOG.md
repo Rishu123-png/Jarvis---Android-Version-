@@ -4,13 +4,20 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
-## 1.0.0 — versionCode 21
+## 1.0.0 — versionCode 22
 
 **The version number restarts here.** From this release on, JARVIS is **1.0.0** and stays there in
 every build; `versionCode` is what increases. The earlier 2.x names were internal scaffolding, and a
 family member released to family should not be called 2.4.
 
 Everything below is new in this release.
+
+**The dial (same version).** The reactor is the navigation now: eleven module keys around the ring,
+labelled along the arc and flipped on the lower half so nothing reads upside down, each with its own
+46 dp touch target — the centre of the dial stays the microphone because the ring does not cover it.
+A micro-reading strip (`BAT · MEM · STO · LINK · LIVE`), crosshairs and cardinal ticks on the dial,
+and a day ruler across the whole day with a cursor at now. All of it is drawing: no service, no
+worker, no new dependency, nothing runs when the screen is off. **versionCode 22**, 23 suites.
 
 **The eyes and the suitcase (same version).** He can look at something — *"look at this"*, *"read
 this"*, *"yeh kya hai"* — take one frame with his own capture surface, shrink it by subsampling at

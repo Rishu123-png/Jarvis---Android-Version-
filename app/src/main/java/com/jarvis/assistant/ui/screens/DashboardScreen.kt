@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.data.BootSequence
 import com.jarvis.assistant.device.DeviceInfo
 import com.jarvis.assistant.data.HudModule
+import com.jarvis.assistant.data.HudGeometry
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
 import com.jarvis.assistant.device.StorageStatus
@@ -54,11 +55,15 @@ import com.jarvis.assistant.device.SystemStatus
 import com.jarvis.assistant.ui.components.AppDock
 import com.jarvis.assistant.ui.components.ArcReactor
 import com.jarvis.assistant.ui.components.BlinkingCursor
+import com.jarvis.assistant.ui.components.DayRuler
 import com.jarvis.assistant.ui.components.ClockSnapshot
 import com.jarvis.assistant.ui.components.HudChip
 import com.jarvis.assistant.ui.components.HudPanel
 import com.jarvis.assistant.ui.components.HudTile
+import com.jarvis.assistant.ui.components.MicroReading
+import com.jarvis.assistant.ui.components.MicroStrip
 import com.jarvis.assistant.ui.components.PulseDot
+import com.jarvis.assistant.ui.components.RingNav
 import com.jarvis.assistant.ui.components.SectionHeader
 import com.jarvis.assistant.ui.components.TelemetryStat
 import com.jarvis.assistant.ui.components.Typewriter
@@ -97,6 +102,10 @@ fun DashboardScreen(
     onAddWater: () -> Unit,
     /** The next calendar event, as "Standup · 4:00 PM", or null. */
     nextEvent: String?,
+    /** Today's events, already reduced to blocks on the day ruler. */
+    dayBlocks: List<HudGeometry.DayBlock>,
+    /** False when calendar access is off, so the ruler says so instead of drawing an empty day. */
+    hasCalendar: Boolean,
     isDockCustom: Boolean,
     onLaunchApp: (InstalledApp) -> Unit,
     onEditDock: (slot: Int) -> Unit,
@@ -133,7 +142,59 @@ fun DashboardScreen(
                 clock = clock,
                 status = status,
                 statusNote = BootSequence.statusNotes[statusNoteIndex],
+                notificationCount = notificationCount,
+                onOpenModule = onOpenModule,
             )
+        }
+
+        item(key = "micro") {
+            MicroStrip(
+                readings = buildList {
+                    add(
+                        MicroReading(
+                            "BAT",
+                            "${status.battery.percent}%",
+                            if (status.battery.isCharging) StatusGreen else IceBlue,
+                        ),
+                    )
+                    add(MicroReading("MEM", "${status.memory.percent}%"))
+                    add(MicroReading("STO", "${storage.percentUsed}%"))
+                    add(
+                        MicroReading(
+                            "LINK",
+                            status.network.transport,
+                            if (status.network.connected) ElectricCyan else AlertRed,
+                        ),
+                    )
+                    add(
+                        MicroReading(
+                            "LIVE",
+                            "${HudModules.all.count { it.isLive }}/${HudModules.all.size}",
+                        ),
+                    )
+                },
+                leadingDot = StatusGreen,
+            )
+        }
+
+        item(key = "day") {
+            HudPanel(
+                label = "THE DAY",
+                accent = IceBlue,
+                trailing = { HudChip(text = clock.label, accent = IceBlue) },
+            ) {
+                DayRuler(
+                    blocks = dayBlocks,
+                    nowFraction = HudGeometry.dayFraction(
+                        millis = clock.millis,
+                        dayStart = HudGeometry.startOfDay(
+                            clock.millis,
+                            java.util.TimeZone.getDefault().getOffset(clock.millis),
+                        ),
+                    ),
+                    hasCalendar = hasCalendar,
+                )
+            }
         }
 
         item(key = "stats") {
@@ -412,17 +473,20 @@ private fun ReactorBlock(
     clock: ClockSnapshot,
     status: SystemStatus,
     statusNote: String,
+    notificationCount: Int,
+    onOpenModule: (HudModule) -> Unit,
 ) {
     val battery = status.battery
     BoxWithConstraints(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
-        val diameter: Dp = minOf(maxWidth * 0.86f, 320.dp)
+        val diameter: Dp = minOf(maxWidth * 0.98f, 336.dp)
 
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(modifier = Modifier.size(diameter), contentAlignment = Alignment.Center) {
             ArcReactor(
-                diameter = diameter,
+                diameter = diameter * 0.80f,
                 powerLevel = battery.percent,
                 isCharging = battery.isCharging,
                 accent = ElectricCyan,
@@ -463,6 +527,17 @@ private fun ReactorBlock(
                         )
                     }
                 }
+            }
+
+            RingNav(
+                modules = HudModules.all,
+                onOpen = onOpenModule,
+                badges = if (notificationCount > 0) {
+                    mapOf(HudModules.NOTIFICATIONS to notificationCount.toString())
+                } else {
+                    emptyMap()
+                },
+            )
             }
 
             Spacer(Modifier.height(10.dp))

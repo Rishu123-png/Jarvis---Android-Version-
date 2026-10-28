@@ -49,10 +49,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.jarvis.assistant.device.SystemStatus
+import com.jarvis.assistant.data.HudModule
+import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.ui.components.ArcReactor
 import com.jarvis.assistant.ui.components.ClockSnapshot
 import com.jarvis.assistant.ui.components.HudChip
+import com.jarvis.assistant.ui.components.MicroReading
+import com.jarvis.assistant.ui.components.MicroStrip
 import com.jarvis.assistant.ui.components.PulseDot
+import com.jarvis.assistant.ui.components.RingNav
 import com.jarvis.assistant.ui.components.VoiceTaskCard
 import com.jarvis.assistant.ui.theme.AlertRed
 import com.jarvis.assistant.ui.theme.Amber
@@ -87,6 +92,7 @@ fun HomeScreen(
     onOpenModules: () -> Unit,
     onOpenDrawer: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenModule: (HudModule) -> Unit,
 ) {
     val context = LocalContext.current
     val task by VoiceController.state.collectAsState()
@@ -143,10 +149,31 @@ fun HomeScreen(
 
             Spacer(Modifier.weight(1f))
 
-            OrbBlock(clock = clock, status = status, task = task, onTap = { tapOrb() })
+            OrbBlock(
+                clock = clock,
+                status = status,
+                task = task,
+                notificationCount = notificationCount,
+                onTap = { tapOrb() },
+                onOpenModule = onOpenModule,
+            )
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(12.dp))
             PhaseHint(task)
+
+            Spacer(Modifier.height(10.dp))
+            MicroStrip(
+                readings = buildList {
+                    add(MicroReading("BAT", "${status.battery.percent}%",
+                        if (status.battery.isCharging) StatusGreen else IceBlue))
+                    add(MicroReading("MEM", "${status.memory.percent}%"))
+                    add(MicroReading("LINK", status.network.transport,
+                        if (status.network.connected) ElectricCyan else AlertRed))
+                    add(MicroReading("MOD", "${HudModules.all.count { it.isLive }}",
+                        IceBlue))
+                },
+                leadingDot = if (task.phase == VoicePhase.LISTENING) Amber else StatusGreen,
+            )
 
             Spacer(Modifier.weight(0.7f))
 
@@ -269,7 +296,9 @@ private fun OrbBlock(
     clock: ClockSnapshot,
     status: SystemStatus,
     task: VoiceTask,
+    notificationCount: Int,
     onTap: () -> Unit,
+    onOpenModule: (HudModule) -> Unit,
 ) {
     val accent = when (task.phase) {
         VoicePhase.LISTENING -> Amber
@@ -284,15 +313,18 @@ private fun OrbBlock(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
-        val diameter: Dp = minOf(maxWidth * 0.82f, 330.dp)
+        // The dial is the hero now: the reactor shrinks to eighty per cent of it and the modules
+        // take the ring, so opening one is a single gesture from the home screen.
+        val diameter: Dp = minOf(maxWidth * 0.94f, 344.dp)
 
+        Box(modifier = Modifier.size(diameter), contentAlignment = Alignment.Center) {
         ArcReactor(
             modifier = Modifier.clickable(
                 interactionSource = interaction,
                 indication = null,
                 onClick = onTap,
             ),
-            diameter = diameter,
+            diameter = diameter * 0.80f,
             powerLevel = battery.percent,
             isCharging = battery.isCharging,
             accent = accent,
@@ -339,6 +371,19 @@ private fun OrbBlock(
                     )
                 }
             }
+        }
+
+        // Drawn after the reactor, so these ten touch targets sit on top of it. They cover only the
+        // ring, which leaves the centre — the microphone — untouched.
+        RingNav(
+            modules = HudModules.all,
+            onOpen = onOpenModule,
+            badges = if (notificationCount > 0) {
+                mapOf(HudModules.NOTIFICATIONS to notificationCount.toString())
+            } else {
+                emptyMap()
+            },
+        )
         }
     }
 }
