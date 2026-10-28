@@ -835,6 +835,9 @@ fun JarvisApp(
                     onOpenModules = { route = ROUTE_DASHBOARD },
                     onOpenDrawer = { route = ROUTE_DRAWER },
                     onOpenSettings = { route = ROUTE_SETTINGS },
+                    onOpenModule = { module ->
+                        route = if (module.id == HudModules.VOICE) ROUTE_HOME else module.id
+                    },
                 )
 
                 HudModules.AUTOMATION -> AutomationScreen(
