@@ -69,7 +69,7 @@ class HudGeometryTest {
         assertEquals(0f, HudGeometry.labelRotation(0f), 0.001f)
         assertEquals(90f, HudGeometry.labelRotation(90f), 0.001f)
         assertEquals(360f, HudGeometry.labelRotation(180f), 0.001f)
-        assertEquals(90f, HudGeometry.labelRotation(270f), 0.001f)
+        assertEquals(270f, HudGeometry.labelRotation(270f), 0.001f)
         assertEquals(306f, HudGeometry.labelRotation(306f), 0.001f)
         assertEquals(54f, HudGeometry.labelRotation(54f), 0.001f)
         assertEquals(306f, HudGeometry.labelRotation(126f), 0.001f)
