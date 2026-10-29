@@ -33,7 +33,7 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 25
+        versionCode = 26
         versionName = "1.0.0"
 
         vectorDrawables { useSupportLibrary = true }
@@ -131,6 +131,14 @@ dependencies {
 
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
+
+    /*
+     * "Hey Jarvis", offline. Vosk is the only wake-word engine that is free, needs no account or
+     * access key, and runs on the device. JNA is its native bridge. The model (~40 MB) is not in the
+     * APK: the app downloads it once, the first time the operator turns the wake word on.
+     */
+    implementation("net.java.dev.jna:jna:5.18.1@aar")
+    implementation("com.alphacephei:vosk-android:0.3.75@aar")
 
     /*
      * Tests.

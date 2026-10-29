@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.jarvis.assistant.ui.JarvisApp
+import com.jarvis.assistant.device.LegacyAccounts
 import com.jarvis.assistant.voice.AssistantHandoff
+import com.jarvis.assistant.wake.WakeWord
 import com.jarvis.assistant.ui.theme.JarvisTheme
 import com.jarvis.assistant.ui.theme.VoidBlack
 
@@ -34,6 +36,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LegacyAccounts.wipe(applicationContext)
+        WakeWord.resumeIfEnabled(applicationContext)
         voiceArmed = wantsVoice(intent)
         startRoute = routeOf(intent)
 

@@ -12,6 +12,15 @@ family member released to family should not be called 2.4.
 
 Everything below is new in this release.
 
+**"Hey Jarvis" (same version).** Opt-in, offline, no account: Vosk listens for the phrase through a
+grammar of exactly two alternatives, so ordinary speech does not wake him. The model (~40 MB) downloads
+once on first use and is checked by its contents. While on, a foreground microphone service shows the
+system indicator and a *TURN OFF* button. On a hit it opens JARVIS listening and re-arms after ~10 s.
+Battery cost is an estimate until measured on a device. **Removed:** the Instagram module and its
+analytics, the Connections screen, and the Instagram and Google Drive / Gmail logins. Their stored
+tokens are deleted on first launch. Both are in git history if you ever want them back.
+**versionCode 26**.
+
 **The assistant button (same version).** Hold the assistant key and he opens already listening. This
 is Android's own assistant role (`ROLE_ASSISTANT`), not a wake word: the system starts a
 `VoiceInteractionSession`, the session hands over to the app with the voice extra the bubble and the

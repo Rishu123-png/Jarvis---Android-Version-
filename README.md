@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-27%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-28%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -90,6 +90,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [The curiosity](#the-curiosity)
 - [The sky](#the-sky)
 - [The assistant button](#the-assistant-button)
+- [Hey Jarvis](#hey-jarvis)
 - [The crew](#the-crew)
 - [The dial](#the-dial)
 - [The eyes](#the-eyes)
@@ -247,11 +248,32 @@ by this phone* — and the button opens Android's own dialog. It also tells you 
 hidden on your brand: HyperOS, ColorOS, One UI, Funtouch and Moto each bury it somewhere different,
 and a wrong instruction is worse than none.
 
-**Why not a wake word.** Android closed that door to third-party apps: from Android 12,
-`AlwaysOnHotwordDetector` is a system API and "intended for use by Assistant apps with system-level
-privileges". The only remaining route is a foreground service holding the microphone — 1–3% of the
-battery every hour, ~40–70 MB of RAM, a permanent notification, and it still dies in Doze. The
-gesture costs nothing instead.
+The gesture costs nothing when you don't use it. For a hands-free start there is also **"Hey
+Jarvis"** (below), which is opt-in and does cost battery while it is on.
+
+## Hey Jarvis
+
+Say **"Hey Jarvis"** and he opens listening. It is off until you turn it on in
+**Advanced → HEY JARVIS**.
+
+- **Engine:** [Vosk](https://alphacephei.com/vosk/), offline, Apache 2.0. No account, no access key,
+  no cloud. The recogniser is given a grammar of exactly two alternatives — the phrase and the
+  engine's "unknown" token — so ordinary speech does not wake him.
+- **The model** (`vosk-model-small-en-us-0.15`, ~40 MB) downloads once, the first time you turn it
+  on, from the Vosk project. It is kept in the app's private storage and checked by its contents
+  before use. Nothing else is downloaded.
+- **While it is on:** a foreground service holds the microphone. Android shows its microphone
+  indicator and a notification the whole time, with a *TURN OFF* button. It listens only while
+  switched on; turning it off stops the service.
+- **On a hit:** it releases the microphone, opens JARVIS listening, and re-arms after about 10
+  seconds. If the phone's own assistant is already holding the microphone, the notification says
+  "tap to talk" instead.
+- **After a reboot:** it resumes the first time you open JARVIS, not before. Android does not let an
+  app start a microphone service from a boot broadcast.
+
+**The honest cost.** Listening uses battery the whole time it is on. The figure of 1–3% an hour is
+an estimate, not a measurement; measure it on your own phone before you rely on it. Turn it off
+when you don't need it.
 
 ## The crew
 
@@ -469,7 +491,7 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 27 JVM suites
+./gradlew :app:testDebugUnitTest    # 28 JVM suites
 ```
 
 Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
@@ -486,11 +508,11 @@ no assistant.
 | Replace the lock screen | Removed from Android in 5.0. No API exists. |
 | Read your PIN, pattern or fingerprint | Only *pass* or *fail* is ever returned to an app. |
 | Send WhatsApp with zero taps when there is no live notification | App sandbox. His route is notification reply → `wa.me` link → in-app search. |
-| Always-on wake word | Android gives the efficient path (`AlwaysOnHotwordDetector`) to system apps only. A third-party one is a foreground service holding the mic: 1–3%/hr, ~40–70 MB, and still deaf in Doze. He uses the assistant key instead. |
+| Always-on wake word | Android gives its efficient hardware path only to system apps. So "Hey Jarvis" is opt-in: a foreground service listens while you have it on, and costs battery while it does. He uses the assistant key when the wake word is off. |
 | Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
 | Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |
 
-**Verified by CI:** compilation, 27 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 28 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -503,14 +525,13 @@ app/src/main/java/com/jarvis/assistant/
 ├── MainActivity.kt               single activity, Compose host
 ├── ai/                           your key, any provider, JSON + free conversation
 ├── automation/                   the engine: 19 actions, conditions, triggers, screen agent
-├── connect/                      Instagram, Google Drive + Gmail (read-only), OAuth
 ├── data/                         PhraseBook (~400 phrasings) · Units · When · command line
 ├── device/                       the phone itself: files, gallery, location, health, calendar,
 │                                 contacts, notifications, voice notes, lock, biometrics
 ├── shell/                        Shizuku user service (optional, adb-level, no root)
-├── social/                       Instagram analytics
 ├── ui/                           Home · Dashboard · Lock · Privacy · Terminal · Voice
-└── voice/                        Brain (memory) · IntentRouter · Language · Persona · FollowUp
+├── voice/                        Brain (memory) · IntentRouter · Language · Persona · FollowUp
+└── wake/                         "Hey Jarvis": Vosk grammar, one-time model download, service
 ```
 
 **The turn, end to end:**
@@ -547,7 +568,7 @@ app/src/main/java/com/jarvis/assistant/
 | | |
 |---|---|
 | **Backend** | None. There is no JARVIS server, no account, no sync. |
-| **Network** | Only: your own AI key's provider, one optional router for road distance, a connector you set up, or a URL you asked for. |
+| **Network** | Only: your own AI key's provider, one optional router for road distance, a one-time voice-model download when you turn on Hey Jarvis, or a URL you asked for. |
 | **Memory** | A preferences file on this phone. Read it in Advanced; wipe it with one key. |
 | **Keys** | Android Keystore (`AES/GCM`). Never in this repository. |
 | **Notifications** | Held in memory only, dropped when the listener disconnects. |
@@ -560,7 +581,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-27 JVM suites, run before every APK in CI.
+28 JVM suites, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|
