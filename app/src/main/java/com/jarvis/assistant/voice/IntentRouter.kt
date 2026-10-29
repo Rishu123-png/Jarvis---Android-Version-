@@ -7,11 +7,13 @@ import com.jarvis.assistant.ai.AiMessage
 import com.jarvis.assistant.ai.AiResult
 import com.jarvis.assistant.ai.JsonReply
 import com.jarvis.assistant.automation.AccessibilityStatus
+import com.jarvis.assistant.automation.Crew
 import com.jarvis.assistant.automation.ActionType
 import com.jarvis.assistant.automation.JarvisAccessibilityService
 import com.jarvis.assistant.automation.ParamKind
 import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.Knowledge
+import com.jarvis.assistant.data.Lane
 import com.jarvis.assistant.data.PhraseBook
 import com.jarvis.assistant.data.ResearchDesk
 import com.jarvis.assistant.data.PhraseIntent
@@ -1207,8 +1209,11 @@ object IntentRouter {
         }
 
         val question = Sight.question(heard, lang)
+        // The camera is hardware, not the screen, but only one thing may hold it: same lock.
         val outcome = try {
-            Vision.look(context, question, Sight.prompt(lang))
+            Crew.exclusive(Lane.DEVICE, "SIGHT", "") {
+                Vision.look(context, question, Sight.prompt(lang))
+            }
         } catch (t: Throwable) {
             Vision.Outcome.Failed("I could not use the camera.")
         }
@@ -1277,8 +1282,11 @@ object IntentRouter {
             )
         }
 
+        // Read-only, so it does not queue behind whatever is driving the screen.
         val outcome = try {
-            Research.look(asked, wiki = ResearchTalk.wikiOf(lang))
+            Crew.read(Lane.RESEARCH, "LOOKUP", asked) {
+                Research.look(asked, wiki = ResearchTalk.wikiOf(lang))
+            }
         } catch (t: Throwable) {
             Research.Outcome.Unreachable(t.javaClass.simpleName)
         }

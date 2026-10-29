@@ -4,9 +4,11 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import com.jarvis.assistant.automation.Crew
 import com.jarvis.assistant.automation.SpeechOut
 import com.jarvis.assistant.automation.StepExecutor
 import com.jarvis.assistant.automation.WorkflowStep
+import com.jarvis.assistant.data.Lane
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -281,9 +283,39 @@ object VoiceController {
             return
         }
 
+        // Everything from here touches the phone, so it holds the one device lock. A routine that
+        // is already running will make this wait, and the ACTIVITY board will say QUEUED rather
+        // than leaving the operator wondering why nothing is happening.
+        val failure = Crew.exclusive(Lane.DEVICE, "VOICE", plan.title) {
+            runDeviceWork(context, id, plan)
+        }
+
+        if (id != taskId) return
+
+        if (failure == null) {
+            _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = plan.say, error = null)
+            speak(context, plan.say, spokenLanguage)
+            scheduleDismiss(id)
+        } else {
+            _state.value = _state.value.copy(phase = VoicePhase.FAILED, reply = failure, error = failure)
+            speak(context, failure)
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * The fixed steps, then the screen-aware loop if the request needed one.
+     *
+     * Extracted so the whole of it can sit inside one [Crew.exclusive] block: a half-held lock —
+     * steps run, screen task forgotten — would be worse than no lock at all.
+     */
+    private suspend fun runDeviceWork(context: Context, id: Int, plan: VoicePlan): String? {
         var failure: String? = null
         for ((index, step) in plan.steps.withIndex()) {
-            if (id != taskId) return
+            if (id != taskId) return null
             mark(id, index, StepPhase.ACTIVE)
 
             val outcome = withTimeoutOrNull(STEP_TIMEOUT_MS) {
@@ -310,29 +342,16 @@ object VoiceController {
             delay(220)
         }
 
-        if (id != taskId) return
+        if (id != taskId) return failure
 
         // The fixed steps are done; if the request needed an app JARVIS cannot predict, the
         // screen-aware loop finishes the job one tap at a time.
         val goal = plan.screenGoal
         if (failure == null && goal != null) {
             failure = runScreenTask(context, id, goal)
-            if (id != taskId) return
         }
-
-        if (failure == null) {
-            _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = plan.say, error = null)
-            speak(context, plan.say, spokenLanguage)
-            scheduleDismiss(id)
-        } else {
-            _state.value = _state.value.copy(phase = VoicePhase.FAILED, reply = failure, error = failure)
-            speak(context, failure)
-        }
+        return failure
     }
-
-    // ---------------------------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------------------------
 
     /**
      * Runs the observe → decide → act loop and streams every action onto the card, so a long task

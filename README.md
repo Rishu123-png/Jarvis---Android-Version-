@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-23%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-25%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -88,6 +88,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [What he actually is](#what-he-actually-is)
 - [The brain](#the-brain)
 - [The curiosity](#the-curiosity)
+- [The crew](#the-crew)
 - [The dial](#the-dial)
 - [The eyes](#the-eyes)
 - [What he can do](#what-he-can-do)
@@ -208,6 +209,33 @@ person can speak.
 
 With an AI key stored, the model still answers general conversation — the shelf is the part that
 works with nothing configured at all, and the part that makes the next identical question free.
+
+---
+
+## The crew
+
+One brain, four lanes, one arbiter — and it is not the thing the concept renders show.
+
+There is one screen, one microphone and one voice on a phone. Two "agents" acting at once would both
+read the same window and both tap it, and two model calls would cost twice the wait for half the
+sense. So the rule is narrower and true:
+
+| Lane | What it is | May run alongside others? |
+| --- | --- | --- |
+| **DEVICE** | Spoken commands, screen tasks, the camera | no — it holds the phone |
+| **ROUTINES** | Your trigger-driven workflows | no — same lock as DEVICE |
+| **RESEARCH** | Look-ups and the knowledge shelf | yes |
+| **ALERTS** | What is waiting in the shade | yes |
+
+Anything that touches the screen takes **one shared lock**. The second thing to want it says
+**QUEUED** instead of silently doing nothing. The read-only lanes never wait, because a look-up does
+not fight anybody for the display.
+
+`ACTIVITY` (under the day ruler) shows all four lanes live, then the real history: what each routine
+did and what trigger fired it, what is on the knowledge shelf, and every piece of work this session.
+
+**No avatars. No invented task counts. No percentage bars.** A number on that screen came from a run
+that happened, because a number on that screen is a claim.
 
 ---
 
@@ -393,7 +421,7 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 23 JVM suites
+./gradlew :app:testDebugUnitTest    # 25 JVM suites
 ```
 
 Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
@@ -414,7 +442,7 @@ no assistant.
 | Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
 | Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |
 
-**Verified by CI:** compilation, 23 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 25 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -484,7 +512,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-23 JVM suites, run before every APK in CI.
+25 JVM suites, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|

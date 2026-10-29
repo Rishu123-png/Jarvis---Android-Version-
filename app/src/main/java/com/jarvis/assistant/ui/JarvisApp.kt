@@ -56,6 +56,7 @@ import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.DockPrefs
 import com.jarvis.assistant.data.HudGeometry
+import com.jarvis.assistant.data.NeedsYou
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
 import com.jarvis.assistant.device.BiometricPolicy
@@ -81,6 +82,7 @@ import com.jarvis.assistant.ui.screens.ConnectorsScreen
 import com.jarvis.assistant.ui.screens.InstagramScreen
 import com.jarvis.assistant.ui.screens.AppDrawerScreen
 import com.jarvis.assistant.ui.screens.AutomationEditorScreen
+import com.jarvis.assistant.ui.screens.ActivityScreen
 import com.jarvis.assistant.ui.screens.AutomationScreen
 import com.jarvis.assistant.ui.screens.ComposeScreen
 import com.jarvis.assistant.ui.screens.ControlsScreen
@@ -122,6 +124,7 @@ private const val ROUTE_ROUTINE = "routine"
 private const val ROUTE_AI = "ai"
 private const val ROUTE_COMPOSE = "compose"
 private const val ROUTE_ADVANCED = "advanced"
+private const val ROUTE_ACTIVITY = "activity"
 
 /** True when JARVIS may post its own notifications (always true below Android 13). */
 private fun canPostNotifications(context: android.content.Context): Boolean =
@@ -197,6 +200,8 @@ fun JarvisApp(
     var nextEvent by remember { mutableStateOf<String?>(null) }
     var dayBlocks by remember { mutableStateOf<List<HudGeometry.DayBlock>>(emptyList()) }
     var hasCalendar by remember { mutableStateOf(false) }
+    var nextUp by remember { mutableStateOf<List<NeedsYou.AgendaRow>>(emptyList()) }
+    var nextEventMillis by remember { mutableLongStateOf(0L) }
     LaunchedEffect(route) {
         if (route == ROUTE_DASHBOARD) {
             stepsToday = HealthLog.stepsToday(context)
@@ -224,6 +229,22 @@ fun JarvisApp(
                     .let { spans -> HudGeometry.dayBlocks(spans, dayStart = startOfDay) }
             } catch (t: Throwable) {
                 emptyList()
+            }
+
+            // NEXT UP and the NEEDS YOU card read the same three events; asking the calendar twice
+            // for the same list would be wasteful and could disagree with itself a second apart.
+            val agenda = try {
+                CalendarBridge.upcoming(context, days = 1, limit = 4).orEmpty()
+            } catch (t: Throwable) {
+                emptyList()
+            }
+            nextEventMillis = agenda.firstOrNull()?.startMillis ?: 0L
+            nextUp = agenda.take(3).map { event ->
+                NeedsYou.AgendaRow(
+                    title = event.title,
+                    whenLabel = if (event.allDay) "all day" else CalendarBridge.clockOf(event.startMillis),
+                    allDay = event.allDay,
+                )
             }
         }
     }
@@ -255,6 +276,30 @@ fun JarvisApp(
     var isHomeApp by remember { mutableStateOf(LauncherStatus.isDefaultLauncher(context)) }
     var hasNotificationAccess by remember { mutableStateOf(NotificationAccess.isGranted(context)) }
     val notifications by NotificationRepository.notifications.collectAsState()
+
+    // What is waiting on the operator. Recomputed only when the inputs actually change — a new
+    // notification, the next event moving, or the battery stepping — never on a timer.
+    val needs = remember(notifications, nextEventMillis, status.battery.percent) {
+        val messageItems = notifications.filter { item ->
+            NotifyBrain.classify(item.packageName, item.appLabel, item.title, item.text, false).kind ==
+                com.jarvis.assistant.device.NotificationKind.MESSAGE
+        }
+        NeedsYou.rows(
+            NeedsYou.Facts(
+                unreadMessages = messageItems.size,
+                senders = messageItems
+                    .sortedByDescending { it.postedAt }
+                    .map { it.title.ifBlank { it.appLabel } }
+                    .filter { it.isNotBlank() },
+                alertsAvailable = NotificationRepository.hasAccess(context),
+                nextEventTitle = nextEvent,
+                nextEventMillis = nextEventMillis,
+                batteryPercent = status.battery.percent,
+                charging = status.battery.isCharging,
+            ),
+        )
+    }
+
 
     // ---- controls ----
     var torchOn by remember { mutableStateOf(false) }
@@ -539,6 +584,8 @@ fun JarvisApp(
                     nextEvent = nextEvent,
                     dayBlocks = dayBlocks,
                     hasCalendar = hasCalendar,
+                    needs = needs,
+                    nextUp = nextUp,
                     clock = clock,
                     status = status,
                     storage = storage,
@@ -559,6 +606,7 @@ fun JarvisApp(
                         route = if (module.id == HudModules.VOICE) ROUTE_HOME else module.id
                     },
                     onOpenTerminal = { route = ROUTE_TERMINAL },
+                    onOpenActivity = { route = ROUTE_ACTIVITY },
                 )
 
                 ROUTE_TERMINAL -> TerminalScreen(
@@ -927,6 +975,8 @@ fun JarvisApp(
                     onBack = { route = ROUTE_DASHBOARD },
                 )
 
+                ROUTE_ACTIVITY -> ActivityScreen(onBack = { route = ROUTE_DASHBOARD })
+
                 ROUTE_COMPOSE -> ComposeScreen(
                     aiConfigured = aiConfig != null,
                     onSave = { planned ->
@@ -997,6 +1047,8 @@ fun JarvisApp(
                     nextEvent = nextEvent,
                     dayBlocks = dayBlocks,
                     hasCalendar = hasCalendar,
+                    needs = needs,
+                    nextUp = nextUp,
                     isDockCustom = isDockCustom,
                     onLaunchApp = launchApp,
                     onEditDock = { slot -> dockEditSlot = slot; route = ROUTE_DOCK },
@@ -1004,6 +1056,7 @@ fun JarvisApp(
                     onOpenSettings = { route = ROUTE_SETTINGS },
                     onOpenModule = { module -> route = module.id },
                     onOpenTerminal = { route = ROUTE_TERMINAL },
+                    onOpenActivity = { route = ROUTE_ACTIVITY },
                 )
             }
         }
