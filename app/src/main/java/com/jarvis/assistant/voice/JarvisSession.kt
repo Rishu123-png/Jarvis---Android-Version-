@@ -19,8 +19,32 @@ import android.service.voice.VoiceInteractionSession
  */
 class JarvisSession(context: Context) : VoiceInteractionSession(context) {
 
-    override fun onShow(args: Bundle?) {
-        super.onShow(args)
+    /** Guards against handing over twice if both show forms ever arrive. */
+    private var handed = false
+
+    /** Android 12 and later. */
+    override fun onShow(args: Bundle?, showFlags: Int) {
+        super.onShow(args, showFlags)
+        handOver()
+    }
+
+    /**
+     * Android 10 and 11.
+     *
+     * Deliberately **not** marked `override`: Android 12 replaced the one-argument `onShow` with the
+     * two-argument form, so this signature no longer exists to override in the SDK we compile
+     * against — but it is still exactly the method an older system calls on this object at runtime.
+     * Same JVM signature, so the dispatch lands here. Removing it would leave the gesture doing
+     * nothing at all on Android 10 and 11.
+     */
+    @Suppress("unused")
+    fun onShow(args: Bundle?) {
+        handOver()
+    }
+
+    private fun handOver() {
+        if (handed) return
+        handed = true
         try {
             AssistantHandoff.open(context)
         } catch (t: Throwable) {
