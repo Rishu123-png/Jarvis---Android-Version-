@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>J.A.R.V.I.S. — capability chart</title>
+<meta name="description" content="What JARVIS can do, what he cannot do, and why — one page, no marketing." />
+<style>
+  :root{
+    --void:#03070D; --navy:#091421; --panel:#0A1725; --panel2:#0C1C2C;
+    --hair:#152A3D; --hair2:#1D3A52;
+    --cyan:#16C8FF; --ice:#8BEAFF; --red:#FF465C; --green:#48E5A2; --amber:#FFB454;
+    --text:#E7F6FF; --dim:#8FB3C9; --muted:#4E6E85;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:
+      radial-gradient(900px 620px at 50% -12%,rgba(22,200,255,.13),transparent 62%),
+      linear-gradient(#01040A,#02070E 40%,#01040A);
+    color:var(--text);min-height:100vh;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:26px 18px 60px;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background-image:linear-gradient(rgba(22,200,255,.035) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(22,200,255,.035) 1px,transparent 1px);
+    background-size:52px 52px;
+    mask-image:radial-gradient(900px 700px at 50% 0%,#000 20%,transparent 80%);
+    -webkit-mask-image:radial-gradient(900px 700px at 50% 0%,#000 20%,transparent 80%);
+  }
+  .wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto}
+
+  /* ---------------- header ---------------- */
+  header{display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding-bottom:20px;border-bottom:1px solid var(--hair)}
+  .reactor{width:74px;height:74px;flex:0 0 auto}
+  .reactor .spin-a{transform-origin:37px 37px;animation:spin 9s linear infinite}
+  .reactor .spin-b{transform-origin:37px 37px;animation:spin 5.5s linear infinite reverse}
+  .reactor .core{animation:pulse 2.6s ease-in-out infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes pulse{0%,100%{opacity:.82;transform:scale(1)}50%{opacity:1;transform:scale(1.1)}}
+  @media (prefers-reduced-motion:reduce){
+    .reactor *{animation:none !important}
+    body::after{display:none}
+  }
+  .titles{flex:1 1 320px;min-width:280px}
+  h1{font-size:20px;letter-spacing:.3em;font-weight:300;line-height:1.2}
+  .sub{margin-top:7px;font-size:11px;letter-spacing:.14em;color:var(--muted);font-family:var(--mono)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+  .chip{
+    font-family:var(--mono);font-size:9px;letter-spacing:.16em;padding:4px 8px;
+    border:1px solid rgba(22,200,255,.4);color:var(--cyan);white-space:nowrap;
+  }
+  .chip.g{border-color:rgba(72,229,162,.45);color:var(--green)}
+  .chip.r{border-color:rgba(255,70,92,.45);color:var(--red)}
+  .chip.a{border-color:rgba(255,180,84,.45);color:var(--amber)}
+  .chip.m{border-color:rgba(78,110,133,.45);color:var(--dim)}
+
+  /* ---------------- legend ---------------- */
+  .legend{display:flex;gap:20px;flex-wrap:wrap;margin:18px 0 6px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--dim)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .dot{width:8px;height:8px;display:inline-block}
+  .dot.g{background:var(--green);box-shadow:0 0 10px rgba(72,229,162,.7)}
+  .dot.r{background:var(--red);box-shadow:0 0 10px rgba(255,70,92,.7)}
+  .dot.a{background:var(--amber);box-shadow:0 0 10px rgba(255,180,84,.6)}
+
+  /* ---------------- meters ---------------- */
+  .meters{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:1px;
+    background:var(--hair);border:1px solid var(--hair);margin:16px 0 30px;
+  }
+  .meter{background:var(--panel);padding:13px 12px 11px;position:relative;overflow:hidden}
+  .meter .n{font-family:var(--mono);font-size:23px;letter-spacing:.02em;color:var(--ice);line-height:1}
+  .meter .n.small{font-size:17px;padding-top:5px}
+  .meter .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.15em;color:var(--muted);margin-top:8px;text-transform:uppercase}
+  .meter::after{
+    content:"";position:absolute;left:0;bottom:0;height:2px;width:100%;
+    background:linear-gradient(90deg,var(--cyan),transparent);
+    opacity:.35;
+  }
+  .meter.zero .n{color:var(--green)}
+  .meter.zero::after{background:linear-gradient(90deg,var(--green),transparent);opacity:.5}
+
+  /* ---------------- lanes ---------------- */
+  .lane{margin-bottom:16px;border:1px solid var(--hair);background:linear-gradient(180deg,var(--panel2),var(--panel))}
+  .lane-head{
+    display:flex;align-items:center;gap:12px;padding:11px 14px;
+    border-bottom:1px solid var(--hair);background:rgba(22,200,255,.03);
+  }
+  .lane-head .idx{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.1em}
+  .lane-head h2{font-size:11.5px;letter-spacing:.24em;font-weight:500;color:var(--ice)}
+  .lane-head .rule{flex:1;height:1px;background:linear-gradient(90deg,rgba(22,200,255,.35),transparent)}
+  .pair{display:grid;grid-template-columns:1fr 1fr}
+  @media (max-width:760px){.pair{grid-template-columns:1fr}}
+  .col{padding:13px 15px 15px}
+  .col + .col{border-left:1px solid var(--hair)}
+  @media (max-width:760px){.col + .col{border-left:0;border-top:1px solid var(--hair)}}
+  .col h3{
+    font-family:var(--mono);font-size:9px;letter-spacing:.2em;margin-bottom:10px;
+    display:flex;align-items:center;gap:7px;
+  }
+  .can h3{color:var(--green)}
+  .cannot h3{color:var(--red)}
+  .col h3::after{content:"";flex:1;height:1px;background:currentColor;opacity:.2}
+  ul{list-style:none}
+  li{position:relative;padding-left:15px;font-size:12.5px;line-height:1.62;color:var(--dim);margin-bottom:7px}
+  li:last-child{margin-bottom:0}
+  li::before{
+    content:"";position:absolute;left:0;top:7px;width:6px;height:1px;
+  }
+  .can li::before{background:var(--green);box-shadow:0 0 6px rgba(72,229,162,.8)}
+  .cannot li::before{background:var(--red);box-shadow:0 0 6px rgba(255,70,92,.7)}
+  li b{color:var(--text);font-weight:600}
+  li em{color:var(--muted);font-style:normal;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em}
+  .code{font-family:var(--mono);font-size:11px;color:var(--cyan)}
+
+  /* ---------------- unverified band ---------------- */
+  .unverified{
+    margin-top:26px;border:1px solid rgba(255,180,84,.3);
+    background:linear-gradient(180deg,rgba(255,180,84,.06),rgba(255,180,84,.015));
+    padding:15px 16px 17px;
+  }
+  .unverified h2{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--amber);margin-bottom:5px}
+  .unverified p{font-size:12px;color:var(--dim);line-height:1.6;margin-bottom:11px;max-width:72ch}
+  .unverified .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:6px 18px}
+  .unverified .item{font-size:11.5px;color:var(--dim);padding-left:14px;position:relative;line-height:1.55}
+  .unverified .item::before{content:"";position:absolute;left:0;top:7px;width:5px;height:5px;border:1px solid var(--amber);transform:rotate(45deg)}
+
+  footer{margin-top:26px;padding-top:16px;border-top:1px solid var(--hair);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  footer p{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;color:var(--muted);line-height:1.9}
+  footer .sig{color:var(--dim)}
+  a{color:var(--cyan);text-decoration:none;border-bottom:1px solid rgba(22,200,255,.3)}
+
+  /* the quiet scan line */
+  body::after{
+    content:"";position:fixed;left:0;right:0;height:120px;pointer-events:none;z-index:0;
+    background:linear-gradient(180deg,transparent,rgba(22,200,255,.05),transparent);
+    animation:scan 11s linear infinite;
+  }
+  @keyframes scan{0%{top:-140px}100%{top:100vh}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <svg class="reactor" viewBox="0 0 74 74" aria-hidden="true">
+      <defs>
+        <radialGradient id="cg" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#EAFDFF"/>
+          <stop offset="55%" stop-color="#7FE8FF"/>
+          <stop offset="100%" stop-color="#16C8FF" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle cx="37" cy="37" r="33" fill="none" stroke="#16C8FF" stroke-opacity=".22"/>
+      <g class="spin-a">
+        <circle cx="37" cy="37" r="27" fill="none" stroke="#16C8FF" stroke-opacity=".5"
+                stroke-dasharray="3 9" stroke-width="1.4"/>
+      </g>
+      <g class="spin-b">
+        <circle cx="37" cy="37" r="20" fill="none" stroke="#8BEAFF" stroke-opacity=".55"
+                stroke-dasharray="18 40" stroke-width="2"/>
+      </g>
+      <circle cx="37" cy="37" r="12" fill="url(#cg)" class="core"/>
+      <circle cx="37" cy="37" r="12" fill="none" stroke="#8BEAFF" stroke-opacity=".6"/>
+    </svg>
+
+    <div class="titles">
+      <h1>CAPABILITY CHART</h1>
+      <div class="sub">J.A.R.V.I.S. · 1.0.0 · ANDROID 10+ · NO BACKEND · BUILT BY RISHU JASWAR</div>
+      <div class="chips">
+        <span class="chip g">WHAT HE DOES</span>
+        <span class="chip r">WHAT HE WON'T</span>
+        <span class="chip a">WHAT ONLY YOUR PHONE CAN PROVE</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="legend">
+    <span><i class="dot g"></i> CAN — shipped and wired</span>
+    <span><i class="dot r"></i> CANNOT — and the reason</span>
+    <span><i class="dot a"></i> UNVERIFIED — needs the real device</span>
+  </div>
+
+  <div class="meters">
+    <div class="meter"><div class="n">58</div><div class="k">Intents</div></div>
+    <div class="meter"><div class="n">415</div><div class="k">Phrasings</div></div>
+    <div class="meter"><div class="n">56</div><div class="k">Routine actions</div></div>
+    <div class="meter"><div class="n">10</div><div class="k">Triggers</div></div>
+    <div class="meter"><div class="n">11</div><div class="k">Conditions</div></div>
+    <div class="meter"><div class="n">26</div><div class="k">Test suites</div></div>
+    <div class="meter zero"><div class="n">0</div><div class="k">Services at idle</div></div>
+  </div>
+
+  <!-- 01 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">01</span><h2>LISTEN</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>Hear 415 phrasings across 58 intents</b> — exact, prefix, word-set, then fuzzy, so <span class="code">open galery</span> still lands.</li>
+        <li><b>Take English, Hinglish and Hindi</b>: <span class="code">gallery kholo</span>, <span class="code">batti on</span>, <span class="code">मौसम कैसा है</span>.</li>
+        <li><b>Answer in the language you spoke</b> — including the NEEDS YOU card.</li>
+        <li><b>Ask when he misses</b> — <em>"did you mean Photos?"</em>, never silence.</li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Always-on wake word.</b> That holds the microphone open permanently and costs 1–3% battery an hour. He listens when tapped.</li>
+        <li><b>Understand you with the screen off and nothing running.</b> Nothing is running.</li>
+        <li><b>Run a speech model on the phone.</b> 20–40 MB of RAM and slower recognition — you said no to slow.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 02 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">02</span><h2>TALK</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>A spoken reply with no steps</b> is a real answer, not a parse failure.</li>
+        <li><b>Small talk with no AI key at all</b>, and a full conversation with your key.</li>
+        <li><b>Remember</b> the people in your life, how they relate, standing facts, the last few turns.</li>
+        <li><b>Follow a thread</b>: <span class="code">do that for her</span>, <span class="code">and tomorrow</span>, <span class="code">make it 8:30</span>.</li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Free-form conversation without a model you own.</b> The key is yours; the brain is rented per call.</li>
+        <li><b>Talk instantly offline.</b> Every real reply is a network round-trip.</li>
+        <li><b>Choose a voice.</b> He uses the system TTS voices installed on your phone.</li>
+        <li><b>Tell you who made the model.</b> He credits Rishu Jaswar. That is a rule.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 03 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">03</span><h2>THE PHONE</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>Open anything</b> — apps, settings pages, deep links — across ColorOS, MIUI, One UI and stock.</li>
+        <li><b>Torch, volume, DND, media, panel, home, back, recents</b> by voice.</li>
+        <li><b>Screenshot and camera</b>, saved to <span class="code">Pictures/JARVIS</span>.</li>
+        <li><b>Search the whole phone</b> with All-files access, falling back to indexed media.</li>
+        <li><b>Read the screen</b> out loud, once you grant Accessibility.</li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Replace the lock screen.</b> Removed from Android in 5.0. No API exists.</li>
+        <li><b>Read your PIN, pattern or fingerprint.</b> An app is told pass or fail, nothing else.</li>
+        <li><b>Tap through another app</b> without Accessibility switched on. That is Android's gate, not his.</li>
+        <li><b>Do root-level work</b> unless you install Shizuku. Without it, honest refusal.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 04 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">04</span><h2>PEOPLE</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>Call and message</b> by name — from contacts, memory, or a live chat.</li>
+        <li><b>Reply through the notification's own</b> <span class="code">RemoteInput</span> — the supported path — after checking the thread is the right one.</li>
+        <li><b>Read what you missed</b>, three fitting replies each, OTPs with the code.</li>
+        <li><b>Skip the noise</b> — adverts are dropped after one line.</li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Send on WhatsApp with zero taps</b> when no notification is live. Sandbox. The route is notification reply → <span class="code">wa.me</span> link → in-app search.</li>
+        <li><b>Read another app's private database.</b> Only what it puts on the notification shade.</li>
+        <li><b>Guarantee the send.</b> When unsure he says so, rather than pretending it went.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 05 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">05</span><h2>KNOWLEDGE</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>Look things up keyless</b> — Wikipedia and a free dictionary: no account, no key, no bill.</li>
+        <li><b>Answer from the two sentences that matter</b>, attributed out loud to the source.</li>
+        <li><b>Keep a shelf</b> of cards that answer again instantly and offline.</li>
+        <li><b>Ask first</b> — three settings on KNOWLEDGE: always, once per topic, never.</li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Browse arbitrary pages.</b> No JavaScript browser, no paywall, no login.</li>
+        <li><b>Post, comment, DM or subscribe</b> anywhere. Read-only by design.</li>
+        <li><b>Scrape Google or Instagram.</b> Not built, and not going to be.</li>
+        <li><b>Host a website or run a server.</b> He is the brain on your phone, not a hosting company.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 06 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">06</span><h2>THE SKY</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>Temperature, day range, humidity, wind, umbrella advice</b> — <span class="code">mausam kaisa hai</span>, <span class="code">barish hogi</span>.</li>
+        <li><b>Air quality</b> in honest bands: good · moderate · poor · bad · severe.</li>
+        <li><b>Do it with no key</b>, from Open-Meteo, cached 30 minutes, one reading per visit.</li>
+        <li><b>Say why there is no reading</b>: location off, no fix yet, service down — and label an old one <span class="code">STALE</span>.</li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Push a storm alert.</b> That needs a background worker, and nothing idles in this app.</li>
+        <li><b>Show radar or satellite imagery.</b> Text and numbers only.</li>
+        <li><b>Invent a temperature.</b> Unknown air reads <span class="code">AIR —</span>, never "clean".</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 07 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">07</span><h2>SIGHT</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>Take one frame on demand</b> — subsampled at decode, so a 12-megapixel photo never enters memory whole.</li>
+        <li><b>Read a menu, a sign, a bill, a medicine strip</b>, a page of homework.</li>
+        <li><b>Answer the question you actually asked</b>, not a generic caption.</li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Watch continuously.</b> No held sensor, no background camera.</li>
+        <li><b>Record video.</b> One frame, when asked.</li>
+        <li><b>Guarantee a blurry label.</b> He says <em>"I cannot read that, take another"</em> — and never invents a dosage or a name.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 08 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">08</span><h2>WHERE</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>Road distance and time</b> through OSRM — <span class="code">how far is India Gate</span>.</li>
+        <li><b>Hand off navigation</b> to your maps app with the destination already in it.</li>
+        <li><b>Fall back honestly</b>: says <em>straight line</em> out loud when the router cannot be reached.</li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Live traffic.</b> OSRM is a router, not a traffic service.</li>
+        <li><b>Turn-by-turn inside the app.</b> It hands over to a real navigation app.</li>
+        <li><b>Follow someone.</b> No location sharing, no history of where you went.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 09 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">09</span><h2>AUTOMATION</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>56 actions, 11 conditions, 10 triggers</b> — including daily, weekdays, charging, Wi-Fi, battery, boot, notification, unlock.</li>
+        <li><b>Control flow</b>: if-blocks, repeat-blocks, wait, wait-until, retries, run history with the trigger that fired.</li>
+        <li><b>Fire on the minute</b> through an exact alarm, falling back to "sometime soon" when the operator forbids it.</li>
+        <li><b>One arbiter, four lanes</b> — screen work takes one shared lock, so nothing fights over the window; the loser says <span class="code">QUEUED</span>.</li>
+        <li><b>Confirm before damage</b> — anything destructive is gated.</li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Wake the phone for a fine-grained timer</b> in deep sleep. Doze throttles it; he does not pretend otherwise.</li>
+        <li><b>Keep a countdown across a reboot</b> beyond what the boot trigger re-arms.</li>
+        <li><b>Run two screen tasks in parallel.</b> One window, one mic, one queue — deliberate.</li>
+        <li><b>Self-modify.</b> He cannot rewrite his own APK.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 10 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">10</span><h2>HEALTH</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>Steps and heart rate</b> from the hardware sensors.</li>
+        <li><b>Water you log</b>, and nothing you did not.</li>
+        <li><b>A sleep estimate labelled as an estimate.</b></li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Medical advice.</b> Not a doctor, and will not act like one.</li>
+        <li><b>Read a sensor your phone does not have.</b> No sensor means he says so.</li>
+        <li><b>Guess your water.</b> It is only what you told him.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 11 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">11</span><h2>PRIVACY</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>Keep everything on the phone</b> — memory, shelf, routines, history. No backend exists.</li>
+        <li><b>Export the whole life to one JSON file</b> and import it on a new phone, additively.</li>
+        <li><b>Leave the AI key out of the export</b>, because exports travel by chat.</li>
+        <li><b>Erase everything</b> with one key, and show you what he remembers.</li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Hide from someone holding your unlocked phone.</b> Local means local, not encrypted against you.</li>
+        <li><b>Sync between phones</b> without carrying the file.</li>
+        <li><b>Cloud backup.</b> There is no cloud to back up to.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 12 -->
+  <section class="lane">
+    <div class="lane-head"><span class="idx">12</span><h2>SPEED &amp; STABILITY</h2><span class="rule"></span></div>
+    <div class="pair">
+      <div class="col can"><h3>CAN</h3><ul>
+        <li><b>Idle at zero</b> — no service, no worker, no model, no polling timer.</li>
+        <li><b>Fetch once, on screen entry</b> — weather per half hour, everything else on tap.</li>
+        <li><b>Ship every change through 26 test suites</b> and two APK builds before a release.</li>
+      </ul></div>
+      <div class="col cannot"><h3>CANNOT</h3><ul>
+        <li><b>Be instant on everything.</b> A thinking answer is a round-trip to your model.</li>
+        <li><b>Improve by sitting in the background.</b> He learns nothing he is not told.</li>
+        <li><b>Prove himself in CI alone.</b> Compilation is not a phone. See below.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <div class="unverified">
+    <h2>WHAT ONLY YOUR PHONE CAN PROVE</h2>
+    <p>CI compiles the app, runs the suites, builds both APKs and checks the manifest. It cannot press a
+      button. These are real and tested as far as code allows — but the proof has to be on your device.</p>
+    <div class="grid">
+      <div class="item">WhatsApp sending on your build and your version</div>
+      <div class="item">Notification replies on your messaging app</div>
+      <div class="item">The gallery's package name on ColorOS / MIUI</div>
+      <div class="item">Step, heart and sleep sensors — or their absence</div>
+      <div class="item">The system credential screen for your lock</div>
+      <div class="item">The TTS voices installed for Hindi and Hinglish</div>
+      <div class="item">Live weather and air-quality answers</div>
+      <div class="item">The eleven ring keys under a real thumb</div>
+      <div class="item">Launcher long-press shortcuts</div>
+      <div class="item">Routine alarms against your battery optimiser</div>
+    </div>
+  </div>
+
+  <footer>
+    <p>J.A.R.V.I.S. 1.0.0 · ANDROID 10+ · <span class="sig">VERSION STAYS 1.0.0, ALWAYS</span><br>
+       WEATHER BY OPEN-METEO (CC BY 4.0) · WIKIPEDIA REST · OSRM</p>
+    <p style="text-align:right">BUILT BY RISHU JASWAR<br>
+       <span class="sig">NOTHING HERE IS CLAIMED THAT IS NOT WIRED</span></p>
+  </footer>
+
+</div>
+</body>
+</html>

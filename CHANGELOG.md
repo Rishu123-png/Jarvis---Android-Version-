@@ -12,6 +12,12 @@ family member released to family should not be called 2.4.
 
 Everything below is new in this release.
 
+**The chart (same version).** `preview/capability-chart.html` — one page with twelve lanes, every
+capability on the left and every refusal with its reason on the right, plus a band for the things
+only a real phone can prove. The counts in its header are read off the source: 58 intents, 415
+phrasings, 56 step types, 10 triggers, 11 conditions, 26 suites, zero services at idle. No build, no
+scripts. The README's stale "19 action types" line is corrected while I am here.
+
 **The sky, the language fix and the shortcuts (same version).** Weather and air quality from
 Open-Meteo — keyless, no account, cached for half an hour, with a SKY panel on the dashboard and a
 spoken answer in the language the question was asked in. Every failure states its own reason: no

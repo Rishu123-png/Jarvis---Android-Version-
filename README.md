@@ -93,6 +93,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [The dial](#the-dial)
 - [The eyes](#the-eyes)
 - [What he can do](#what-he-can-do)
+- [The chart](#the-chart)
 - [The lock, honestly](#the-lock-honestly)
 - [Install the APK](#install-the-apk)
 - [Build it yourself](#build-it-yourself)
@@ -370,10 +371,24 @@ Photos to `Pictures/JARVIS`, notes to `Music/JARVIS`.</td></tr>
 
 <tr><td><b>Routines</b></td><td>
 
-Full automation engine: triggers, conditions, control flow, retries, run history, and **19 action
-types** available to both routines and voice.</td></tr>
+Full automation engine: **56 step types** — 10 triggers, 11 conditions, control flow, retries, run
+history — and the phone-level steps are reachable by voice too.</td></tr>
 
 </table>
+
+---
+
+## The chart
+
+One page, drawn the way the app is drawn: every capability on the left, every refusal and its reason
+on the right, and a bottom band for the things only your phone can prove.
+
+**[preview/capability-chart.html](preview/capability-chart.html)** — download it and open it in a
+browser, or view the file on the web. No build, no scripts, one file.
+
+Twelve lanes: listen, talk, the phone, people, knowledge, the sky, sight, where, automation, health,
+privacy, speed. Header counts are read off the source, not typed by hand — 58 intents, 415 phrasings,
+56 routine actions, 10 triggers, 11 conditions, 26 test suites, and zero services at idle.
 
 ---
 
