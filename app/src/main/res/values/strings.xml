@@ -6,4 +6,10 @@
     <string name="accessibility_service_description">JARVIS automation uses this access for two things only: performing navigation gestures (back, home, recents, notification shade, lock screen) and pressing a button whose label you typed yourself in a routine you created. It never reads your screen in the background, never records what you type, and never sends anything off the device. You can revoke it at any time in this screen.</string>
 
     <string name="widget_description">JARVIS clock — tap to speak</string>
+    <string name="shortcut_voice_short">Speak</string>
+    <string name="shortcut_voice_long">Speak to JARVIS</string>
+    <string name="shortcut_knowledge_short">Knowledge</string>
+    <string name="shortcut_knowledge_long">What he has learned</string>
+    <string name="shortcut_activity_short">Activity</string>
+    <string name="shortcut_activity_long">What he is doing</string>
 </resources>

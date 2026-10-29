@@ -27,9 +27,13 @@ class MainActivity : ComponentActivity() {
      */
     private var voiceArmed by mutableStateOf(false)
 
+    /** Set by a launcher shortcut, so a long-press lands straight on that surface. */
+    private var startRoute by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         voiceArmed = wantsVoice(intent)
+        startRoute = routeOf(intent)
 
         setContent {
             JarvisTheme {
@@ -42,6 +46,8 @@ class MainActivity : ComponentActivity() {
                     JarvisApp(
                         voiceArmed = voiceArmed,
                         onVoiceConsumed = { voiceArmed = false },
+                        startRoute = startRoute,
+                        onRouteConsumed = { startRoute = null },
                     )
                 }
             }
@@ -52,7 +58,11 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (wantsVoice(intent)) voiceArmed = true
+        routeOf(intent)?.let { startRoute = it }
     }
+
+    private fun routeOf(intent: Intent?): String? =
+        intent?.getStringExtra("com.jarvis.assistant.extra.ROUTE")?.takeIf { it.isNotBlank() }
 
     private fun wantsVoice(intent: Intent?): Boolean =
         intent?.getBooleanExtra("com.jarvis.assistant.extra.VOICE", false) == true

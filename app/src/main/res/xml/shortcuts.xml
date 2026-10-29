@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Long-press shortcuts on the launcher icon.
+
+  Three things a person reaches for most: talk to him, look something up, and read what he has
+  learned. Each one opens the app straight into that surface, so it is one gesture instead of one
+  gesture and three taps.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_voice"
+        android:shortcutId="voice"
+        android:shortcutLongLabel="@string/shortcut_voice_long"
+        android:shortcutShortLabel="@string/shortcut_voice_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.jarvis.assistant.MainActivity"
+            android:targetPackage="com.jarvis.assistant">
+            <extra
+                android:name="com.jarvis.assistant.extra.VOICE"
+                android:value="true" />
+            <extra
+                android:name="com.jarvis.assistant.extra.ROUTE"
+                android:value="home" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_knowledge"
+        android:shortcutId="knowledge"
+        android:shortcutLongLabel="@string/shortcut_knowledge_long"
+        android:shortcutShortLabel="@string/shortcut_knowledge_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.jarvis.assistant.MainActivity"
+            android:targetPackage="com.jarvis.assistant">
+            <extra
+                android:name="com.jarvis.assistant.extra.ROUTE"
+                android:value="knowledge" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_activity"
+        android:shortcutId="activity"
+        android:shortcutLongLabel="@string/shortcut_activity_long"
+        android:shortcutShortLabel="@string/shortcut_activity_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.jarvis.assistant.MainActivity"
+            android:targetPackage="com.jarvis.assistant">
+            <extra
+                android:name="com.jarvis.assistant.extra.ROUTE"
+                android:value="activity" />
+        </intent>
+    </shortcut>
+
+</shortcuts>

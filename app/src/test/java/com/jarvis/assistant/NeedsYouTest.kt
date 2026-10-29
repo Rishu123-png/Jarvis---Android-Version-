@@ -1,6 +1,7 @@
 package com.jarvis.assistant
 
 import com.jarvis.assistant.data.NeedsYou
+import com.jarvis.assistant.voice.Lang
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -141,6 +142,25 @@ class NeedsYouTest {
             now,
         )
         assertTrue(rows.isEmpty())
+    }
+
+    @Test
+    fun theCardSpeaksTheLanguageTheOperatorDid() {
+        val facts = NeedsYou.Facts(batteryPercent = 8, unreadMessages = 2, senders = listOf("Khushi"))
+        val english = NeedsYou.rows(facts, now, Lang.EN).first().title
+        val hindi = NeedsYou.rows(facts, now, Lang.HI).first().title
+        val hinglish = NeedsYou.rows(facts, now, Lang.HINGLISH).first().title
+        assertTrue(english.contains("left"))
+        assertTrue(hindi.contains("बची"))
+        assertTrue(hinglish.contains("bachi"))
+        assertTrue(hindi != english)
+    }
+
+    @Test
+    fun theAccessRowIsTranslatedToo() {
+        val facts = NeedsYou.Facts(alertsAvailable = false)
+        assertTrue(NeedsYou.rows(facts, now, Lang.HI).first().title.contains("अनुमति"))
+        assertTrue(NeedsYou.rows(facts, now, Lang.EN).first().title.contains("Alert access"))
     }
 
     @Test

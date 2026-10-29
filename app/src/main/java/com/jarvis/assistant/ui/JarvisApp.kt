@@ -125,6 +125,10 @@ private const val ROUTE_AI = "ai"
 private const val ROUTE_COMPOSE = "compose"
 private const val ROUTE_ADVANCED = "advanced"
 private const val ROUTE_ACTIVITY = "activity"
+private const val ROUTE_KNOWLEDGE = "knowledge"
+
+/** Routes a shortcut or an intent extra may ask for. Anything else is ignored. */
+private val KNOWN_ROUTES = setOf(ROUTE_HOME, ROUTE_DASHBOARD, ROUTE_KNOWLEDGE, ROUTE_ACTIVITY)
 
 /** True when JARVIS may post its own notifications (always true below Android 13). */
 private fun canPostNotifications(context: android.content.Context): Boolean =
@@ -149,6 +153,9 @@ private fun canPostNotifications(context: android.content.Context): Boolean =
 fun JarvisApp(
     voiceArmed: Boolean = false,
     onVoiceConsumed: () -> Unit = {},
+    /** A surface to open on launch — set by a launcher shortcut. */
+    startRoute: String? = null,
+    onRouteConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -202,6 +209,8 @@ fun JarvisApp(
     var hasCalendar by remember { mutableStateOf(false) }
     var nextUp by remember { mutableStateOf<List<NeedsYou.AgendaRow>>(emptyList()) }
     var nextEventMillis by remember { mutableLongStateOf(0L) }
+    var sky by remember { mutableStateOf<Weather.Sky?>(null) }
+    var skyNote by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(route) {
         if (route == ROUTE_DASHBOARD) {
             stepsToday = HealthLog.stepsToday(context)
@@ -246,6 +255,33 @@ fun JarvisApp(
                     allDay = event.allDay,
                 )
             }
+
+            // The sky is cached for half an hour inside Weather, so this is one request per half
+            // hour at most — and none at all when the cache is warm.
+            when (val outcome = try {
+                Weather.current(context)
+            } catch (t: Throwable) {
+                Weather.Outcome.Unreachable("the sky service did not answer")
+            }) {
+                is Weather.Outcome.Ok -> {
+                    sky = outcome.sky
+                    skyNote = null
+                }
+
+                is Weather.Outcome.NoLocation -> {
+                    sky = null
+                    skyNote = if (outcome.reason.contains("permission")) {
+                        "Location is off, so there is no weather to show. Allow it in Advanced."
+                    } else {
+                        "No location yet. Open the map once and the sky appears here."
+                    }
+                }
+
+                is Weather.Outcome.Unreachable -> {
+                    sky = null
+                    skyNote = "No weather right now — ${outcome.reason}."
+                }
+            }
         }
     }
 
@@ -279,7 +315,9 @@ fun JarvisApp(
 
     // What is waiting on the operator. Recomputed only when the inputs actually change — a new
     // notification, the next event moving, or the battery stepping — never on a timer.
-    val needs = remember(notifications, nextEventMillis, status.battery.percent) {
+    // The card speaks the language the operator last used, like everything else he says.
+    val needsLang = remember { com.jarvis.assistant.voice.SpokenLanguage.last(context) }
+    val needs = remember(notifications, nextEventMillis, status.battery.percent, needsLang) {
         val messageItems = notifications.filter { item ->
             NotifyBrain.classify(item.packageName, item.appLabel, item.title, item.text, false).kind ==
                 com.jarvis.assistant.device.NotificationKind.MESSAGE
@@ -297,6 +335,7 @@ fun JarvisApp(
                 batteryPercent = status.battery.percent,
                 charging = status.battery.isCharging,
             ),
+            lang = needsLang,
         )
     }
 
@@ -537,6 +576,16 @@ fun JarvisApp(
         }
     }
 
+    // A shortcut asked for a specific surface. Only a known route is honoured, so a stale extra
+    // from an older build cannot land on a screen that no longer exists.
+    LaunchedEffect(startRoute) {
+        val wanted = startRoute ?: return@LaunchedEffect
+        if (wanted in KNOWN_ROUTES) {
+            route = wanted
+        }
+        onRouteConsumed()
+    }
+
     BackHandler(enabled = route != ROUTE_HOME) {
         route = if (route == ROUTE_ADVANCED) ROUTE_SETTINGS else ROUTE_HOME
     }
@@ -586,6 +635,8 @@ fun JarvisApp(
                     hasCalendar = hasCalendar,
                     needs = needs,
                     nextUp = nextUp,
+                    sky = sky,
+                    skyNote = skyNote,
                     clock = clock,
                     status = status,
                     storage = storage,
@@ -1049,6 +1100,8 @@ fun JarvisApp(
                     hasCalendar = hasCalendar,
                     needs = needs,
                     nextUp = nextUp,
+                    sky = sky,
+                    skyNote = skyNote,
                     isDockCustom = isDockCustom,
                     onLaunchApp = launchApp,
                     onEditDock = { slot -> dockEditSlot = slot; route = ROUTE_DOCK },

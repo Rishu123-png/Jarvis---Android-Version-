@@ -171,6 +171,10 @@
             android:theme="@style/Theme.Jarvis"
             android:windowSoftInputMode="adjustResize"
             tools:ignore="LockedOrientationActivity">
+            <!-- Long-press shortcuts: speak, the knowledge shelf, the activity board. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

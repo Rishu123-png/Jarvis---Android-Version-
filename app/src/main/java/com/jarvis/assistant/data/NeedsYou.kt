@@ -1,5 +1,6 @@
 package com.jarvis.assistant.data
 
+import com.jarvis.assistant.voice.Lang
 import java.util.Locale
 
 /**
@@ -65,7 +66,11 @@ object NeedsYou {
      *
      * [now] is passed in rather than read here so the whole function is deterministic and testable.
      */
-    fun rows(facts: Facts, now: Long = System.currentTimeMillis()): List<Row> {
+    fun rows(
+        facts: Facts,
+        now: Long = System.currentTimeMillis(),
+        lang: Lang = Lang.EN,
+    ): List<Row> {
         val candidates = mutableListOf<Row>()
 
         // Alerts that cannot be read are reported, not silently zeroed.
@@ -73,8 +78,16 @@ object NeedsYou {
             candidates.add(
                 Row(
                     kind = Kind.ACCESS,
-                    title = "Alert access is off",
-                    detail = "JARVIS cannot see who is waiting",
+                    title = when (lang.replyLang) {
+                        Lang.HI -> "अलर्ट की अनुमति बंद है"
+                        Lang.HINGLISH -> "Alert ki permission band hai"
+                        else -> "Alert access is off"
+                    },
+                    detail = when (lang.replyLang) {
+                        Lang.HI -> "जार्विस को नहीं दिखता कि कौन इंतज़ार कर रहा है"
+                        Lang.HINGLISH -> "JARVIS ko nahi dikhta kaun wait kar raha hai"
+                        else -> "JARVIS cannot see who is waiting"
+                    },
                     priority = 30,
                 ),
             )
@@ -89,7 +102,12 @@ object NeedsYou {
                 candidates.add(
                     Row(
                         kind = Kind.EVENT,
-                        title = if (soon) "$event ${label.lowercase(Locale.US)}" else "$event later",
+                        title = when {
+                            soon -> "$event ${label.lowercase(Locale.US)}"
+                            lang.replyLang == Lang.HI -> "$event बाद में"
+                            lang.replyLang == Lang.HINGLISH -> "$event baad mein"
+                            else -> "$event later"
+                        },
                         detail = label,
                         priority = if (soon) 100 else 60,
                     ),
@@ -101,8 +119,19 @@ object NeedsYou {
             candidates.add(
                 Row(
                     kind = Kind.BATTERY,
-                    title = "${facts.batteryPercent}% left",
-                    detail = if (facts.batteryPercent <= 10) "charge it now" else "no charger connected",
+                    title = when (lang.replyLang) {
+                        Lang.HI -> "${facts.batteryPercent}% बची है"
+                        Lang.HINGLISH -> "${facts.batteryPercent}% bachi hai"
+                        else -> "${facts.batteryPercent}% left"
+                    },
+                    detail = when {
+                        facts.batteryPercent > 10 && lang.replyLang == Lang.HI -> "चार्जर नहीं लगा है"
+                        facts.batteryPercent > 10 && lang.replyLang == Lang.HINGLISH -> "charger nahi laga hai"
+                        facts.batteryPercent > 10 -> "no charger connected"
+                        lang.replyLang == Lang.HI -> "अभी चार्ज कीजिए"
+                        lang.replyLang == Lang.HINGLISH -> "abhi charge kijiye"
+                        else -> "charge it now"
+                    },
                     priority = if (facts.batteryPercent <= 10) 95 else 70,
                 ),
             )
@@ -117,10 +146,14 @@ object NeedsYou {
             candidates.add(
                 Row(
                     kind = Kind.MESSAGES,
-                    title = if (facts.unreadMessages == 1) {
-                        "1 message waiting"
-                    } else {
-                        "${facts.unreadMessages} messages waiting"
+                    title = when {
+                        lang.replyLang == Lang.HI && facts.unreadMessages == 1 -> "1 संदेश बाकी है"
+                        lang.replyLang == Lang.HI -> "${facts.unreadMessages} संदेश बाकी हैं"
+                        lang.replyLang == Lang.HINGLISH && facts.unreadMessages == 1 ->
+                            "1 message baaki hai"
+                        lang.replyLang == Lang.HINGLISH -> "${facts.unreadMessages} messages baaki hain"
+                        facts.unreadMessages == 1 -> "1 message waiting"
+                        else -> "${facts.unreadMessages} messages waiting"
                     },
                     detail = who.joinToString(", "),
                     priority = if (facts.unreadMessages >= 5) 85 else 50,
@@ -132,6 +165,9 @@ object NeedsYou {
     }
 
     /** The single line for the focus home, where there is no room for a card. */
-    fun chip(facts: Facts, now: Long = System.currentTimeMillis()): String? =
-        rows(facts, now).firstOrNull()?.title
+    fun chip(
+        facts: Facts,
+        now: Long = System.currentTimeMillis(),
+        lang: Lang = Lang.EN,
+    ): String? = rows(facts, now, lang).firstOrNull()?.title
 }

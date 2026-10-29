@@ -4,13 +4,21 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
-## 1.0.0 — versionCode 23
+## 1.0.0 — versionCode 24
 
 **The version number restarts here.** From this release on, JARVIS is **1.0.0** and stays there in
 every build; `versionCode` is what increases. The earlier 2.x names were internal scaffolding, and a
 family member released to family should not be called 2.4.
 
 Everything below is new in this release.
+
+**The sky, the language fix and the shortcuts (same version).** Weather and air quality from
+Open-Meteo — keyless, no account, cached for half an hour, with a SKY panel on the dashboard and a
+spoken answer in the language the question was asked in. Every failure states its own reason: no
+location permission, no fix, no network, or a reading old enough to be labelled STALE. Unknown air
+quality is never rendered as clean air. The **NEEDS YOU** card now speaks Hindi and Hinglish like
+everything else — it was English-only, which was my mistake, not a decision. And the launcher icon
+now has **long-press shortcuts**: Speak, Knowledge, Activity. **versionCode 24**, 26 suites.
 
 **The crew, and what is waiting (same version).** Four lanes — DEVICE, ROUTINES, RESEARCH, ALERTS —
 with one arbiter: anything that touches the screen takes a single shared lock, so a spoken command and
