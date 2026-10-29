@@ -20,6 +20,9 @@ object WakeWordModel {
     const val NAME = "vosk-model-small-en-us-0.15"
     const val URL = "https://alphacephei.com/vosk/models/$NAME.zip"
 
+    /** Where the build puts the model inside the APK (see app/build.gradle.kts, fetchVoskModel). */
+    private const val ASSET_DIR = "model-en-us"
+
     /** Roughly the archive size, used only to show a percentage when the server omits a length. */
     private const val APPROX_BYTES = 41_000_000L
 
@@ -31,6 +34,13 @@ object WakeWordModel {
     }
 
     fun isInstalled(context: Context): Boolean = installedDir(context) != null
+
+    /** True when this build carries the model inside the APK, so installing needs no network. */
+    fun bundled(context: Context): Boolean = try {
+        context.assets.list(ASSET_DIR)?.contains("am") == true
+    } catch (t: Throwable) {
+        false
+    }
 
     /** Enough to be sure this is a Vosk model: its acoustic model and its configuration. */
     internal fun looksValid(dir: File): Boolean =
@@ -49,12 +59,18 @@ object WakeWordModel {
         val target = File(base, NAME)
 
         try {
-            download(archive, onProgress)
-                ?: return "The download stopped. Check the connection and try again."
-
             staging.deleteRecursively()
             staging.mkdirs()
-            unzip(archive, staging)
+
+            if (bundled(context)) {
+                // Copy from the APK: local, quick, and works offline.
+                onProgress(10)
+                copyAssets(context, ASSET_DIR, File(staging, NAME))
+            } else {
+                download(archive, onProgress)
+                    ?: return "The download stopped. Check the connection and try again."
+                unzip(archive, staging)
+            }
 
             val unpacked = File(staging, NAME)
             if (!looksValid(unpacked)) {
@@ -71,6 +87,20 @@ object WakeWordModel {
         } finally {
             archive.delete()
             staging.deleteRecursively()
+        }
+    }
+
+    /** Copies a folder out of the APK's assets, file by file. */
+    private fun copyAssets(context: Context, path: String, into: File) {
+        val names = context.assets.list(path).orEmpty()
+        if (names.isEmpty()) {
+            into.parentFile?.mkdirs()
+            context.assets.open(path).use { input ->
+                FileOutputStream(into).use { input.copyTo(it) }
+            }
+        } else {
+            into.mkdirs()
+            for (name in names) copyAssets(context, "$path/$name", File(into, name))
         }
     }
 

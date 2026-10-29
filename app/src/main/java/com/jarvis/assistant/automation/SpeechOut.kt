@@ -19,6 +19,14 @@ import java.util.UUID
  */
 object SpeechOut {
 
+    /**
+     * JARVIS sounds like a man: a lower register and a steady pace. Pitch works on every engine, so it
+     * is applied always. Android does not say which installed voice is male, so a voice is only
+     * picked when its name says so; otherwise the lower pitch carries the difference.
+     */
+    private const val VOICE_PITCH = 0.8f
+    private const val VOICE_RATE = 0.95f
+
     private var engine: TextToSpeech? = null
     private var ready: CompletableDeferred<Boolean>? = null
     private var languageChecked = false
@@ -67,6 +75,7 @@ object SpeechOut {
             }
         }
 
+        styleVoice(created, Locale.getDefault())
         engine = created
         return created
     }
@@ -154,6 +163,26 @@ object SpeechOut {
             return
         }
         currentLanguage = language
+        styleVoice(tts, locale)
+    }
+
+    /** Pitch, pace, and a male voice from the installed set when the engine names one. */
+    private fun styleVoice(tts: TextToSpeech, locale: Locale) {
+        try {
+            tts.setPitch(VOICE_PITCH)
+            tts.setSpeechRate(VOICE_RATE)
+            val voices = tts.voices ?: return
+            val male = voices
+                .filter { it.locale.language == locale.language && !it.isNetworkConnectionRequired }
+                .filter {
+                    val name = it.name.lowercase(Locale.US)
+                    name.contains("male") && !name.contains("female")
+                }
+                .minByOrNull { it.name }
+            if (male != null) tts.voice = male
+        } catch (t: Throwable) {
+            // Keep the engine's own voice. The lower pitch still applies.
+        }
     }
 
     /** Releases the engine when the app goes away. Safe to call repeatedly. */

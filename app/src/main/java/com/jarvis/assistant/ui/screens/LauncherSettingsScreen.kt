@@ -409,7 +409,11 @@ fun LauncherSettingsScreen(
             )
             ReadoutRow(
                 label = "VOICE MODEL",
-                value = if (WakeWordModel.isInstalled(context)) "INSTALLED · OFFLINE" else "DOWNLOADS ONCE, ~40 MB",
+                value = when {
+                    WakeWordModel.isInstalled(context) -> "INSTALLED · OFFLINE"
+                    WakeWordModel.bundled(context) -> "IN THIS APP · READY TO INSTALL"
+                    else -> "DOWNLOADS ONCE, ~40 MB"
+                },
             )
             ReadoutRow(label = "ENGINE", value = "VOSK · NO ACCOUNT · NO KEY")
             Spacer(Modifier.height(10.dp))
@@ -575,10 +579,10 @@ fun LauncherSettingsScreen(
  */
 private suspend fun enableWake(context: android.content.Context, onOn: (Boolean) -> Unit) {
     if (!WakeWordModel.isInstalled(context)) {
-        WakeWord.publish(WakeWord.Phase.DOWNLOADING, "Downloading the voice model once", 0)
+        WakeWord.publish(WakeWord.Phase.DOWNLOADING, "Preparing the offline voice model", 0)
         val problem = withContext(Dispatchers.IO) {
             WakeWordModel.install(context) { percent ->
-                WakeWord.publish(WakeWord.Phase.DOWNLOADING, "Downloading the voice model once", percent)
+                WakeWord.publish(WakeWord.Phase.DOWNLOADING, "Preparing the offline voice model", percent)
             }
         }
         if (problem != null) {

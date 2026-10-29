@@ -32,7 +32,8 @@ Last updated with **1.0.0 (versionCode 24)**.
 | Sky: keyless weather + air quality (Open-Meteo), cached, spoken in three languages, honest failures | Live |
 | Long-press shortcuts: Speak, Knowledge, Activity | Live |
 | Assistant seat: hold the assistant key and he opens listening (`ROLE_ASSISTANT`, nothing idling) | Live |
-| "Hey Jarvis": offline Vosk keyphrase, opt-in, one-time ~40 MB model, foreground microphone service | Live (verify on device) |
+| "Hey Jarvis": offline Vosk keyphrase, opt-in, ~40 MB model packed in the APK, foreground microphone service | Live (verify on device) |
+| Memory: last 20 exchanges sent as real messages, boss and builder in every prompt, lower male-leaning voice | Live |
 | NEEDS YOU card and NEXT UP (three events) fed by alerts, calendar and battery | Live |
 | Continuity: whole memory exported to one JSON file, imported additively, AI key excluded | Live |
 | Focus home: top bar + orb only, full dashboard behind one button | Live |
