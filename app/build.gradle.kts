@@ -1,3 +1,6 @@
+import java.net.URL
+import java.util.zip.ZipInputStream
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -45,13 +48,13 @@ val fetchVoskModel by tasks.registering {
             zip.parentFile.mkdirs()
             if (!zip.isFile || zip.length() == 0L) {
                 logger.lifecycle("Fetching the offline voice model (~40 MB) for the APK ...")
-                java.net.URL(voskModelUrl).openStream().use { input ->
+                URL(voskModelUrl).openStream().use { input ->
                     zip.outputStream().use { input.copyTo(it) }
                 }
             }
             staging.deleteRecursively()
             staging.mkdirs()
-            java.util.zip.ZipInputStream(zip.inputStream()).use { zin ->
+            ZipInputStream(zip.inputStream()).use { zin ->
                 generateSequence { zin.nextEntry }.forEach { entry ->
                     val out = File(staging, entry.name)
                     require(out.canonicalPath.startsWith(staging.canonicalPath)) { "unsafe archive path" }
