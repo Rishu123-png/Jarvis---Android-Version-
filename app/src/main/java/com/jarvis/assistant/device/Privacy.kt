@@ -9,7 +9,7 @@ import javax.crypto.spec.PBEKeySpec
 /**
  * The privacy PIN.
  *
- * JARVIS can open apps, send messages and read the operator's Instagram numbers, so the app itself
+ * JARVIS can open apps, send messages and read what the operator chooses to share, so the app itself
  * is worth locking. The PIN is never stored — only a PBKDF2-HMAC-SHA256 digest with a random salt and
  * a deliberately slow iteration count, in app-private preferences. Verification is constant-time and
  * everything is bounded, so a wrong PIN costs a moment rather than a hang.

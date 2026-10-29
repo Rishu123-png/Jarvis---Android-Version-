@@ -79,8 +79,6 @@ import com.jarvis.assistant.ui.components.HudBackground
 import com.jarvis.assistant.ui.components.rememberClock
 import com.jarvis.assistant.ui.components.rememberIsResumed
 import com.jarvis.assistant.ui.screens.AiSettingsScreen
-import com.jarvis.assistant.ui.screens.ConnectorsScreen
-import com.jarvis.assistant.ui.screens.InstagramScreen
 import com.jarvis.assistant.ui.screens.AppDrawerScreen
 import com.jarvis.assistant.ui.screens.AutomationEditorScreen
 import com.jarvis.assistant.ui.screens.ActivityScreen
@@ -913,14 +911,6 @@ fun JarvisApp(
                         aiLabel = aiConfig?.label,
                     )
                 }
-
-                HudModules.INSTAGRAM -> InstagramScreen(
-                    onBack = { route = ROUTE_DASHBOARD },
-                )
-
-                HudModules.CONNECT -> ConnectorsScreen(
-                    onBack = { route = ROUTE_DASHBOARD },
-                )
 
                 HudModules.KNOWLEDGE -> KnowledgeScreen(
                     onBack = { route = ROUTE_DASHBOARD },
