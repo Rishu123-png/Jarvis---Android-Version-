@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-25%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-26%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -88,6 +88,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [What he actually is](#what-he-actually-is)
 - [The brain](#the-brain)
 - [The curiosity](#the-curiosity)
+- [The sky](#the-sky)
 - [The crew](#the-crew)
 - [The dial](#the-dial)
 - [The eyes](#the-eyes)
@@ -209,6 +210,20 @@ person can speak.
 
 With an AI key stored, the model still answers general conversation — the shelf is the part that
 works with nothing configured at all, and the part that makes the next identical question free.
+
+---
+
+## The sky
+
+Weather and air quality, from a source that asks for nothing: Open-Meteo, no key, no account, no
+sign-up. It only needs a coordinate, which the phone already has for distance and navigation.
+
+| | |
+| --- | --- |
+| **On the dashboard** | A SKY panel: temperature, condition, today's high and low, humidity, wind, and the air-quality band with the advice that goes with it |
+| **Out loud** | *"mausam kaisa hai"*, *"will it rain"*, *"air quality"* — answered in the language you asked in |
+| **Cached for half an hour** | So the panel costs one request per half hour at most, and nothing at all when warm. A spoken question skips the cache, because it deserves a live reading |
+| **Honest when it cannot** | No location permission, no fix, no network — the panel says which, instead of showing a friendly 24°C that is not real. A stale reading is labelled **STALE**, and *unknown air* is never shown as *good air* |
 
 ---
 
@@ -421,7 +436,7 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 25 JVM suites
+./gradlew :app:testDebugUnitTest    # 26 JVM suites
 ```
 
 Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
@@ -442,7 +457,7 @@ no assistant.
 | Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
 | Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |
 
-**Verified by CI:** compilation, 25 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 26 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -512,7 +527,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-25 JVM suites, run before every APK in CI.
+26 JVM suites, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|

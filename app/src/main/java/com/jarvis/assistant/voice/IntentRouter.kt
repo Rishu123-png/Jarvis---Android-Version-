@@ -18,6 +18,7 @@ import com.jarvis.assistant.data.PhraseBook
 import com.jarvis.assistant.data.ResearchDesk
 import com.jarvis.assistant.data.PhraseIntent
 import com.jarvis.assistant.data.Units
+import com.jarvis.assistant.data.WeatherRules
 import com.jarvis.assistant.data.When
 import com.jarvis.assistant.device.Access
 import com.jarvis.assistant.device.AppLaunch
@@ -29,6 +30,7 @@ import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickCapture
 import com.jarvis.assistant.device.Research
 import com.jarvis.assistant.device.Vision
+import com.jarvis.assistant.device.Weather
 import com.jarvis.assistant.device.NotifyBrain
 import com.jarvis.assistant.device.VoiceNotes
 import com.jarvis.assistant.device.Whereabouts
@@ -909,6 +911,50 @@ object IntentRouter {
                 "Opening quick settings.",
                 listOf(step(ActionType.GLOBAL_ACTION, "quick", "QUICK")),
             )
+
+            PhraseIntent.WEATHER -> {
+                // A spoken question deserves a real reading, so the half-hour cache is skipped.
+                val outcome = try {
+                    Crew.read(Lane.RESEARCH, "WEATHER") { Weather.current(context, force = true) }
+                } catch (t: Throwable) {
+                    Weather.Outcome.Unreachable("the sky service did not answer")
+                }
+                return when (outcome) {
+                    is Weather.Outcome.Ok -> {
+                        val sky = outcome.sky
+                        answer(
+                            "SKY \u00B7 ${upper(sky.headline, 14)}",
+                            WeatherRules.spoken(
+                                lang.tag,
+                                sky.celsius,
+                                sky.code,
+                                sky.high,
+                                sky.low,
+                                sky.aqi,
+                            ),
+                            subtitle = "WEATHER",
+                        )
+                        // The panel and the voice read the same cached reading; make it match.
+                    }
+
+                    is Weather.Outcome.NoLocation -> answer(
+                        "NO SKY",
+                        if (outcome.reason.contains("permission")) {
+                            "Location is off, so I do not know where to ask about. Allow it in " +
+                                "Advanced and I will tell you the weather."
+                        } else {
+                            "I have no location yet. Open the map once or step outside, then ask again."
+                        },
+                        subtitle = "WEATHER",
+                    )
+
+                    is Weather.Outcome.Unreachable -> answer(
+                        "NO SKY",
+                        "I could not reach the weather just now. ${outcome.reason}.",
+                        subtitle = "WEATHER",
+                    )
+                }
+            }
 
             PhraseIntent.BATTERY -> {
                 val percent = try {

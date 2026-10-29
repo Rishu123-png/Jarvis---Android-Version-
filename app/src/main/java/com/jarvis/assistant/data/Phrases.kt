@@ -21,7 +21,7 @@ enum class PhraseIntent {
     MEDIA_PLAY, MEDIA_PAUSE, MEDIA_NEXT, MEDIA_PREVIOUS,
     VOLUME_UP, VOLUME_DOWN, VOLUME_SET,
     LOCK_SCREEN, HOME, BACK, RECENTS, SHADE, QUICK_SETTINGS,
-    BATTERY, STORAGE, NETWORK, TIME, DATE, READ_SCREEN, CALENDAR, CALENDAR_ADD,
+    BATTERY, STORAGE, NETWORK, TIME, DATE, READ_SCREEN, CALENDAR, CALENDAR_ADD, WEATHER,
     CONTACT_ADD, VOICE_NOTE,
     IDENTITY, HELP, STOP, REPEAT,
     ALARM, TIMER, REMINDER, TRANSLATE, DOWNLOAD, SYSTEM_SETTINGS, CALL, MESSAGE,
@@ -182,6 +182,13 @@ object PhraseBook {
         ),
         PhraseIntent.NETWORK to listOf(
             "network", "wifi status", "am i online", "internet", "net status",
+        ),
+        PhraseIntent.WEATHER to listOf(
+            "weather", "the weather", "how is the weather", "what is the weather like",
+            "weather outside", "how hot is it", "how cold is it", "temperature outside",
+            "will it rain", "is it going to rain", "air quality", "aqi", "how is the air",
+            "mausam", "mausam kaisa hai", "bahar kaisa hai", "barish hogi", "kitni garmi hai",
+            "मौसम", "मौसम कैसा है", "बारिश होगी",
         ),
         PhraseIntent.TIME to listOf(
             "what time is it", "the time", "time now", "kitne baje", "current time",

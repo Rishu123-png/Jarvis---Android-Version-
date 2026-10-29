@@ -53,6 +53,7 @@ import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
 import com.jarvis.assistant.device.StorageStatus
 import com.jarvis.assistant.device.SystemStatus
+import com.jarvis.assistant.device.Weather
 import com.jarvis.assistant.ui.components.AppDock
 import com.jarvis.assistant.ui.components.ArcReactor
 import com.jarvis.assistant.ui.components.BlinkingCursor
@@ -112,6 +113,10 @@ fun DashboardScreen(
     needs: List<NeedsYou.Row>,
     /** The next few events, soonest first. */
     nextUp: List<NeedsYou.AgendaRow>,
+    /** The sky, or null while it is still being read. */
+    sky: Weather.Sky?,
+    /** Why there is no sky, when there is none worth showing. */
+    skyNote: String?,
     isDockCustom: Boolean,
     onLaunchApp: (InstalledApp) -> Unit,
     onEditDock: (slot: Int) -> Unit,
@@ -232,6 +237,66 @@ fun DashboardScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        if (sky != null) {
+            item(key = "sky") {
+                HudPanel(
+                    label = "SKY",
+                    accent = IceBlue,
+                    trailing = {
+                        HudChip(
+                            text = if (sky.fresh) "LIVE" else "STALE",
+                            accent = if (sky.fresh) StatusGreen else Amber,
+                        )
+                    },
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = sky.headline,
+                            style = HudType.value.copy(fontSize = 20.sp, letterSpacing = 1.5.sp),
+                            color = TextPrimary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = sky.range,
+                                style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.2.sp),
+                                color = IceBlue,
+                            )
+                            if (sky.aqi >= 0) {
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = "AIR ${sky.aqi} · \${sky.air.label.uppercase(Locale.US)}",
+                                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.sp),
+                                    color = when (sky.air) {
+                                        com.jarvis.assistant.data.WeatherRules.Air.GOOD -> StatusGreen
+                                        com.jarvis.assistant.data.WeatherRules.Air.MODERATE -> IceBlue
+                                        com.jarvis.assistant.data.WeatherRules.Air.UNKNOWN -> TextMuted
+                                        else -> AlertRed
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    MicroStrip(
+                        readings = buildList {
+                            if (sky.humidity >= 0) add(MicroReading("HUM", "\${sky.humidity}%"))
+                            if (sky.windKph > 0) {
+                                add(MicroReading("WIND", "\${Math.round(sky.windKph)} km/h"))
+                            }
+                            if (sky.isWet) add(MicroReading("TAKE", "UMBRELLA", Amber))
+                        },
+                    )
+                }
+            }
+        } else if (skyNote != null) {
+            item(key = "sky") {
+                HudPanel(label = "SKY", accent = TextMuted) {
+                    Text(text = skyNote, style = HudType.valueSmall, color = TextMuted)
                 }
             }
         }
