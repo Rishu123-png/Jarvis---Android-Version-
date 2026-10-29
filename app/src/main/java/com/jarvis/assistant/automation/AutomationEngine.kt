@@ -1,6 +1,7 @@
 package com.jarvis.assistant.automation
 
 import android.content.Context
+import com.jarvis.assistant.data.Lane
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -161,8 +162,12 @@ object AutomationEngine {
                 log = emptyList(),
             )
 
+            // A routine drives the phone exactly like a spoken command does, so it takes the same
+            // lock. One of them runs; the other waits and says so.
             val halted = try {
-                executeList(appContext, workflow, workflow.steps, depth = 0, budget = budget, counters)
+                Crew.exclusive(Lane.AUTOMATE, "ROUTINE", workflow.name) {
+                    executeList(appContext, workflow, workflow.steps, depth = 0, budget = budget, counters)
+                }
             } catch (t: Throwable) {
                 log.add(RunLogEntry(0, "ROUTINE", "Aborted: ${t.javaClass.simpleName}", ok = false))
                 counters.failed++

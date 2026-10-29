@@ -4,13 +4,23 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
-## 1.0.0 — versionCode 22
+## 1.0.0 — versionCode 23
 
 **The version number restarts here.** From this release on, JARVIS is **1.0.0** and stays there in
 every build; `versionCode` is what increases. The earlier 2.x names were internal scaffolding, and a
 family member released to family should not be called 2.4.
 
 Everything below is new in this release.
+
+**The crew, and what is waiting (same version).** Four lanes — DEVICE, ROUTINES, RESEARCH, ALERTS —
+with one arbiter: anything that touches the screen takes a single shared lock, so a spoken command and
+a routine can never fight over the window, and the one that waits says **QUEUED** rather than doing
+nothing. The read-only lanes run alongside everything. A new **ACTIVITY** screen (under the day
+ruler) shows the lanes live plus the real history — routine runs with the trigger that fired them,
+the knowledge shelf, and this session's work. No avatars, no invented task counts.
+Also: a **NEEDS YOU** card on the dashboard — at most three rows, empty when nothing is waiting,
+ordered by what happens next, and it says *"alert access is off"* rather than showing a confident
+zero — and **NEXT UP** now lists three events instead of one. **versionCode 23**, 25 suites.
 
 **The dial (same version).** The reactor is the navigation now: eleven module keys around the ring,
 labelled along the arc and flipped on the lower half so nothing reads upside down, each with its own

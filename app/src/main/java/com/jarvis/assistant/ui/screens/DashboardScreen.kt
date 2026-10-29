@@ -48,6 +48,7 @@ import com.jarvis.assistant.data.BootSequence
 import com.jarvis.assistant.device.DeviceInfo
 import com.jarvis.assistant.data.HudModule
 import com.jarvis.assistant.data.HudGeometry
+import com.jarvis.assistant.data.NeedsYou
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
 import com.jarvis.assistant.device.StorageStatus
@@ -106,6 +107,10 @@ fun DashboardScreen(
     dayBlocks: List<HudGeometry.DayBlock>,
     /** False when calendar access is off, so the ruler says so instead of drawing an empty day. */
     hasCalendar: Boolean,
+    /** What is waiting on the operator — at most three rows, empty when nothing is. */
+    needs: List<NeedsYou.Row>,
+    /** The next few events, soonest first. */
+    nextUp: List<NeedsYou.AgendaRow>,
     isDockCustom: Boolean,
     onLaunchApp: (InstalledApp) -> Unit,
     onEditDock: (slot: Int) -> Unit,
@@ -113,6 +118,7 @@ fun DashboardScreen(
     onOpenSettings: () -> Unit,
     onOpenModule: (HudModule) -> Unit,
     onOpenTerminal: () -> Unit,
+    onOpenActivity: () -> Unit,
 ) {
     var statusNoteIndex by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
@@ -177,6 +183,58 @@ fun DashboardScreen(
             )
         }
 
+        if (needs.isNotEmpty()) {
+            item(key = "needs") {
+                HudPanel(
+                    label = "NEEDS YOU",
+                    accent = Amber,
+                    trailing = { HudChip(text = "${needs.size}", accent = Amber) },
+                ) {
+                    needs.forEachIndexed { index, row ->
+                        if (index > 0) {
+                            Spacer(Modifier.height(7.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Amber.copy(alpha = 0.14f)),
+                            )
+                            Spacer(Modifier.height(7.dp))
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PulseDot(
+                                color = when (row.kind) {
+                                    NeedsYou.Kind.EVENT -> IceBlue
+                                    NeedsYou.Kind.BATTERY -> AlertRed
+                                    NeedsYou.Kind.MESSAGES -> ElectricCyan
+                                    NeedsYou.Kind.ACCESS -> Amber
+                                },
+                                diameter = 4,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = row.title,
+                                    style = HudType.valueSmall,
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (row.detail.isNotBlank()) {
+                                    Text(
+                                        text = row.detail,
+                                        style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.sp),
+                                        color = TextMuted,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         item(key = "day") {
             HudPanel(
                 label = "THE DAY",
@@ -194,6 +252,64 @@ fun DashboardScreen(
                     ),
                     hasCalendar = hasCalendar,
                 )
+
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(ElectricCyan.copy(alpha = 0.08f), ChipShape)
+                        .border(1.dp, ElectricCyan.copy(alpha = 0.28f), ChipShape)
+                        .clickable(onClick = onOpenActivity)
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PulseDot(color = StatusGreen, diameter = 4)
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        text = "VIEW ACTIVITY",
+                        style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.4.sp),
+                        color = ElectricCyan,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "WHAT HE IS DOING",
+                        style = HudType.label.copy(fontSize = 7.sp, letterSpacing = 1.sp),
+                        color = TextMuted,
+                    )
+                }
+
+                if (nextUp.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "NEXT UP",
+                        style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.6.sp),
+                        color = IceBlue.copy(alpha = 0.85f),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    nextUp.forEach { event ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = event.title,
+                                style = HudType.valueSmall,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = event.whenLabel,
+                                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.1.sp),
+                                color = TextSecondary,
+                            )
+                        }
+                    }
+                }
             }
         }
 
