@@ -24,8 +24,8 @@ class BossIdentityTest {
     @Test
     fun identityNeverInvitesTheModelToNameItsProvider() {
         val text = Persona.IDENTITY.lowercase()
-        assertTrue(text.contains("never name a provider"))
-        assertTrue(text.contains("never call yourself a language model"))
+        assertTrue(text.contains("never mention a model, a provider"))
+        assertTrue(text.contains("never describe yourself as a language model"))
     }
 
     @Test
