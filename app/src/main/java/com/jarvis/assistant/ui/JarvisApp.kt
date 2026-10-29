@@ -41,6 +41,7 @@ import com.jarvis.assistant.device.HealthLog
 import com.jarvis.assistant.device.LockGate
 import com.jarvis.assistant.device.Nudges
 import com.jarvis.assistant.device.NotifyBrain
+import com.jarvis.assistant.device.Weather
 import com.jarvis.assistant.device.Whereabouts
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
