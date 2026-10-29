@@ -23,7 +23,8 @@ class BossIdentityTest {
 
     @Test
     fun identityNeverInvitesTheModelToNameItsProvider() {
-        val text = Persona.IDENTITY.lowercase()
+        // The rule is wrapped across lines in the source; compare on single spaces.
+        val text = Persona.IDENTITY.lowercase().replace(Regex("\\s+"), " ")
         assertTrue(text.contains("never mention a model, a provider"))
         assertTrue(text.contains("never describe yourself as a language model"))
     }
