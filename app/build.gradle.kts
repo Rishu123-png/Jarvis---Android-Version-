@@ -36,10 +36,11 @@ val hasReleaseKeystore = releaseKeystorePath != null
  * app then downloads the model itself the first time the operator turns the wake word on.
  */
 val voskModelUrl = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
-val voskAssetDir = layout.projectDirectory.dir("src/main/assets/model-en-us").asFile
+val voskAssetRoot = layout.buildDirectory.dir("generated/vosk-assets").get().asFile
+val voskAssetDir = File(voskAssetRoot, "model-en-us")
 
 val fetchVoskModel by tasks.registering {
-    outputs.dir(voskAssetDir)
+    outputs.dir(voskAssetRoot)
     doLast {
         if (File(voskAssetDir, "am/final.mdl").isFile) return@doLast
         val zip = layout.buildDirectory.file("vosk/model.zip").get().asFile
@@ -219,3 +220,6 @@ dependencies {
 
     debugImplementation(libs.androidx.ui.tooling)
 }
+
+// The generated model is an asset source: it lives in the build folder, not in src/.
+android.sourceSets.getByName("main").assets.srcDir(voskAssetRoot)
