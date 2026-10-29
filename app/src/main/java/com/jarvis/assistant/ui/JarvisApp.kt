@@ -249,29 +249,6 @@ fun JarvisApp(
         }
     }
 
-    // What is waiting on the operator. Recomputed only when the inputs actually change — a new
-    // notification, the next event moving, or the battery stepping — never on a timer.
-    val needs = remember(notifications, nextEventMillis, status.battery.percent) {
-        val messageItems = notifications.filter { item ->
-            NotifyBrain.classify(item.packageName, item.appLabel, item.title, item.text, false).kind ==
-                com.jarvis.assistant.device.NotificationKind.MESSAGE
-        }
-        NeedsYou.rows(
-            NeedsYou.Facts(
-                unreadMessages = messageItems.size,
-                senders = messageItems
-                    .sortedByDescending { it.postedAt }
-                    .map { it.title.ifBlank { it.appLabel } }
-                    .filter { it.isNotBlank() },
-                alertsAvailable = NotificationRepository.hasAccess(context),
-                nextEventTitle = nextEvent,
-                nextEventMillis = nextEventMillis,
-                batteryPercent = status.battery.percent,
-                charging = status.battery.isCharging,
-            ),
-        )
-    }
-
     // The phone's own lock, shown through the system's credential screen. Android tells JARVIS
     // only pass or fail; the PIN, pattern or fingerprint itself is never visible to the app.
     val credentialLauncher = rememberLauncherForActivityResult(
@@ -299,6 +276,30 @@ fun JarvisApp(
     var isHomeApp by remember { mutableStateOf(LauncherStatus.isDefaultLauncher(context)) }
     var hasNotificationAccess by remember { mutableStateOf(NotificationAccess.isGranted(context)) }
     val notifications by NotificationRepository.notifications.collectAsState()
+
+    // What is waiting on the operator. Recomputed only when the inputs actually change — a new
+    // notification, the next event moving, or the battery stepping — never on a timer.
+    val needs = remember(notifications, nextEventMillis, status.battery.percent) {
+        val messageItems = notifications.filter { item ->
+            NotifyBrain.classify(item.packageName, item.appLabel, item.title, item.text, false).kind ==
+                com.jarvis.assistant.device.NotificationKind.MESSAGE
+        }
+        NeedsYou.rows(
+            NeedsYou.Facts(
+                unreadMessages = messageItems.size,
+                senders = messageItems
+                    .sortedByDescending { it.postedAt }
+                    .map { it.title.ifBlank { it.appLabel } }
+                    .filter { it.isNotBlank() },
+                alertsAvailable = NotificationRepository.hasAccess(context),
+                nextEventTitle = nextEvent,
+                nextEventMillis = nextEventMillis,
+                batteryPercent = status.battery.percent,
+                charging = status.battery.isCharging,
+            ),
+        )
+    }
+
 
     // ---- controls ----
     var torchOn by remember { mutableStateOf(false) }
@@ -1055,6 +1056,7 @@ fun JarvisApp(
                     onOpenSettings = { route = ROUTE_SETTINGS },
                     onOpenModule = { module -> route = module.id },
                     onOpenTerminal = { route = ROUTE_TERMINAL },
+                    onOpenActivity = { route = ROUTE_ACTIVITY },
                 )
             }
         }
