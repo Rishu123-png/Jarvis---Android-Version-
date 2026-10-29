@@ -186,7 +186,65 @@
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+
+            <!--
+              The assistant entry point. Some OEMs launch the activity directly instead of opening a
+              VoiceInteractionSession; MainActivity treats this action exactly like the voice extra,
+              so both roads end in the same listening surface.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
+
+        <!--
+          The assistant seat.
+
+          Holding the assistant role is what turns the phone's own assist gesture — press and hold
+          Home, the side key, whatever the OEM mapped — into "JARVIS, listening". The system starts
+          these; nothing here runs at idle, holds the microphone, or keeps a thread alive.
+
+          Both services are bound by the system only, behind BIND_VOICE_INTERACTION, and the one that
+          receives the gesture (JarvisSession) hands over to MainActivity and closes itself. If the
+          role is revoked, these are simply never bound again.
+        -->
+        <service
+            android:name=".voice.JarvisInteractionService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/voice_interaction" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".voice.JarvisSessionService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionSessionService" />
+            </intent-filter>
+        </service>
+
+        <!--
+          Declared because Android's assistant metadata refuses to parse without it. It answers
+          "no speech input" and never opens the microphone; see the class for why.
+        -->
+        <service
+            android:name=".voice.JarvisRecognitionService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_SPEECH_RECOGNITION_SERVICE">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+        </service>
 
         <!--
           Notification listener.

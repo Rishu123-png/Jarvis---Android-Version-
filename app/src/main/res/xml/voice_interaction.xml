@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The assistant seat, as Android requires it to be described.
+
+    Android will not parse this without BOTH component names, even though JARVIS routes speech
+    through the phone's own recogniser and never through its own. sessionService is the real one:
+    it hands the gesture straight to the app. recognitionService answers "no speech input" and
+    nothing else.
+
+    supportsAssist = true is what makes the system's assistant gesture reach us.
+    Keyguard launch stays false on purpose: the lock screen is the phone's own, and JARVIS does not
+    want a listening session on top of it.
+-->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:recognitionService="com.jarvis.assistant.voice.JarvisRecognitionService"
+    android:sessionService="com.jarvis.assistant.voice.JarvisSessionService"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="false" />

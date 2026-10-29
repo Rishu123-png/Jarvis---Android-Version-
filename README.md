@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-26%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-27%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -89,6 +89,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [The brain](#the-brain)
 - [The curiosity](#the-curiosity)
 - [The sky](#the-sky)
+- [The assistant button](#the-assistant-button)
 - [The crew](#the-crew)
 - [The dial](#the-dial)
 - [The eyes](#the-eyes)
@@ -227,6 +228,31 @@ sign-up. It only needs a coordinate, which the phone already has for distance an
 
 ---
 
+## The assistant button
+
+Hold the assistant key — Home, the side key, whatever your phone calls it — and JARVIS opens
+already listening. No phrase to say, no microphone held open, nothing running while the phone sits
+in your pocket.
+
+That is the whole of it, and it is deliberate. The seat is Android's own assistant role
+(`ROLE_ASSISTANT`): the system starts a `VoiceInteractionSession`, the session hands straight to the
+app with the same voice extra the bubble and the widget use, and closes itself. There is no
+listener, no thread, no wake word and no model — the two services that exist to make the role
+possible are empty by design, and one of them (`JarvisRecognitionService`) exists only because
+Android's assistant metadata refuses to parse without it. It answers *"no speech input"* and never
+opens the microphone.
+
+Advanced → **ASSISTANT BUTTON** shows the real state — *held by JARVIS*, *not set*, or *not offered
+by this phone* — and the button opens Android's own dialog. It also tells you where the gesture is
+hidden on your brand: HyperOS, ColorOS, One UI, Funtouch and Moto each bury it somewhere different,
+and a wrong instruction is worse than none.
+
+**Why not a wake word.** Android closed that door to third-party apps: from Android 12,
+`AlwaysOnHotwordDetector` is a system API and "intended for use by Assistant apps with system-level
+privileges". The only remaining route is a foreground service holding the microphone — 1–3% of the
+battery every hour, ~40–70 MB of RAM, a permanent notification, and it still dies in Doze. The
+gesture costs nothing instead.
+
 ## The crew
 
 One brain, four lanes, one arbiter — and it is not the thing the concept renders show.
@@ -306,6 +332,13 @@ asked. A menu, a sign, a medicine strip, a bill, a page of homework, a plant tha
 
 System intents, skin-specific packages and fuzzy labels — so it works on ColorOS, MIUI, One UI and
 stock alike.</td></tr>
+
+<tr><td><b>The assistant key</b></td><td>
+
+Hold the assistant key and he is listening. The hole in the "what he cannot do" list about wake
+words is answered by Android's own assistant role instead of a microphone left open.
+
+</td></tr>
 
 <tr><td><b>Talk to people</b></td><td>
 
@@ -436,7 +469,7 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 26 JVM suites
+./gradlew :app:testDebugUnitTest    # 27 JVM suites
 ```
 
 Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
@@ -453,11 +486,11 @@ no assistant.
 | Replace the lock screen | Removed from Android in 5.0. No API exists. |
 | Read your PIN, pattern or fingerprint | Only *pass* or *fail* is ever returned to an app. |
 | Send WhatsApp with zero taps when there is no live notification | App sandbox. His route is notification reply → `wa.me` link → in-app search. |
-| Always-on wake word | Would drain the battery and hold the microphone permanently. He listens when tapped. |
+| Always-on wake word | Android gives the efficient path (`AlwaysOnHotwordDetector`) to system apps only. A third-party one is a foreground service holding the mic: 1–3%/hr, ~40–70 MB, and still deaf in Doze. He uses the assistant key instead. |
 | Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
 | Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |
 
-**Verified by CI:** compilation, 26 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 27 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -527,7 +560,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-26 JVM suites, run before every APK in CI.
+27 JVM suites, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|

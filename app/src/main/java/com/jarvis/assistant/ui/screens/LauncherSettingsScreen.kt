@@ -1,5 +1,7 @@
 package com.jarvis.assistant.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import com.jarvis.assistant.ui.theme.PanelNavy
 import androidx.compose.foundation.layout.Box
@@ -43,6 +45,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.jarvis.assistant.BuildConfig
 import com.jarvis.assistant.device.LauncherStatus
 import com.jarvis.assistant.shell.ShizukuShell
+import com.jarvis.assistant.voice.AssistantRole
 import com.jarvis.assistant.ui.components.HudChip
 import com.jarvis.assistant.ui.components.HudDivider
 import com.jarvis.assistant.ui.components.HudPanel
@@ -90,11 +93,22 @@ fun LauncherSettingsScreen(
 
     var isHome by remember { mutableStateOf(LauncherStatus.isDefaultLauncher(context)) }
 
+    // The assistant seat. Nothing is requested here until the button is pressed: the role is the
+    // operator's to give, and a phone that quietly claimed it would be the opposite of trustworthy.
+    var assistantState by remember { mutableStateOf(AssistantRole.state(context)) }
+    val assistantLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        // The result code is not reliable across OEMs; re-read the truth from RoleManager instead.
+        assistantState = AssistantRole.state(context)
+    }
+
     // Re-check whenever the screen comes back to the foreground (e.g. after the system dialog).
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 isHome = LauncherStatus.isDefaultLauncher(context)
+                assistantState = AssistantRole.state(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -302,6 +316,59 @@ fun LauncherSettingsScreen(
             )
         }
 
+        HudPanel(
+            label = "ASSISTANT BUTTON",
+            accent = if (assistantState == AssistantRole.State.HELD) StatusGreen else Amber,
+        ) {
+            ReadoutRow(
+                label = "ASSISTANT ROLE",
+                value = AssistantRole.label(assistantState),
+                valueColor = if (assistantState == AssistantRole.State.HELD) StatusGreen else TextSecondary,
+            )
+            ReadoutRow(label = "WAKE WORD", value = "NONE \u00B7 NOTHING LISTENS IN THE BACKGROUND")
+            ReadoutRow(label = "MICROPHONE", value = "ONLY WHILE LISTENING", valueColor = StatusGreen)
+            Spacer(Modifier.height(10.dp))
+            when (assistantState) {
+                AssistantRole.State.HELD -> ActionButton(
+                    label = "MANAGE ASSISTANT ROLE",
+                    icon = Icons.Outlined.Settings,
+                    accent = IceBlue,
+                    filled = false,
+                    onClick = {
+                        AssistantRole.request(context)?.let { assistantLauncher.launch(it) }
+                            ?: openDefaultApps(context)
+                    },
+                )
+
+                AssistantRole.State.AVAILABLE -> ActionButton(
+                    label = "MAKE JARVIS YOUR ASSISTANT",
+                    icon = Icons.Outlined.Tune,
+                    accent = Amber,
+                    filled = true,
+                    onClick = {
+                        AssistantRole.request(context)?.let { assistantLauncher.launch(it) }
+                            ?: openDefaultApps(context)
+                    },
+                )
+
+                AssistantRole.State.UNSUPPORTED -> ActionButton(
+                    label = "OPEN DEFAULT APPS",
+                    icon = Icons.Outlined.OpenInNew,
+                    accent = IceBlue,
+                    filled = false,
+                    onClick = { openDefaultApps(context) },
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Hold the assistant key and JARVIS opens already listening \u2014 " +
+                    "no word to say, no microphone held open, nothing running while the phone sits " +
+                    "idle. " + AssistantRole.gestureNote(android.os.Build.MANUFACTURER),
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted,
+            )
+        }
+
         HudPanel(label = "QUIET MODE", accent = if (dndAccess) StatusGreen else Amber) {
             ReadoutRow(
                 label = "INTERRUPTIONS",
@@ -423,6 +490,18 @@ fun LauncherSettingsScreen(
                 color = TextMuted,
             )
         }
+    }
+}
+
+/** Where to go when this phone has no role dialog: the default-apps list still has the choice. */
+private fun openDefaultApps(context: android.content.Context) {
+    val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (t: Throwable) {
+        // Some ROMs strip that screen; the gesture note above already tells the operator where the
+        // setting lives in that case.
     }
 }
 

@@ -12,6 +12,16 @@ family member released to family should not be called 2.4.
 
 Everything below is new in this release.
 
+**The assistant button (same version).** Hold the assistant key and he opens already listening. This
+is Android's own assistant role (`ROLE_ASSISTANT`), not a wake word: the system starts a
+`VoiceInteractionSession`, the session hands over to the app with the voice extra the bubble and the
+widget already use, and closes itself. The two services that make the role possible are empty by
+design, and `JarvisRecognitionService` exists only because Android's metadata refuses to parse
+without it — it answers "no speech input" and never touches the microphone. Advanced shows the
+true state (held / not set / not offered by this phone) and the per-manufacturer instructions for
+finding the gesture on HyperOS, ColorOS, One UI, Funtouch and Moto. Nothing listens in the
+background, nothing new idles. **versionCode 25**, 27 suites.
+
 **The sky, the language fix and the shortcuts (same version).** Weather and air quality from
 Open-Meteo — keyless, no account, cached for half an hour, with a SKY panel on the dashboard and a
 spoken answer in the language the question was asked in. Every failure states its own reason: no

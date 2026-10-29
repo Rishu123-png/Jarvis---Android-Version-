@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.jarvis.assistant.ui.JarvisApp
+import com.jarvis.assistant.voice.AssistantHandoff
 import com.jarvis.assistant.ui.theme.JarvisTheme
 import com.jarvis.assistant.ui.theme.VoidBlack
 
@@ -22,8 +23,9 @@ import com.jarvis.assistant.ui.theme.VoidBlack
 class MainActivity : ComponentActivity() {
 
     /**
-     * Set when the app was opened from the floating bubble or the widget, which both mean "start
-     * listening". Kept as state so `singleTask` re-launches (onNewIntent) also arm the voice surface.
+     * Set when the app was opened from the floating bubble, the widget, or the phone's assistant
+     * gesture — all of which mean "start listening". Kept as state so `singleTask` re-launches
+     * (onNewIntent) also arm the voice surface.
      */
     private var voiceArmed by mutableStateOf(false)
 
@@ -64,6 +66,14 @@ class MainActivity : ComponentActivity() {
     private fun routeOf(intent: Intent?): String? =
         intent?.getStringExtra("com.jarvis.assistant.extra.ROUTE")?.takeIf { it.isNotBlank() }
 
-    private fun wantsVoice(intent: Intent?): Boolean =
-        intent?.getBooleanExtra("com.jarvis.assistant.extra.VOICE", false) == true
+    /**
+     * The voice extra covers the bubble, the widget and our own assistant session. `ACTION_ASSIST`
+     * covers the OEMs that hand the gesture straight to the activity instead of opening a
+     * VoiceInteractionSession — the same intent, a different door.
+     */
+    private fun wantsVoice(intent: Intent?): Boolean {
+        if (intent == null) return false
+        if (intent.getBooleanExtra(AssistantHandoff.EXTRA_VOICE, false)) return true
+        return intent.action == Intent.ACTION_ASSIST
+    }
 }
