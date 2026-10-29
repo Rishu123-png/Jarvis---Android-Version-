@@ -25,6 +25,61 @@ val releaseKeystorePath: String? = (
 
 val hasReleaseKeystore = releaseKeystorePath != null
 
+/*
+ * The offline voice model ("Hey Jarvis") is packed into the APK at build time, so installing the app
+ * is enough. It is ~40 MB and is never committed: the folder is git-ignored and rebuilt on demand.
+ *
+ * If the download fails (no network on the build machine), the build still succeeds and warns; the
+ * app then downloads the model itself the first time the operator turns the wake word on.
+ */
+val voskModelUrl = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
+val voskAssetDir = layout.projectDirectory.dir("src/main/assets/model-en-us").asFile
+
+val fetchVoskModel by tasks.registering {
+    outputs.dir(voskAssetDir)
+    doLast {
+        if (File(voskAssetDir, "am/final.mdl").isFile) return@doLast
+        val zip = layout.buildDirectory.file("vosk/model.zip").get().asFile
+        val staging = layout.buildDirectory.dir("vosk/unzipped").get().asFile
+        try {
+            zip.parentFile.mkdirs()
+            if (!zip.isFile || zip.length() == 0L) {
+                logger.lifecycle("Fetching the offline voice model (~40 MB) for the APK ...")
+                java.net.URL(voskModelUrl).openStream().use { input ->
+                    zip.outputStream().use { input.copyTo(it) }
+                }
+            }
+            staging.deleteRecursively()
+            staging.mkdirs()
+            java.util.zip.ZipInputStream(zip.inputStream()).use { zin ->
+                generateSequence { zin.nextEntry }.forEach { entry ->
+                    val out = File(staging, entry.name)
+                    require(out.canonicalPath.startsWith(staging.canonicalPath)) { "unsafe archive path" }
+                    if (entry.isDirectory) {
+                        out.mkdirs()
+                    } else {
+                        out.parentFile.mkdirs()
+                        out.outputStream().use { zin.copyTo(it) }
+                    }
+                    zin.closeEntry()
+                }
+            }
+            val unpacked = File(staging, "vosk-model-small-en-us-0.15")
+            check(File(unpacked, "am/final.mdl").isFile) { "model folder is missing am/final.mdl" }
+            voskAssetDir.deleteRecursively()
+            unpacked.copyRecursively(voskAssetDir, overwrite = true)
+            logger.lifecycle("Offline voice model bundled into the APK.")
+        } catch (e: Exception) {
+            logger.warn("Offline voice model NOT bundled (${e.message}). The app will download it on first use.")
+            zip.delete()
+        }
+    }
+}
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(fetchVoskModel)
+}
+
 android {
     namespace = "com.jarvis.assistant"
     compileSdk = 34
@@ -33,7 +88,7 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 26
+        versionCode = 27
         versionName = "1.0.0"
 
         vectorDrawables { useSupportLibrary = true }

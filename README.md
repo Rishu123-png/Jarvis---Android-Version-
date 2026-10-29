@@ -259,9 +259,10 @@ Say **"Hey Jarvis"** and he opens listening. It is off until you turn it on in
 - **Engine:** [Vosk](https://alphacephei.com/vosk/), offline, Apache 2.0. No account, no access key,
   no cloud. The recogniser is given a grammar of exactly two alternatives — the phrase and the
   engine's "unknown" token — so ordinary speech does not wake him.
-- **The model** (`vosk-model-small-en-us-0.15`, ~40 MB) downloads once, the first time you turn it
-  on, from the Vosk project. It is kept in the app's private storage and checked by its contents
-  before use. Nothing else is downloaded.
+- **The model** (`vosk-model-small-en-us-0.15`, ~40 MB) is packed into the APK at build time, so
+  installing the app is enough: turning the wake word on copies it to private storage, offline, in
+  seconds. If a build could not fetch it, the app downloads it the first time you turn the wake word
+  on, and says so. It is checked by its contents before use.
 - **While it is on:** a foreground service holds the microphone. Android shows its microphone
   indicator and a notification the whole time, with a *TURN OFF* button. It listens only while
   switched on; turning it off stops the service.
@@ -274,6 +275,17 @@ Say **"Hey Jarvis"** and he opens listening. It is off until you turn it on in
 **The honest cost.** Listening uses battery the whole time it is on. The figure of 1–3% an hour is
 an estimate, not a measurement; measure it on your own phone before you rely on it. Turn it off
 when you don't need it.
+
+## Memory and who he is
+
+- **Talk memory:** the last 20 exchanges go back to the model as real earlier messages, so "and then?"
+  and "why?" have a subject. The phone keeps the last 40 turns. Older talk is not summarised yet: a
+  topic from last week may be gone unless it was saved as a fact.
+- **Facts and people** still persist as before, and you can wipe everything in Privacy.
+- **Identity:** every model call starts with: he is JARVIS, the operator is his boss, and Rishu
+  Jaswar built him. He never names a provider, model or key.
+- **Voice:** a lower pitch and steady pace on every phone. Where the installed voices include a
+  male one, he uses it. Android does not say which voice is male, so the pitch does most of the work.
 
 ## The crew
 

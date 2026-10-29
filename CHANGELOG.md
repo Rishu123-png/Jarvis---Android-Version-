@@ -12,6 +12,13 @@ family member released to family should not be called 2.4.
 
 Everything below is new in this release.
 
+**Memory, identity, voice, and the model in the APK (same version).** The last 20 exchanges now go to the
+model as real earlier messages, so the conversation has a thread; the phone keeps 40 turns. Every model
+call begins with who he is: JARVIS, the operator is his boss, built by Rishu Jaswar. The voice uses a
+lower pitch and steady pace, and a male voice when the phone has one. The "Hey Jarvis" model is packed
+into the APK at build time, so installing needs no download; a build that cannot fetch it falls back to
+downloading on first use. **versionCode 27.**
+
 **"Hey Jarvis" (same version).** Opt-in, offline, no account: Vosk listens for the phrase through a
 grammar of exactly two alternatives, so ordinary speech does not wake him. The model (~40 MB) downloads
 once on first use and is checked by its contents. While on, a foreground microphone service shows the

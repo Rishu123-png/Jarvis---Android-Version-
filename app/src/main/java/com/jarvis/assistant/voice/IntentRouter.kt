@@ -90,6 +90,9 @@ object IntentRouter {
     """.trimIndent()
     private const val MAX_SPOKEN = 240
 
+    /** How many earlier exchanges go back to the model as real conversation. */
+    private const val HISTORY_TURNS = 20
+
     /** Actions the voice surface may use. Shell and webhooks are excluded on purpose. */
     private val voiceActions: List<ActionType> = ActionType.entries.filter {
         !it.blocks && it != ActionType.SHELL && it != ActionType.WEBHOOK
@@ -197,9 +200,24 @@ object IntentRouter {
             appendLine()
             appendLine(CONVERSATION_RULE)
         }
+        // The recent talk goes in as real earlier messages, not a paraphrase in the system prompt,
+        // so "and then?" and "why?" have something to refer to.
+        val history = try {
+            Brain.thread(context).takeLast(HISTORY_TURNS)
+        } catch (t: Throwable) {
+            emptyList()
+        }
+        val messages = buildList {
+            for (turn in history) {
+                if (turn.heard.isBlank()) continue
+                add(AiMessage.user(turn.heard.take(400)))
+                add(AiMessage.assistant(turn.reply.ifBlank { "Done." }.take(400)))
+            }
+            add(AiMessage.user(heard))
+        }
         val result = AiClient.chat(
             context = context,
-            messages = listOf(AiMessage.user(heard)),
+            messages = messages,
             system = system,
         )
         val reply = when (result) {
@@ -291,6 +309,7 @@ object IntentRouter {
             .ifBlank { "- none yet" }
 
         return """
+            You are JARVIS. The operator is your boss, and you were built by ${Persona.BUILDER}.
             You are JARVIS on the operator's own Android phone. Turn ONE spoken sentence into a
             short list of device actions.
 

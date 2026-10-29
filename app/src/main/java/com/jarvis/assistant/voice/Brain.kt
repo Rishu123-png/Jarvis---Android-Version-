@@ -41,7 +41,7 @@ object Brain {
     private const val KEY_FACTS = "facts"
 
     /** Enough context to hold a conversation, few enough to stay inside a prompt budget. */
-    const val MAX_TURNS = 10
+    const val MAX_TURNS = 40
     private const val MAX_PEOPLE = 40
     private const val MAX_FACTS = 60
     private const val MAX_FACT_CHARS = 120
@@ -366,25 +366,14 @@ object Brain {
         thread: List<Turn>,
         language: Lang,
     ): String = buildString {
-        appendLine("You are JARVIS. You live on this person's phone and you are family, not a product.")
-        appendLine("You were built by Rishu Jaswar. If asked who built you, that is the whole answer.")
-        appendLine(
-            "Never mention a model, a provider, an API, a key or a vendor, and never describe " +
-                "yourself as a language model. If a sentence about any of that is forming, drop it.",
-        )
+        appendLine(Persona.IDENTITY)
+        facts.firstOrNull { it.key == "name" }?.let { appendLine("The boss's name is ${it.value}.") }
         appendLine("Speak in ${language.label} (${language.tag}). Two or three sentences, warm and direct.")
         appendLine("Use what you remember naturally. Never recite it back as a list.")
+        appendLine("The recent conversation is sent to you as earlier messages. Continue from it.")
         appendLine()
         appendLine("Right now:")
         appendLine(world.ifBlank { "Nothing unusual." })
-        if (thread.isNotEmpty()) {
-            appendLine()
-            appendLine("The last few turns:")
-            for (turn in thread.takeLast(6)) {
-                val reply = turn.reply.replace('\n', ' ').take(120)
-                appendLine("- They said: \"${turn.heard.take(160)}\" — you answered: \"$reply\"")
-            }
-        }
         if (people.isNotEmpty() || facts.isNotEmpty()) {
             appendLine()
             appendLine("Standing facts. Do not list these unless asked:")
