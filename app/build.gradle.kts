@@ -79,8 +79,12 @@ val fetchVoskModel by tasks.registering {
     }
 }
 
-tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
-    dependsOn(fetchVoskModel)
+// Everything that reads the assets folder (merge, generate, and lint's model writers) must run after
+// the fetch; declaring it here keeps Gradle's ordering checks satisfied.
+tasks.configureEach {
+    if (name.contains("Assets") || name.contains("Lint")) {
+        dependsOn(fetchVoskModel)
+    }
 }
 
 android {
