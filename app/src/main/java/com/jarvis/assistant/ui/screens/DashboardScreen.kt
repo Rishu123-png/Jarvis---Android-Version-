@@ -69,6 +69,7 @@ import com.jarvis.assistant.ui.components.SectionHeader
 import com.jarvis.assistant.ui.components.TelemetryStat
 import com.jarvis.assistant.ui.components.Typewriter
 import com.jarvis.assistant.ui.theme.AlertRed
+import com.jarvis.assistant.ui.theme.Amber
 import com.jarvis.assistant.ui.theme.ChipShape
 import com.jarvis.assistant.ui.theme.CyanDeep
 import com.jarvis.assistant.ui.theme.ElectricCyan
