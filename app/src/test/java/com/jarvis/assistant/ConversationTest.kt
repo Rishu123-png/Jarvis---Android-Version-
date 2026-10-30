@@ -54,6 +54,28 @@ class ConversationTest {
         assertTrue(Conversation.isExit("itna hi bas"))
     }
 
+    @Test
+    fun stopEndsTheWindowRatherThanReachingTheRouter() {
+        // Inside a conversation window "stop" closes the session. Outside one, the router sees it
+        // normally — the exit table is only consulted after a turn has finished.
+        assertTrue(Conversation.isExit("stop"))
+        assertTrue(Conversation.isExit("stop karo"))
+    }
+
+    @Test
+    fun aRealSentenceIsNeverAnExit() {
+        val sentences = listOf(
+            "whatsapp kholo",
+            "divik ko message bhej do",
+            "kal 5 baje ka alarm laga do",
+            "kitne steps hai",
+            "open gallery",
+        )
+        for (sentence in sentences) {
+            assertFalse(sentence, Conversation.isExit(sentence))
+        }
+    }
+
     // ---------------------------------------------------------------------------------------------
     // What it asks
     // ---------------------------------------------------------------------------------------------

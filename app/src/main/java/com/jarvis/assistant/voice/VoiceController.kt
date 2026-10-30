@@ -40,6 +40,9 @@ object VoiceController {
     private const val SAY_TIMEOUT_MS = 22_000L
     private const val FOLLOW_UP_TRANSCRIBE_MS = 30_000L
 
+    /** Two seconds of 16 kHz mono 16-bit audio, the window the silence check looks at. */
+    private const val TAIL_SAMPLES_BYTES = 16_000 * 2 * 2
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _state = MutableStateFlow(VoiceTask())
@@ -521,15 +524,25 @@ object VoiceController {
         if (recorder.start() != null) return null
         mic = recorder
 
+        // The polling loop reads a growing buffer and takes an RMS of it, which is real work: it
+        // runs off the main thread so holding the ear open can never cost the HUD a frame.
         val deadline = System.currentTimeMillis() + windowMs
-        var speechSeen = false
-        while (System.currentTimeMillis() < deadline) {
-            delay(200L)
-            if (recorder.isRunning) {
-                val snapshot = recorder.snapshot()
+        withContext(Dispatchers.Default) {
+            var speechSeen = false
+            while (System.currentTimeMillis() < deadline) {
+                delay(200L)
+                if (!recorder.isRunning) continue
+                // Only the last two seconds matter: speech already seen stays seen, and trailing
+                // quiet is by definition at the end. Copying the whole recording every tick would
+                // cost more than the answer is worth.
+                val full = recorder.snapshot()
+                val tail = full.copyOfRange(
+                    maxOf(0, full.size - TAIL_SAMPLES_BYTES),
+                    full.size,
+                )
                 if (!speechSeen) {
-                    if (Conversation.hasSpeech(snapshot)) speechSeen = true
-                } else if (Conversation.silenceAtEndMs(snapshot) >= Conversation.SILENCE_DONE_MS) {
+                    if (Conversation.hasSpeech(tail)) speechSeen = true
+                } else if (Conversation.silenceAtEndMs(tail) >= Conversation.SILENCE_DONE_MS) {
                     break
                 }
             }

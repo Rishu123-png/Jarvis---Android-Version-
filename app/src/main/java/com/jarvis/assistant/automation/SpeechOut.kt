@@ -183,12 +183,16 @@ object SpeechOut {
         val key = "${currentLanguage ?: "default"}|${gender.id}"
         if (key == currentVoiceKey) return
 
-        val voices = try {
-            tts.voices
-        } catch (t: Throwable) {
-            null
+        // Enumerating voices can query the engine's installed data, so it never happens on the
+        // caller's thread — which, on the voice surface, is the main thread.
+        val chosen = withContext(Dispatchers.Default) {
+            val voices = try {
+                tts.voices
+            } catch (t: Throwable) {
+                null
+            }
+            pickVoice(voices, currentLanguage, gender)
         }
-        val chosen = pickVoice(voices, currentLanguage, gender)
 
         withContext(Dispatchers.Main) {
             try {

@@ -37,6 +37,10 @@ guesses cost thirty seconds, doubling each round up to five minutes, with the co
 
 **versionCode 22**, 23 suites.
 
+Also in this release: the follow-up window polls the microphone off the main thread and only
+measures the last two seconds of it, and the voice list is enumerated off the main thread as well —
+holding the ear open must never cost the launcher a frame.
+
 
 
 **The version number restarts here.** From this release on, JARVIS is **1.0.0** and stays there in
