@@ -411,14 +411,19 @@ object Feelings {
     }
 
     /** One line describing what he noticed, for the model's context block. */
-    fun observation(affect: Affect, bond: Bond): String? = when {
-        affect == Affect.NEUTRAL -> null
-        affect.isHeavy -> "From their words they sound ${affect.id}. Do not name it like a diagnosis; " +
-            "just answer the person first."
-        else -> "From their words they sound ${affect.id}. Match their energy."
-    }?.let { line ->
-        if (bond.isNew) line else "$line\nYou have been talking for ${bond.daysTogether} days " +
-            "and this is turn ${bond.turns + 1} overall."
+    fun observation(affect: Affect, bond: Bond): String? {
+        if (affect == Affect.NEUTRAL) return null
+        // A heavy feeling is described as a reading of their words, never as a diagnosis, and the
+        // reply is told to answer the person before the request.
+        val line = if (affect.isHeavy) {
+            "From their words they sound ${affect.id}. Do not name it like a diagnosis; " +
+                "just answer the person first."
+        } else {
+            "From their words they sound ${affect.id}. Match their energy."
+        }
+        if (bond.isNew) return line
+        return line + "\nYou have been talking for ${bond.daysTogether} days and this is turn " +
+            "${bond.turns + 1} overall."
     }
 
     // ---------------------------------------------------------------------------------------------
