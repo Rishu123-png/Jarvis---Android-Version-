@@ -1,3 +1,4 @@
+import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.ZipInputStream
 
@@ -110,11 +111,11 @@ val fetchShizuku by tasks.registering {
             staged.parentFile.mkdirs()
             logger.lifecycle("Fetching Shizuku $shizukuVersion for the APK ...")
 
-            fun openFollowingRedirects(start: String): java.net.HttpURLConnection {
+            fun openFollowingRedirects(start: String): HttpURLConnection {
                 var target = start
                 repeat(6) {
                     val connection =
-                        (java.net.URL(target).openConnection() as java.net.HttpURLConnection).apply {
+                        (URL(target).openConnection() as HttpURLConnection).apply {
                             connectTimeout = 20_000
                             readTimeout = 120_000
                             instanceFollowRedirects = false
