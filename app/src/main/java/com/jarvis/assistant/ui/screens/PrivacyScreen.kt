@@ -89,6 +89,7 @@ fun PrivacyScreen(
     habitLines: List<String>,
     onToggleRecording: (Boolean) -> Unit,
     onClearConversations: () -> Unit,
+    onOpenVault: () -> Unit,
     onForgetMemory: () -> Unit,
     roadRoutingEnabled: Boolean,
     onToggleRoadRouting: (Boolean) -> Unit,
@@ -621,6 +622,7 @@ fun PrivacyScreen(
 
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey("VAULT") { onOpenVault() }
                 KeypadKey("FORGET EVERYTHING") { onForgetMemory() }
             }
         }

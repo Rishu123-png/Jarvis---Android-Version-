@@ -4,6 +4,21 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 31
+
+**Presence, the sideways wheel, and the Vault (same version).** The three ideas worth taking from the
+OSO concept reel, built rather than rendered:
+
+- **Presence.** The microphone buffer's real loudness is published to the orb ~20 times a second, so
+  it lifts with a voice and settles in a pause; a fast arc appears only while he is thinking. No
+  timers, and the signal is measured, not invented.
+- **The sideways wheel.** In landscape the module ring rotates 90° and the disc shrinks, so the dock
+  reads as a wheel in the hand. Portrait is untouched.
+- **The Vault.** A fingerprint-locked drawer holding health today, the conversation archive with its
+  export, and private notes. It uses the phone's own biometric prompt, says so honestly when no
+  biometric is enrolled, and never claims to encrypt what it does not.
+- New pure-logic suites: `PresenceTest`, `VaultTest`. **versionCode 31.**
+
 ## 1.0.0 — versionCode 30
 
 **Shizuku travels with the app (same version).** The companion app that gives JARVIS its `adb`-level

@@ -97,6 +97,7 @@ import com.jarvis.assistant.ui.screens.ModuleScaffold
 import com.jarvis.assistant.ui.screens.NetworkScreen
 import com.jarvis.assistant.ui.screens.NotificationsScreen
 import com.jarvis.assistant.ui.screens.PrivacyScreen
+import com.jarvis.assistant.ui.screens.VaultScreen
 import com.jarvis.assistant.ui.screens.PowerScreen
 import com.jarvis.assistant.ui.screens.LockScreen
 import com.jarvis.assistant.ui.screens.TerminalScreen
@@ -127,6 +128,7 @@ private const val ROUTE_COMPOSE = "compose"
 private const val ROUTE_ADVANCED = "advanced"
 private const val ROUTE_ACTIVITY = "activity"
 private const val ROUTE_KNOWLEDGE = "knowledge"
+private const val ROUTE_VAULT = "vault"
 
 /** Routes a shortcut or an intent extra may ask for. Anything else is ignored. */
 private val KNOWN_ROUTES = setOf(ROUTE_HOME, ROUTE_DASHBOARD, ROUTE_KNOWLEDGE, ROUTE_ACTIVITY)
@@ -814,6 +816,7 @@ fun JarvisApp(
                             habitLines = emptyList()
                         }
                     },
+                    onOpenVault = { route = ROUTE_VAULT },
                     onForgetMemory = {
                         scope.launch {
                             withContext(Dispatchers.IO) { Brain.forget(context) }
@@ -1105,6 +1108,14 @@ fun JarvisApp(
                         )
                     }
                 }
+
+                ROUTE_VAULT -> VaultScreen(
+                    stepsToday = stepsToday,
+                    waterToday = waterToday,
+                    conversationCount = conversationCount,
+                    conversationBytes = conversationBytes,
+                    onBack = { route = ROUTE_ADVANCED },
+                )
 
                 else -> DashboardScreen(
                     clock = clock,

@@ -97,6 +97,12 @@ class MicRecorder {
                 if (read <= 0) break
                 synchronized(pcm) { pcm.write(buffer, 0, read) }
                 total += read
+                // The orb answers the room. Wrapped so the picture can never cost a recording.
+                try {
+                    Presence.publishRms(Presence.rmsOf(buffer, read))
+                } catch (t: Throwable) {
+                    // Loudness is decoration; the transcript is the point.
+                }
             }
         }, "jarvis-mic").apply {
             isDaemon = true

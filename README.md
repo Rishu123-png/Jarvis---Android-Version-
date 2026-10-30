@@ -95,6 +95,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [The dial](#the-dial)
 - [The eyes](#the-eyes)
 - [Full control](#full-control)
+- [Presence, the sideways wheel, and the Vault](#presence-the-sideways-wheel-and-the-vault)
 - [What he can do](#what-he-can-do)
 - [The lock, honestly](#the-lock-honestly)
 - [Install the APK](#install-the-apk)
@@ -363,6 +364,28 @@ asked. A menu, a sign, a medicine strip, a bill, a page of homework, a plant tha
 | **It refuses to guess** | Blurry photo, dark room, unreadable label: he says so and asks for another, instead of inventing a dosage or a name. That instruction is in the prompt, in as many words. |
 | **Your key, your bill** | This uses the AI provider you already configured. Nothing new to sign up for, nothing extra to pay. |
 | **The photo stays yours** | The frame is written to your gallery by the capture surface, as every photo he takes is. Nothing is kept for later, and nothing is uploaded anywhere except that one image to your own provider. |
+
+---
+
+## Presence, the sideways wheel, and the Vault
+
+Three ideas taken from the OSO concept reel, each built the honest way.
+
+**He reacts to the room.** The reactor used to spin on a fixed loop, which reads as a screensaver.
+Now the recorder publishes the real loudness of the microphone buffer about twenty times a second,
+and the orb answers it: it lifts and brightens with a voice, falls slowly in a pause, and carries a
+short fast arc only while he is thinking. Nothing polls, and the measurement is not invented — it is
+the same PCM that becomes the transcript. A quiet room really is a still orb.
+
+**Held sideways, the dial turns.** Portrait is unchanged. In landscape the ring rotates ninety degrees
+and the disc gives up height, so the dock becomes a wheel you read left-to-right the way a phone is
+held in two hands — the reel's signature move, with no new dependencies.
+
+**The Vault.** A locked drawer in Advanced: health today, the conversation archive with its export,
+and private notes. It opens only after the phone's own fingerprint or face prompt says yes — JARVIS
+never sees the scan, only the answer. If no fingerprint is enrolled it says so plainly and lets you
+in, because pretending a gate exists would be the one dishonest thing here. The notes live in the
+app's private storage: a locked drawer in a locked room, not a safe.
 
 ---
 
