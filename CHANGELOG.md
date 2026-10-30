@@ -4,6 +4,16 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 28
+
+**Memory that keeps every conversation (same version).** Every exchange is appended to a file on the
+phone, so the record survives restarts. The next reply reads only the newest 256 KB, so a long history
+does not slow him down. He counts the requests you make by time of day and, once one has come three
+times, treats it as a habit in the prompt. Privacy shows how many conversations are saved, their size,
+and lets you pause recording or clear them. *Forget everything* and the archive export both include the
+full record; restore merges it without duplicates. The full record never leaves the phone; only the last
+20 exchanges go with each AI request. **versionCode 28.**
+
 ## 1.0.0 — versionCode 24
 
 **The version number restarts here.** From this release on, JARVIS is **1.0.0** and stays there in

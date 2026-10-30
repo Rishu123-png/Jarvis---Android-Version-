@@ -55,6 +55,7 @@ import com.jarvis.assistant.automation.RunState
 import com.jarvis.assistant.automation.Workflow
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.data.AppRepository
+import com.jarvis.assistant.data.ConversationLog
 import com.jarvis.assistant.data.DockPrefs
 import com.jarvis.assistant.data.HudGeometry
 import com.jarvis.assistant.data.NeedsYou
@@ -192,11 +193,23 @@ fun JarvisApp(
     var rememberedPeople by remember { mutableStateOf<List<Brain.Person>>(emptyList()) }
     var rememberedFacts by remember { mutableStateOf<List<Brain.Fact>>(emptyList()) }
     var rememberedTurns by remember { mutableIntStateOf(0) }
+    // The conversation log is counted off the main thread, once, when the screen opens. Nothing polls.
+    var conversationCount by remember { mutableIntStateOf(0) }
+    var conversationBytes by remember { mutableLongStateOf(0L) }
+    var recordingPaused by remember { mutableStateOf(false) }
+    var habitLines by remember { mutableStateOf<List<String>>(emptyList()) }
     LaunchedEffect(route) {
         if (route == ROUTE_ADVANCED) {
             rememberedPeople = Brain.people(context)
             rememberedFacts = Brain.facts(context)
             rememberedTurns = Brain.thread(context).size
+            recordingPaused = ConversationLog.isPaused(context)
+            val log = withContext(Dispatchers.IO) {
+                Triple(ConversationLog.count(context), ConversationLog.sizeBytes(context), ConversationLog.habitLines(context))
+            }
+            conversationCount = log.first
+            conversationBytes = log.second
+            habitLines = log.third
         }
     }
 
@@ -784,11 +797,32 @@ fun JarvisApp(
                     rememberedPeople = rememberedPeople,
                     rememberedFacts = rememberedFacts,
                     rememberedTurns = rememberedTurns,
+                    conversationCount = conversationCount,
+                    conversationBytes = conversationBytes,
+                    recordingPaused = recordingPaused,
+                    habitLines = habitLines,
+                    onToggleRecording = { paused ->
+                        ConversationLog.setPaused(context, paused)
+                        recordingPaused = paused
+                    },
+                    onClearConversations = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { ConversationLog.clear(context) }
+                            conversationCount = 0
+                            conversationBytes = 0L
+                            habitLines = emptyList()
+                        }
+                    },
                     onForgetMemory = {
-                        Brain.forget(context)
-                        rememberedPeople = emptyList()
-                        rememberedFacts = emptyList()
-                        rememberedTurns = 0
+                        scope.launch {
+                            withContext(Dispatchers.IO) { Brain.forget(context) }
+                            rememberedPeople = emptyList()
+                            rememberedFacts = emptyList()
+                            rememberedTurns = 0
+                            conversationCount = 0
+                            conversationBytes = 0L
+                            habitLines = emptyList()
+                        }
                     },
                     lockNoticeEnabled = lockNoticeEnabled,
                     onToggleLockNotice = { enable ->

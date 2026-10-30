@@ -12,6 +12,7 @@ import com.jarvis.assistant.automation.ActionType
 import com.jarvis.assistant.automation.JarvisAccessibilityService
 import com.jarvis.assistant.automation.ParamKind
 import com.jarvis.assistant.data.AppRepository
+import com.jarvis.assistant.data.ConversationLog
 import com.jarvis.assistant.data.Knowledge
 import com.jarvis.assistant.data.Lane
 import com.jarvis.assistant.data.PhraseBook
@@ -39,6 +40,8 @@ import com.jarvis.assistant.device.readNetwork
 import com.jarvis.assistant.device.readStorage
 import com.jarvis.assistant.data.InstalledApp
 import org.json.JSONArray
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.util.Locale
 
@@ -186,6 +189,7 @@ object IntentRouter {
                 facts = Brain.facts(context),
                 thread = Brain.thread(context),
                 language = lang,
+                habits = ConversationLog.habitLines(context),
             )
         } catch (t: Throwable) {
             ""
@@ -201,9 +205,10 @@ object IntentRouter {
             appendLine(CONVERSATION_RULE)
         }
         // The recent talk goes in as real earlier messages, not a paraphrase in the system prompt,
-        // so "and then?" and "why?" have something to refer to.
+        // so "and then?" and "why?" have something to refer to. It comes from the conversation log,
+        // so the thread survives a restart. The read is off the main thread and touches only the tail.
         val history = try {
-            Brain.thread(context).takeLast(HISTORY_TURNS)
+            withContext(Dispatchers.IO) { ConversationLog.recent(context, HISTORY_TURNS) }
         } catch (t: Throwable) {
             emptyList()
         }

@@ -96,7 +96,7 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 27
+        versionCode = 28
         versionName = "1.0.0"
 
         vectorDrawables { useSupportLibrary = true }

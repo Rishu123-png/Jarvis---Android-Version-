@@ -278,10 +278,20 @@ when you don't need it.
 
 ## Memory and who he is
 
-- **Talk memory:** the last 20 exchanges go back to the model as real earlier messages, so "and then?"
-  and "why?" have a subject. The phone keeps the last 40 turns. Older talk is not summarised yet: a
-  topic from last week may be gone unless it was saved as a fact.
-- **Facts and people** still persist as before, and you can wipe everything in Privacy.
+- **Every conversation is kept.** Each exchange is appended to a file in the app's private storage
+  (one line per exchange). The Privacy screen shows how many are saved and how large the file is, and
+  lets you pause recording or clear the conversations. Clearing or *Forget everything* removes them.
+- **Talk memory across restarts:** the last 20 exchanges from that record go back to the model as real
+  earlier messages, so \"and then?\" and \"why?\" have a subject, even after the app restarts.
+- **Habits:** he counts what you ask for, by time of day (morning, afternoon, evening, night). Once a
+  request has come three times, it is mentioned to the model as a habit, so he can anticipate it gently.
+  Habits are counters, not a model: nothing is inferred beyond how often something was asked.
+- **What leaves the phone:** only the last 20 exchanges, with each AI request. The full record stays
+  on the phone. Export (Privacy → Export) includes the full record, and restore adds back any lines
+  that are not already there.
+- **Facts and people** are still learned from plain statements such as \"my sister is Khushi\".
+- **Reading stays cheap:** the next reply reads only the newest 256 KB of the record, so a long history
+  does not slow him down. Nothing polls for memory.
 - **Identity:** every model call starts with: he is JARVIS, the operator is his boss, and Rishu
   Jaswar built him. He never names a provider, model or key.
 - **Voice:** a lower pitch and steady pace on every phone. Where the installed voices include a

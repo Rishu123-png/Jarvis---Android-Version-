@@ -8,6 +8,7 @@ import com.jarvis.assistant.automation.Crew
 import com.jarvis.assistant.automation.SpeechOut
 import com.jarvis.assistant.automation.StepExecutor
 import com.jarvis.assistant.automation.WorkflowStep
+import com.jarvis.assistant.data.ConversationLog
 import com.jarvis.assistant.data.Lane
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -271,6 +272,17 @@ object VoiceController {
                 ),
             )
             Brain.absorb(context, heard)
+            // The full record of the conversation. Written off the main thread: it is one short
+            // append, but the reply above is already on screen, so nothing waits for it.
+            withContext(Dispatchers.IO) {
+                ConversationLog.append(
+                    context = context,
+                    heard = heard,
+                    reply = plan.say,
+                    title = plan.title,
+                    command = plan.steps.isNotEmpty(),
+                )
+            }
         }
         lastHeard = heard
         val spokenLang = Language.detect(heard)

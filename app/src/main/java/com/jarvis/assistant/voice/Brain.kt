@@ -1,6 +1,7 @@
 package com.jarvis.assistant.voice
 
 import android.content.Context
+import com.jarvis.assistant.data.ConversationLog
 import com.jarvis.assistant.data.Knowledge
 import com.jarvis.assistant.data.PhraseBook
 import com.jarvis.assistant.data.When
@@ -127,6 +128,8 @@ object Brain {
     /** Everything, gone. Offered from settings because a memory you cannot clear is not a gift. */
     fun forget(context: Context) {
         prefs(context).edit().clear().apply()
+        // The full conversation record and the habits go too: "forget everything" means everything.
+        ConversationLog.clear(context)
     }
 
     fun isEmpty(context: Context): Boolean =
@@ -365,6 +368,7 @@ object Brain {
         facts: List<Fact>,
         thread: List<Turn>,
         language: Lang,
+        habits: List<String> = emptyList(),
     ): String = buildString {
         appendLine(Persona.IDENTITY)
         facts.firstOrNull { it.key == "name" }?.let { appendLine("The boss's name is ${it.value}.") }
@@ -379,6 +383,11 @@ object Brain {
             appendLine("Standing facts. Do not list these unless asked:")
             people.take(8).forEach { appendLine("- ${it.label}${if (it.note.isBlank()) "" else ": ${it.note}"}") }
             facts.take(10).forEach { appendLine("- ${it.key}: ${it.value}") }
+        }
+        if (habits.isNotEmpty()) {
+            appendLine()
+            appendLine("Habits he has noticed in the boss's routine. Use them to anticipate, gently, never as a list:")
+            habits.forEach { appendLine("- $it") }
         }
     }
 
