@@ -3,6 +3,9 @@ package com.jarvis.assistant.automation
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
+import com.jarvis.assistant.voice.VoiceGender
+import com.jarvis.assistant.voice.VoiceSettings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,6 +19,11 @@ import java.util.UUID
  * Deliberately narrow: one engine, initialised on first use, flushed per utterance, and always
  * bounded by a timeout so a device with no voice data cannot stall a routine. No audio is recorded
  * and no microphone permission is involved.
+ *
+ * The voice itself is chosen, not inherited: most phones default to a bright female voice, so a
+ * male voice is preferred for the language being spoken. When the device has no male voice for that
+ * language, pitch is lowered instead — a wrong voice speaks someone else's assistant, a lower
+ * pitch still sounds like the same one.
  */
 object SpeechOut {
 
@@ -25,6 +33,9 @@ object SpeechOut {
 
     /** The language tag currently set on the engine, so we only touch it when it changes. */
     private var currentLanguage: String? = null
+
+    /** Language + gender of the voice currently installed, so the picker is scanned rarely. */
+    private var currentVoiceKey: String? = null
 
     private suspend fun ensureEngine(context: Context): TextToSpeech? {
         engine?.let { if (ready?.isCompleted == true) return it }
@@ -87,6 +98,7 @@ object SpeechOut {
 
         val tts = ensureEngine(context) ?: return "No speech engine available on this device"
         applyLanguage(tts, language)
+        applyVoice(context, tts)
 
         val utteranceId = "jarvis-" + UUID.randomUUID()
         val done = CompletableDeferred<Boolean>()
@@ -156,6 +168,90 @@ object SpeechOut {
         currentLanguage = language
     }
 
+    /**
+     * Installs the operator's voice choice for the language currently set.
+     *
+     * Scanned only when the language or the choice changes: enumerating voices can take a moment on
+     * engines that query their installed data, and a spoken sentence must not wait for it twice.
+     */
+    private suspend fun applyVoice(context: Context, tts: TextToSpeech) {
+        val gender = try {
+            VoiceSettings.gender(context)
+        } catch (t: Throwable) {
+            VoiceGender.MALE
+        }
+        val key = "${currentLanguage ?: "default"}|${gender.id}"
+        if (key == currentVoiceKey) return
+
+        val voices = try {
+            tts.voices
+        } catch (t: Throwable) {
+            null
+        }
+        val chosen = pickVoice(voices, currentLanguage, gender)
+
+        withContext(Dispatchers.Main) {
+            try {
+                val installed = chosen != null && tts.setVoice(chosen) == TextToSpeech.SUCCESS
+                when {
+                    // A real male voice: keep it natural, only a touch below centre.
+                    gender == VoiceGender.MALE && installed -> tts.setPitch(0.94f)
+                    // No male voice on this phone: the pitch is the only honest lever left.
+                    gender == VoiceGender.MALE -> tts.setPitch(0.78f)
+                    else -> tts.setPitch(1.05f)
+                }
+                tts.setSpeechRate(if (gender == VoiceGender.MALE) 0.97f else 1.0f)
+            } catch (t: Throwable) {
+                // Keep whatever voice the engine chose rather than failing the sentence.
+            }
+        }
+        currentVoiceKey = key
+    }
+
+    /** Best voice for [gender] in [language], or null when the device offers nothing suitable. */
+    private fun pickVoice(voices: Set<Voice>?, language: String?, gender: VoiceGender): Voice? {
+        if (voices.isNullOrEmpty()) return null
+        val wanted = try {
+            if (language.isNullOrBlank()) Locale.getDefault() else Locale.forLanguageTag(language)
+        } catch (t: Throwable) {
+            Locale.getDefault()
+        }
+        val sameLanguage = voices.filter { it.locale.language.equals(wanted.language, ignoreCase = true) }
+        val pool = sameLanguage.ifEmpty { voices.filter { it.locale == Locale.getDefault() } }
+        if (pool.isEmpty()) return null
+
+        val best = pool.sortedByDescending { scoreVoice(it, gender) }.first()
+        // Never swap to the opposite gender on purpose: keeping the engine's default voice and
+        // shifting its pitch is less jarring than a voice the operator did not ask for.
+        return if (scoreVoice(best, gender) < 0) null else best
+    }
+
+    /**
+     * Engines describe gender inconsistently: some put `male` in the feature list, some in the voice
+     * name (`hi-in-x-hib-local`), a few do not say at all. Anything unsaid scores zero, which is
+     * why the pitch fallback in [applyVoice] matters as much as this.
+     */
+    private fun scoreVoice(voice: Voice, gender: VoiceGender): Int {
+        val haystack = (voice.name + " " + voice.features.joinToString(" ")).lowercase(Locale.US)
+        val tokens = haystack.split(Regex("[^a-z]+")).filter { it.isNotBlank() }.toSet()
+        val female = tokens.contains("female") || tokens.contains("woman")
+        val male = !female && (tokens.contains("male") || tokens.contains("man"))
+
+        var score = when (gender) {
+            VoiceGender.MALE -> if (male) 20 else if (female) -20 else 0
+            VoiceGender.FEMALE -> if (female) 20 else if (male) -20 else 0
+        }
+        // A voice that works with no network is worth more on a phone that is often offline.
+        if (!voice.isNetworkConnectionRequired) score += 2
+        if (tokens.contains("high")) score += 1
+        return score
+    }
+
+    /** Forces the next sentence to choose a voice again. Called when the setting changes. */
+    fun forgetVoice() {
+        currentVoiceKey = null
+    }
+
     /** Releases the engine when the app goes away. Safe to call repeatedly. */
     fun release() {
         try {
@@ -168,5 +264,6 @@ object SpeechOut {
         ready = null
         languageChecked = false
         currentLanguage = null
+        currentVoiceKey = null
     }
 }

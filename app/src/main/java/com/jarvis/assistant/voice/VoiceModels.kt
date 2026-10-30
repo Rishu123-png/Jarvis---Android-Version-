@@ -48,6 +48,10 @@ data class VoiceTask(
     val reply: String = "",
     val source: String = "",
     val error: String? = null,
+    /** True while the ear is being held open for a follow-up sentence. */
+    val conversation: Boolean = false,
+    /** Which follow-up this is, 1-based; 0 when not in a conversation. */
+    val turn: Int = 0,
 ) {
     val visible: Boolean get() = phase != VoicePhase.IDLE
 
@@ -61,6 +65,10 @@ data class VoiceTask(
             VoicePhase.DONE -> "DONE"
             VoicePhase.FAILED -> "FAILED"
         }
+
+    /** Small label for the card while a conversation is open. */
+    val conversationLabel: String?
+        get() = if (conversation && turn > 0) "CONVERSATION · $turn" else null
 
     /** 0..1 for the thin progress line under the steps. */
     val progress: Float

@@ -39,6 +39,9 @@ import com.jarvis.assistant.voice.VoiceTask
  * One panel, no scrolling, no navigation: what was heard, what JARVIS is doing step by step, and
  * what it said back. It disappears by itself on success; a failure stays until it is tapped away,
  * because a silent failure is worse than a card that sits there.
+ *
+ * While a conversation is open the footer says so, and the tap target means "end the session"
+ * rather than "stop this sentence" — the microphone is being held on purpose.
  */
 @Composable
 fun VoiceTaskCard(
@@ -146,12 +149,17 @@ fun VoiceTaskCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = if (task.source.isNotBlank()) task.source else "VOICE",
+                text = task.conversationLabel
+                    ?: if (task.source.isNotBlank()) task.source else "VOICE",
                 style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
                 color = TextMuted,
             )
             Text(
-                text = if (task.phase.isBusy) "TAP TO STOP" else "TAP TO CLOSE",
+                text = when {
+                    task.conversation -> "TAP TO END"
+                    task.phase.isBusy -> "TAP TO STOP"
+                    else -> "TAP TO CLOSE"
+                },
                 style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
                 color = accent.copy(alpha = 0.75f),
             )

@@ -106,6 +106,15 @@ class MicRecorder {
         return null
     }
 
+    /**
+     * A copy of everything captured so far.
+     *
+     * The conversation window polls this so it can notice that the operator has stopped talking
+     * and stop recording early, instead of always waiting the full window. The copy is taken under
+     * the same lock the reader thread writes with, so it is never a half-written frame.
+     */
+    fun snapshot(): ByteArray = synchronized(pcm) { pcm.toByteArray() }
+
     /** Stops the stream and returns raw 16-bit mono PCM at [SAMPLE_RATE]. */
     fun stop(): ByteArray {
         running = false
@@ -169,7 +178,19 @@ object Whisper {
         else -> false
     }
 
-    suspend fun transcribe(context: Context, pcm: ByteArray): Heard = withContext(Dispatchers.IO) {
+    /**
+     * [hint] biases the transcript's script, not its content.
+     *
+     * Whisper decides on its own whether a Hindi sentence should come back in Devanagari or Roman
+     * letters. A Hinglish speaker wants Roman, so a short Roman example is sent as the prompt —
+     * the one lever a transcription endpoint offers for this. It is only sent when the operator was
+     * already speaking Hinglish, so a Devanagari speaker is never pushed into Roman.
+     */
+    suspend fun transcribe(
+        context: Context,
+        pcm: ByteArray,
+        hint: String? = null,
+    ): Heard = withContext(Dispatchers.IO) {
         val config = AiKeyStore.config(context)
             ?: return@withContext Heard(error = "No AI key is stored.")
         val key = AiKeyStore.apiKey(context)
@@ -183,7 +204,12 @@ object Whisper {
 
         val model = modelFor(config.provider)
         val boundary = "----jarvis" + System.currentTimeMillis()
-        val body = buildBody(boundary, model, Wav.wrapPcm(pcm, MicRecorder.SAMPLE_RATE))
+        val body = buildBody(
+            boundary = boundary,
+            model = model,
+            wav = Wav.wrapPcm(pcm, MicRecorder.SAMPLE_RATE),
+            hint = hint,
+        )
 
         val url = "${baseUrl(config.provider, config.baseUrl)}/audio/transcriptions"
         val connection = try {
@@ -248,7 +274,12 @@ object Whisper {
         else -> custom.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
     }
 
-    private fun buildBody(boundary: String, model: String, wav: ByteArray): ByteArray {
+    private fun buildBody(
+        boundary: String,
+        model: String,
+        wav: ByteArray,
+        hint: String? = null,
+    ): ByteArray {
         val out = ByteArrayOutputStream()
         fun write(text: String) = out.write(text.toByteArray(Charsets.UTF_8))
 
@@ -260,6 +291,12 @@ object Whisper {
         write("Content-Disposition: form-data; name=\"model\"\r\n\r\n$model\r\n")
         write("--$boundary\r\n")
         write("Content-Disposition: form-data; name=\"response_format\"\r\n\r\njson\r\n")
+        if (!hint.isNullOrBlank()) {
+            write("--$boundary\r\n")
+            write("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n")
+            write(hint.take(200))
+            write("\r\n")
+        }
         write("--$boundary--\r\n")
         return out.toByteArray()
     }

@@ -345,11 +345,16 @@ private fun OrbBlock(
 
 @Composable
 private fun PhaseHint(task: VoiceTask) {
-    val text = when (task.phase) {
-        VoicePhase.LISTENING -> "SPEAK NOW \u00B7 TAP TO STOP"
-        VoicePhase.THINKING -> "PLANNING"
-        VoicePhase.RUNNING -> "EXECUTING"
-        VoicePhase.DONE, VoicePhase.FAILED -> "TAP THE ORB TO SPEAK AGAIN"
+    val text = when {
+        // A conversation is open: the microphone is held on purpose, so the hint says how to end
+        // it rather than implying the turn is stuck.
+        task.conversation && task.phase == VoicePhase.LISTENING ->
+            "LISTENING \u00B7 SAY \u201CBAS\u201D TO STOP"
+        task.phase == VoicePhase.LISTENING -> "SPEAK NOW \u00B7 TAP TO STOP"
+        task.phase == VoicePhase.THINKING -> "PLANNING"
+        task.phase == VoicePhase.RUNNING -> "EXECUTING"
+        task.phase == VoicePhase.DONE || task.phase == VoicePhase.FAILED ->
+            "TAP THE ORB TO SPEAK AGAIN"
         else -> "TAP THE ORB TO SPEAK"
     }
     val color = when (task.phase) {

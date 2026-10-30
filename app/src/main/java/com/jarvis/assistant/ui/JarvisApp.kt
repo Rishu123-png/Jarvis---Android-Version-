@@ -102,7 +102,9 @@ import com.jarvis.assistant.ui.theme.ElectricCyan
 import com.jarvis.assistant.ui.theme.IceBlue
 import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.VoidBlack
+import com.jarvis.assistant.voice.Conversation
 import com.jarvis.assistant.voice.VoiceController
+import com.jarvis.assistant.voice.VoiceGender
 import com.jarvis.assistant.voice.VoiceSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -224,6 +226,9 @@ fun JarvisApp(
     var bubbleEnabled by remember { mutableStateOf(Bubble.isEnabled(context)) }
     var bubbleAllowed by remember { mutableStateOf(Bubble.canDraw(context)) }
     var speechRoute by remember { mutableStateOf(VoiceSettings.route(context)) }
+    var voiceGender by remember { mutableStateOf(VoiceSettings.gender(context)) }
+    var conversationOn by remember { mutableStateOf(Conversation.isEnabled(context)) }
+    var conversationWindow by remember { mutableLongStateOf(Conversation.windowMs(context)) }
     var dockEditSlot by rememberSaveable { mutableIntStateOf(0) }
 
     // ---- apps + dock ----
@@ -587,6 +592,9 @@ fun JarvisApp(
                     bubbleEnabled = bubbleEnabled,
                     bubbleAllowed = bubbleAllowed,
                     speechRoute = speechRoute,
+                    voiceGender = voiceGender,
+                    conversationEnabled = conversationOn,
+                    conversationWindowMs = conversationWindow,
                     onSetPin = { pin ->
                         scope.launch {
                             val failure = withContext(Dispatchers.Default) { Privacy.setPin(context, pin) }
@@ -624,6 +632,19 @@ fun JarvisApp(
                     onSelectRoute = { picked ->
                         VoiceSettings.setRoute(context, picked)
                         speechRoute = picked
+                    },
+                    onSelectGender = { picked ->
+                        VoiceSettings.setGender(context, picked)
+                        voiceGender = picked
+                    },
+                    onToggleConversation = { enable ->
+                        Conversation.setEnabled(context, enable)
+                        conversationOn = enable
+                        if (!enable) VoiceController.cancel()
+                    },
+                    onSetConversationWindow = { millis ->
+                        Conversation.setWindowMs(context, millis)
+                        conversationWindow = Conversation.windowMs(context)
                     },
                     biometricStatus = Biometrics.availability(context),
                     biometricEnabled = biometricEnabled,
@@ -1066,7 +1087,13 @@ fun JarvisApp(
                                     locked = false
                                     LockGate.clearNotice(context)
                                 } else {
-                                    pinError = "Wrong PIN"
+                                    val wait = Privacy.lockoutRemainingMs(context)
+                                    pinError = when {
+                                        wait > 0 ->
+                                            "Too many tries \u00B7 wait ${(wait / 1000L) + 1L}s"
+                                        else ->
+                                            "Wrong PIN \u00B7 ${Privacy.attemptsLeft(context)} tries left"
+                                    }
                                 }
                             }
                         }

@@ -23,6 +23,8 @@ object Privacy {
     private const val KEY_SALT = "pin_salt"
     private const val KEY_HASH = "pin_hash"
     private const val KEY_ENABLED = "pin_enabled"
+    private const val KEY_FAILS = "pin_fails"
+    private const val KEY_LOCKED_UNTIL = "pin_locked_until"
     private const val ITERATIONS = 120_000
     private const val KEY_BITS = 256
     const val MIN_DIGITS = 4
@@ -32,6 +34,12 @@ object Privacy {
 
     /** Grace period after leaving the app before the lock engages. */
     const val LOCK_AFTER_MS = 60_000L
+
+    /** Wrong guesses allowed before the keypad goes quiet for a while. */
+    const val MAX_ATTEMPTS = 5
+
+    /** First lockout. Each further round of wrong guesses doubles it, capped at five minutes. */
+    private const val LOCKOUT_MS = 30_000L
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -52,11 +60,57 @@ object Privacy {
             .putString(KEY_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
             .putString(KEY_HASH, Base64.encodeToString(hash, Base64.NO_WRAP))
             .putBoolean(KEY_ENABLED, true)
+            .remove(KEY_FAILS)
+            .remove(KEY_LOCKED_UNTIL)
             .apply()
         return null
     }
 
+    /**
+     * Checks a PIN, with a lockout around it.
+     *
+     * PBKDF2 makes each guess cost a moment, but a four-digit PIN is only ten thousand guesses: a
+     * script would walk it in an afternoon. So wrong guesses are counted and the keypad refuses to
+     * answer for a while — thirty seconds, doubling each further round of five, capped at five
+     * minutes. The counter lives in the same private preferences as the hash and is cleared by a
+     * correct PIN or by setting a new one.
+     */
     fun verify(context: Context, pin: String): Boolean {
+        if (lockoutRemainingMs(context) > 0) return false
+        val ok = verifyUnthrottled(context, pin)
+        if (ok) clearFailures(context) else noteFailure(context)
+        return ok
+    }
+
+    /** Milliseconds the keypad must stay shut, or zero. */
+    fun lockoutRemainingMs(context: Context): Long {
+        val left = prefs(context).getLong(KEY_LOCKED_UNTIL, 0L) - System.currentTimeMillis()
+        return if (left > 0) left else 0L
+    }
+
+    /** Wrong guesses still allowed in the current round. */
+    fun attemptsLeft(context: Context): Int {
+        val fails = prefs(context).getInt(KEY_FAILS, 0) % MAX_ATTEMPTS
+        return (MAX_ATTEMPTS - fails).coerceAtLeast(0)
+    }
+
+    private fun noteFailure(context: Context) {
+        val store = prefs(context)
+        val fails = store.getInt(KEY_FAILS, 0) + 1
+        val editor = store.edit().putInt(KEY_FAILS, fails)
+        if (fails % MAX_ATTEMPTS == 0) {
+            val round = fails / MAX_ATTEMPTS
+            val wait = (LOCKOUT_MS * (1 shl (round - 1).coerceIn(0, 4))).coerceAtMost(5 * 60_000L)
+            editor.putLong(KEY_LOCKED_UNTIL, System.currentTimeMillis() + wait)
+        }
+        editor.apply()
+    }
+
+    private fun clearFailures(context: Context) {
+        prefs(context).edit().remove(KEY_FAILS).remove(KEY_LOCKED_UNTIL).apply()
+    }
+
+    private fun verifyUnthrottled(context: Context, pin: String): Boolean {
         val store = prefs(context)
         val saltText = store.getString(KEY_SALT, null) ?: return false
         val hashText = store.getString(KEY_HASH, null) ?: return false

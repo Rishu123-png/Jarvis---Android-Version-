@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nothing is backed up.
+
+  JARVIS keeps the only copy of what the operator told it: people, facts, the health log, the PIN
+  digest, the connectors' tokens. Android's auto-backup would upload all of it to the operator's
+  Google Drive, which contradicts the one promise this app makes. `allowBackup` is already false;
+  this file says the same thing per-domain so no future change to a single attribute can quietly
+  start copying data.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="external" path="." />
+    <exclude domain="root" path="." />
+</full-backup-content>

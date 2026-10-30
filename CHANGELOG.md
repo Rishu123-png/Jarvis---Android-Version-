@@ -4,7 +4,40 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
-## 1.0.0 — versionCode 21
+## 1.0.0 — versionCode 22
+
+**He stays in the conversation.** One sentence used to be the whole session: say *"open whatsapp"*,
+he opens it, says "done", and the microphone closes — so the obvious next sentence (*"message Divik
+hi, on my way"*) needed the orb again, or the wake phrase again, like starting over. Now, when
+conversation mode is on (**Advanced → Conversation**, on by default), the ear stays open after a
+finished turn: he says what he did, asks a question shaped by it — *"Boss, kisko message karna hai?"*
+after a chat app, *"aur kuch yaad rakhna hai?"* after an alarm — and takes whatever is said next as a
+normal command. It is bounded in four directions, because a microphone with no end is a bug and not a
+feature: a per-sentence window (9 s by default, 4–20 s), a turn budget (6, up to 12), words that end
+it immediately (*bas*, *theek hai*, *thank you*, *stop karo*), and silence, which closes the window
+quietly instead of showing a failure. On the provider route recording also stops as soon as the
+operator has been quiet for 900 ms, and a silent window is never transcribed at all. Tapping the card
+means "that is all".
+
+**A male voice.** Most phones default to a bright female voice, so the voice is now chosen instead
+of inherited: a male voice in the spoken language is preferred, and when the phone has none, the
+pitch drops to 0.78 instead of the wrong voice being used. **Advanced → JARVIS Voice** switches
+between male and female.
+
+**Hinglish, spoken and answered.** Hinglish means Hindi in Roman letters with English mixed in, the
+way the operator actually talks — and it now says so to the model explicitly, so a Hinglish sentence
+is answered in Hinglish and never in Devanagari or formal Hindi. The conversation prompts are written
+in all three registers.
+
+**Two privacy holes closed.** `allowBackup` was true, which let Android copy every `jarvis_*`
+preferences file — people, facts, health, the PIN digest, connector tokens — to Google Drive. It is
+now false, with backup and device-transfer rules that exclude everything as well, because Android 12
+ignores the attribute during device-to-device transfer. And the PIN now has a lockout: five wrong
+guesses cost thirty seconds, doubling each round up to five minutes, with the count left on screen.
+
+**versionCode 22**, 23 suites.
+
+
 
 **The version number restarts here.** From this release on, JARVIS is **1.0.0** and stays there in
 every build; `versionCode` is what increases. The earlier 2.x names were internal scaffolding, and a
