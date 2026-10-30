@@ -375,8 +375,13 @@ object SpokenLanguage {
      * transcript is detected as Hindi and answered in Hindi — the one thing a Hinglish speaker did
      * not ask for.
      */
-    fun recognizerTag(context: Context): String {
-        val lang = last(context)
+    fun recognizerTag(context: Context): String? {
+        // Nothing remembered yet: let the phone use its own default rather than forcing a tag
+        // that may not exist on this device.
+        val raw = context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY, null) ?: return null
+        val lang = Lang.fromTag(raw)
         return if (lang == Lang.HINGLISH) "en-IN" else lang.tag
     }
 
