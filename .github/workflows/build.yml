@@ -87,7 +87,8 @@ jobs:
       - name: Build debug + release APKs
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --console=plain assembleDebug assembleRelease assembleDebugAndroidTest 2>&1 | tee -a build.log
+          ./gradlew --no-daemon --console=plain -PrequireShizuku=true \
+            assembleDebug assembleRelease assembleDebugAndroidTest 2>&1 | tee -a build.log
 
       - name: Verify APK signatures and manifest (launcher intent filters)
         run: |
@@ -105,6 +106,14 @@ jobs:
             "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$apk" 2>/dev/null \
               | grep -iE "android.intent.category.(HOME|LAUNCHER|DEFAULT)" | head -6 | tee -a "$OUT"
             echo '```' >> "$OUT"
+
+            # Shizuku must be inside the shipped APK: it is what the system switches need.
+            SHIZUKU=$(unzip -l "$apk" | grep -c "assets/shizuku/shizuku.apk")
+            if [ "$SHIZUKU" != "1" ]; then
+              echo "::error::Shizuku is missing from $apk"
+              exit 1
+            fi
+            echo "Shizuku bundled: $(unzip -l "$apk" | awk '/assets\/shizuku\/shizuku.apk/ {print $1}') bytes" | tee -a "$OUT"
           done
 
       - name: Unit test report

@@ -96,6 +96,11 @@ val shizukuVersion = "13.6.0"
 val shizukuApkBytes = 2_571_773L
 val shizukuUrl = "https://github.com/RikkaApps/Shizuku/releases/download/v" + shizukuVersion + "/" +
     "shizuku-v" + shizukuVersion + ".r1086.2650830c-release.apk"
+/*
+ * CI passes -PrequireShizuku=true, so an APK that quietly shipped without Shizuku cannot be released.
+ * Local builds stay forgiving: no network, no download, the app fetches it on the phone instead.
+ */
+val requireShizuku = providers.gradleProperty("requireShizuku").orNull?.toBoolean() == true
 val shizukuAssetRoot = layout.buildDirectory.dir("generated/shizuku-assets").get().asFile
 val shizukuAssetFile = File(shizukuAssetRoot, "shizuku/shizuku.apk")
 
@@ -146,6 +151,9 @@ val fetchShizuku by tasks.registering {
             staged.copyTo(shizukuAssetFile, overwrite = true)
             logger.lifecycle("Shizuku $shizukuVersion bundled into the APK.")
         } catch (e: Exception) {
+            if (requireShizuku) {
+                error("Shizuku had to be bundled for this build but was not: ${e.message}")
+            }
             logger.warn(
                 "Shizuku NOT bundled (${e.message}). The app will download it when the operator asks.",
             )
