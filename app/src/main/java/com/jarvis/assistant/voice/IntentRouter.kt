@@ -14,6 +14,7 @@ import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.Knowledge
 import com.jarvis.assistant.data.PhraseBook
 import com.jarvis.assistant.data.ResearchDesk
+import com.jarvis.assistant.connect.WebRead
 import com.jarvis.assistant.data.PhraseIntent
 import com.jarvis.assistant.data.Units
 import com.jarvis.assistant.data.When
@@ -123,6 +124,37 @@ object IntentRouter {
                 say = Persona.answer(lang),
                 source = "LOCAL",
             )
+        }
+
+        // ---- a page he was pointed at ---------------------------------------------------------
+        // Decided before anything else: a sentence carrying a link is a request to read *that*, and
+        // letting the model answer from memory instead would be inventing.
+        WebRead.urlIn(spoken)?.let { url ->
+            return readPage(context, url, Language.detect(spoken))
+        }
+
+        // ---- what he cannot do yet, and being taught -------------------------------------------
+        val growthWords = VoiceParsing.normalise(spoken)
+        if (Growth.wantsCatalogue(growthWords)) {
+            val worst = Growth.worst(context)
+            // The top gap becomes the thing he offers to be taught, so the next sentence has an
+            // obvious subject without the operator having to repeat themselves.
+            Growth.setPending(context, worst.firstOrNull())
+            return VoicePlan(
+                title = "WHAT I CANNOT DO",
+                subtitle = "OPEN ITEMS",
+                steps = emptyList(),
+                say = Growth.summaryLine(Language.detect(spoken), worst, Growth.gaps(context).size),
+                source = "LOCAL",
+            )
+        }
+        if (Growth.offersToLearn(growthWords)) {
+            return learnFrom(context, spoken, Growth.pending(context), Language.detect(spoken))
+        }
+        Growth.pending(context)?.let { gap ->
+            if (Growth.looksLikeInstruction(growthWords)) {
+                return learnFrom(context, spoken, gap, Language.detect(spoken))
+            }
         }
 
         // A short follow-up ("do that for Amit", "and tomorrow") only means something next to the
@@ -1169,7 +1201,17 @@ object IntentRouter {
         // ---- never a dead end ----------------------------------------------------------------------
         val appGuess = AppLaunch.closestLabels(context, clean).firstOrNull()
         if (appGuess != null) {
+            // A near miss is a guess, not a failure worth learning from: only questions he genuinely
+            // could not act on are written down.
             return said("DID YOU MEAN", "which_app", appGuess, subtitle = "SUGGESTION")
+        }
+
+        // The honest record of a gap. Kept quietly, on the phone, and only ever read back when the
+        // operator asks — it is not a log of everything they said, just of what did not work.
+        try {
+            Growth.recordGap(context, heard, "not understood")
+        } catch (t: Throwable) {
+            // A missing record is acceptable; failing the reply is not.
         }
 
         return said("NOT UNDERSTOOD", "dont_know", subtitle = "HINT")
@@ -1548,6 +1590,100 @@ object IntentRouter {
             (if (clean.contains(" plus ") || clean.contains(" minus ")) 1 else 0) +
             (if (clean.contains(" times ") || clean.contains(" into ")) 1 else 0)
         return digits >= 2 && operators >= 1
+    }
+
+    /**
+     * Reads one page and answers from it.
+     *
+     * Two rules, both visible in the reply: the words are quoted from the page rather than
+     * remembered, and the host is named so the operator can judge the source. A page that comes
+     * back empty (drawn by JavaScript, or a paywall) is reported as empty instead of being
+     * summarised from nothing.
+     */
+    private suspend fun readPage(context: Context, url: String, lang: Lang): VoicePlan {
+        val title = "READ \u00B7 PAGE"
+        when (val result = WebRead.read(url)) {
+            is WebRead.Result.Refused -> return VoicePlan(
+                title = title,
+                subtitle = "NOT READ",
+                steps = emptyList(),
+                say = result.reason,
+                source = "WEB",
+            )
+
+            is WebRead.Result.Ok -> {
+                val page = result.page
+                if (page.isEmpty) {
+                    val line = when (lang.replyLang) {
+                        Lang.HI -> "${page.host} खुला, पर उसमें पढ़ने लायक कुछ नहीं मिला।"
+                        Lang.HINGLISH -> "${page.host} khula, par usme padhne layak kuch nahi mila."
+                        else -> "${page.host} opened, but there was nothing readable in it."
+                    }
+                    return VoicePlan(title, "EMPTY PAGE", emptyList(), line, "WEB")
+                }
+
+                val spoken = if (aiReady(context)) {
+                    val system = """
+                        You are JARVIS, reading one web page for the person whose phone you live on.
+                        Answer only from the text below. Three sentences at most, plain words.
+                        If the text does not contain the answer, say exactly that — never guess and
+                        never fill the gap with general knowledge. Name the site once, at the end,
+                        as "source: <host>". Do not mention a model, provider or API.
+                        Answer in ${lang.label} (${lang.tag}).
+                    """.trimIndent()
+                    val body = "PAGE: ${page.title}\nHOST: ${page.host}\n\n${page.text.take(4_000)}"
+                    when (val reply = AiClient.chat(context, listOf(AiMessage.user(body)), system)) {
+                        is AiResult.Ok -> Persona.sanitize(reply.text.trim()).take(MAX_SPOKEN)
+                        is AiResult.Error -> WebRead.firstSentences(page.text)
+                    }
+                } else {
+                    WebRead.firstSentences(page.text)
+                }
+
+                return VoicePlan(
+                    title = "READ \u00B7 ${page.host.uppercase(Locale.US).take(18)}",
+                    subtitle = page.title.take(28).uppercase(Locale.US),
+                    steps = emptyList(),
+                    say = spoken.ifBlank { "I read the page but could not make sense of it." },
+                    source = "WEB",
+                )
+            }
+        }
+    }
+
+    /** Drafts a routine from the operator's own words, saved off, and says so. */
+    private suspend fun learnFrom(
+        context: Context,
+        spoken: String,
+        gap: Growth.Gap?,
+        lang: Lang,
+    ): VoicePlan {
+        if (!aiReady(context)) {
+            val line = when (lang.replyLang) {
+                Lang.HI -> "सीखने के लिए दिमाग़ चालू चाहिए — Advanced \u2192 AI में चाबी डालिए।"
+                Lang.HINGLISH -> "Seekhne ke liye dimaag chalu chahiye — Advanced \u2192 AI mein chaabi daaliye."
+                else -> "Learning needs the brain on — add a key in Advanced \u2192 AI."
+            }
+            return VoicePlan("NOT YET", "NEEDS KEY", emptyList(), line, "LOCAL")
+        }
+
+        return when (val learned = Growth.learn(context, spoken, gap)) {
+            is Growth.Learned.Drafted -> VoicePlan(
+                title = "LEARNED \u00B7 ${learned.name.uppercase(Locale.US).take(16)}",
+                subtitle = "${learned.steps} STEP \u00B7 OFF",
+                steps = emptyList(),
+                say = Growth.draftedLine(lang, learned.name, learned.steps),
+                source = "AI",
+            )
+
+            is Growth.Learned.Refused -> VoicePlan(
+                title = "COULD NOT LEARN",
+                subtitle = "NOT SAVED",
+                steps = emptyList(),
+                say = learned.message,
+                source = "AI",
+            )
+        }
     }
 
     private fun hourNow(): Int = try {

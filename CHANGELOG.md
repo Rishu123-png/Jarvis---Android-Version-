@@ -4,7 +4,28 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
-## 1.0.0 — versionCode 23
+## 1.0.0 — versionCode 24
+
+**He can read the web, one page at a time.** Say *"padho https://…"* or *"read this link"* and he
+fetches that page, keeps only the prose, and answers from it — naming the site, and saying so plainly
+when the page has nothing readable in it (a page drawn by JavaScript, or a paywall) instead of
+summarising from nothing. The reader is deliberately suspicious: **https only**, loopback and private
+ranges refused so a spoken sentence can never probe your own wifi, every request bounded by timeouts
+and a hard byte cap, and no JavaScript executed. Pure extraction is covered by `WebReadTest`.
+
+**He learns, but only with your permission.** Every sentence he genuinely could not act on is written
+down on the phone. Ask *"what can't you do"* and he reads the shortlist back, worst first. Say
+*"seekho …"* — or just answer the question he asks — and he turns your description into a routine
+using the same planner that can only pick actions the phone already has, then saves it **switched
+off** in AUTOMATION. He cannot enable it, cannot run it, and cannot hide that he added it. The pattern
+is *propose, never apply*.
+
+**The internet question, written down.** `ROADMAP §2b` now states exactly what is already online
+(Wikipedia, a dictionary, one page at a time, your own model key, your own connectors), the three
+honest ways to reach him from another device (Tailscale first, a dumb Cloudflare pipe second, nothing
+third), and why a hosted JARVIS backend is out of scope permanently. **versionCode 24**, 26 suites.
+
+
 
 **He answers the person before the request.** A command router can be correct and still feel cold:
 "Torch on." is true, and it is also what a switch says. Three things now sit between the sentence and
