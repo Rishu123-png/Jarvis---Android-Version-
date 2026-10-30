@@ -567,7 +567,9 @@ The APK lives on the **Releases** page, not in the repository:
 https://github.com/Rishu123-png/Jarvis---Android-Version-/releases/latest
 ```
 
-Pick **`jarvis-1.0.0.apk`** → download → open it on the phone → allow *Install unknown apps* once.
+Pick the newest **`jarvis-1.0.0-b<build>.apk`** → download → open it on the phone → allow
+*Install unknown apps* once. The build number is the `versionCode`; the version name stays 1.0.0 for
+ever build, so the build number is how you tell one APK from another.
 
 That is the file to share. Anyone who opens that link can install it without a GitHub account.
 
@@ -575,10 +577,10 @@ That is the file to share. Anyone who opens that link can install it without a G
 
 | Location | Path |
 |---|---|
-| GitHub Actions run | **Artifacts** → `jarvis-release-apk` → `jarvis-1.0.0.apk` |
+| GitHub Actions run | **Artifacts** → `jarvis-release-apk` → `jarvis-1.0.0-b32.apk` |
 | Build machine | `app/build/outputs/apk/release/app-release.apk` |
-| CI copy | `dist/jarvis-1.0.0.apk` |
-| GitHub Release | attach `jarvis-1.0.0.apk` to tag `v1.0.0` |
+| CI copy | `dist/jarvis-1.0.0-b32.apk` |
+| GitHub Release | attach `jarvis-1.0.0-b32.apk` to tag `v1.0.0-build32` |
 
 ### First run
 
@@ -724,12 +726,14 @@ capability, what it unlocks, and what breaks without it.
 # 2. green CI on main
 gh run list --limit 1
 
-# 3. tag it — CI attaches the APK to the release automatically
-git tag v1.0.0 && git push origin v1.0.0
+# 3. tag it — CI attaches the APK to the release automatically.
+#    The tag carries the build number, because versionName is always 1.0.0.
+git tag v1.0.0-build32 && git push origin v1.0.0-build32
 ```
 
-Then edit the draft release, paste the notes from [CHANGELOG.md](CHANGELOG.md), and the download link
-above works for everyone.
+CI writes the release title and the APK file names from `versionName` and `versionCode`, so they can
+never disagree with the build. Edit the notes afterwards if you want to say more than the workflow
+does; the download link above works for everyone either way.
 
 ---
 
