@@ -18,6 +18,8 @@ import com.jarvis.assistant.data.Knowledge
 import com.jarvis.assistant.data.Lane
 import com.jarvis.assistant.data.PhraseBook
 import com.jarvis.assistant.data.ResearchDesk
+import com.jarvis.assistant.connect.WebRead
+import com.jarvis.assistant.data.Creator
 import com.jarvis.assistant.data.PhraseIntent
 import com.jarvis.assistant.data.Units
 import com.jarvis.assistant.data.WeatherRules
@@ -44,6 +46,7 @@ import org.json.JSONArray
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 
 /** One executable step, already resolved to something [com.jarvis.assistant.automation.StepExecutor] knows. */
@@ -57,6 +60,13 @@ data class VoicePlan(
     val source: String,
     /** When set, the screen-aware loop takes over after [steps] and works towards this goal. */
     val screenGoal: String? = null,
+    /**
+     * What is *said* when it differs from what is *shown*.
+     *
+     * A caption belongs on the card, where it can be read and copied; reading it out loud would take
+     * half a minute and nobody would keep it. Null keeps the old behaviour: show and speak the same.
+     */
+    val spoken: String? = null,
     /** True when the operator has already said yes to the step that needed asking. */
     val confirmed: Boolean = false,
 )
@@ -97,6 +107,12 @@ object IntentRouter {
         - If the operator is talking to you — a question, a feeling, a joke, a memory, a greeting —
           reply with plain sentences and NO JSON. Use what you remember about them; never list it.
         Never do both. Never explain which one you chose.
+
+        The operator may be in the middle of a conversation, so a sentence can be short and can
+        lean on the previous turn ("usko bhej do", "haan kar do", "kal kar dena"). Resolve it
+        against the previous turn instead of asking what they mean.
+        Match the language they used: Hinglish in Roman letters gets Hinglish back, never
+        Devanagari, never formal Hindi.
     """.trimIndent()
     private const val MAX_SPOKEN = 240
 
@@ -169,6 +185,47 @@ object IntentRouter {
                 )
             }
             PendingConfirm.clear(context)
+        }
+
+        // ---- a page he was pointed at ---------------------------------------------------------
+        // Decided before anything else: a sentence carrying a link is a request to read *that*, and
+        // letting the model answer from memory instead would be inventing.
+        WebRead.urlIn(spoken)?.let { url ->
+            return readPage(context, url, Language.detect(spoken))
+        }
+
+        // One normalised copy of the sentence for the blocks below: the caption and the growth
+        // questions both key off the same words.
+        val growthWords = VoiceParsing.normalise(spoken)
+
+        // ---- captions, hashtags and reels ------------------------------------------------------
+        // Decided here rather than by the model, because this is where his own limits live: he can
+        // write the caption and hand it over, and he cannot post it.
+        if (Creator.wantsCaption(growthWords) || Creator.wantsPublish(growthWords)) {
+            captionPlan(context, spoken, growthWords, Language.detect(spoken))?.let { return it }
+        }
+
+        // ---- what he cannot do yet, and being taught -------------------------------------------
+        if (Growth.wantsCatalogue(growthWords)) {
+            val worst = Growth.worst(context)
+            // The top gap becomes the thing he offers to be taught, so the next sentence has an
+            // obvious subject without the operator having to repeat themselves.
+            Growth.setPending(context, worst.firstOrNull())
+            return VoicePlan(
+                title = "WHAT I CANNOT DO",
+                subtitle = "OPEN ITEMS",
+                steps = emptyList(),
+                say = Growth.summaryLine(Language.detect(spoken), worst, Growth.gaps(context).size),
+                source = "LOCAL",
+            )
+        }
+        if (Growth.offersToLearn(growthWords)) {
+            return learnFrom(context, spoken, Growth.pending(context), Language.detect(spoken))
+        }
+        Growth.pending(context)?.let { gap ->
+            if (Growth.looksLikeInstruction(growthWords)) {
+                return learnFrom(context, spoken, gap, Language.detect(spoken))
+            }
         }
 
         // A short follow-up ("do that for Amit", "and tomorrow") only means something next to the
@@ -250,6 +307,15 @@ object IntentRouter {
 
     private suspend fun aiPlan(context: Context, heard: String, previous: String?): VoicePlan? {
         val lang = Language.detect(heard)
+        // How they sound, and how long this has been going on: both are handed to the model so the
+        // warmth is part of the answer instead of a fixed sentence bolted on top of it.
+        val affect = Feelings.affect(heard)
+        val bond = try {
+            Feelings.bond(context)
+        } catch (t: Throwable) {
+            Feelings.Bond()
+        }
+        val mood = Feelings.moodOf(hourNow(), affect, bond)
         val brainBlock = try {
             Brain.contextBlock(
                 world = Brain.world(context),
@@ -258,6 +324,9 @@ object IntentRouter {
                 thread = Brain.thread(context),
                 language = lang,
                 habits = ConversationLog.habitLines(context),
+                affect = affect,
+                mood = mood,
+                bond = bond,
             )
         } catch (t: Throwable) {
             ""
@@ -419,6 +488,12 @@ object IntentRouter {
             - The operator's speech may be sloppy, abbreviated or mixed with Hindi words. Infer intent.
             - Answer in the SAME language the operator used. If they speak Hindi or Hinglish, write
               "say" in that language; never reply in English to a Hindi sentence.
+            - Hinglish means Hindi written in ROMAN letters with English words mixed in, the way the
+              operator actually types and talks: "Boss, WhatsApp khol diya, kisko message karna
+              hai?". Write "say" in exactly that style. Never switch a Hinglish sentence to
+              Devanagari and never answer it in formal Hindi.
+            - Talk like a person who knows them, not like a device. Short sentences, plain words,
+              no lists, no "I have completed the task".
             - You are JARVIS, built by Rishu Jaswar. Never mention a model, provider, API, key or
               vendor, and never call yourself an AI language model. If asked who built you, answer
               "Rishu Jaswar" only.
@@ -436,6 +511,10 @@ object IntentRouter {
               about first, so state them plainly and do not soften them.
             - Never use webhook. Never return more than $MAX_STEPS steps.
             - Keep "say" under 200 characters and do not describe every step; one sentence is enough.
+
+            When the request is a caption, a hashtag set or a reel idea, follow these and return the
+            caption as plain sentences (no JSON, no markdown, no code fence):
+            ${Creator.promptBlock()}
 
             Installed apps (label — package):
             $installed
@@ -1268,6 +1347,23 @@ object IntentRouter {
         if (ResearchTalk.asksWhatHeKnows(heard)) return shelfAnswer(context, lang)
         ResearchTalk.topicOf(heard)?.let { topic -> return research(context, topic, lang) }
 
+        // ---- how they sound -------------------------------------------------------------------
+        // Said before anything else, and only when the sentence is not also an order: "gussa aa
+        // raha hai, message bhej do" must still send the message.
+        if (!Feelings.carriesCommand(heard)) {
+            val affect = Feelings.affect(heard)
+            val bond = try {
+                Feelings.bond(context)
+            } catch (t: Throwable) {
+                Feelings.Bond()
+            }
+            Feelings.acknowledge(affect, lang, bond.turns)?.let { reply ->
+                // A real reading of the phone is offered where one exists, but the sentence stands
+                // on its own if every sensor is unavailable.
+                return answer("HOW YOU SOUND", reply, subtitle = "JARVIS")
+            }
+        }
+
         // ---- conversation, with or without a key -----------------------------------------------
         Brain.smallTalk(clean, lang, Brain.fact(context, "name"))?.let { reply ->
             return answer("JARVIS", reply, subtitle = "CONVERSATION")
@@ -1276,7 +1372,17 @@ object IntentRouter {
         // ---- never a dead end ----------------------------------------------------------------------
         val appGuess = AppLaunch.closestLabels(context, clean).firstOrNull()
         if (appGuess != null) {
+            // A near miss is a guess, not a failure worth learning from: only questions he genuinely
+            // could not act on are written down.
             return said("DID YOU MEAN", "which_app", appGuess, subtitle = "SUGGESTION")
+        }
+
+        // The honest record of a gap. Kept quietly, on the phone, and only ever read back when the
+        // operator asks — it is not a log of everything they said, just of what did not work.
+        try {
+            Growth.recordGap(context, heard, "not understood")
+        } catch (t: Throwable) {
+            // A missing record is acceptable; failing the reply is not.
         }
 
         return said("NOT UNDERSTOOD", "dont_know", subtitle = "HINT")
@@ -1661,6 +1767,220 @@ object IntentRouter {
             (if (clean.contains(" plus ") || clean.contains(" minus ")) 1 else 0) +
             (if (clean.contains(" times ") || clean.contains(" into ")) 1 else 0)
         return digits >= 2 && operators >= 1
+    }
+
+    /**
+     * Reads one page and answers from it.
+     *
+     * Two rules, both visible in the reply: the words are quoted from the page rather than
+     * remembered, and the host is named so the operator can judge the source. A page that comes
+     * back empty (drawn by JavaScript, or a paywall) is reported as empty instead of being
+     * summarised from nothing.
+     */
+    private suspend fun readPage(context: Context, url: String, lang: Lang): VoicePlan {
+        val title = "READ \u00B7 PAGE"
+        when (val result = WebRead.read(url)) {
+            is WebRead.Result.Refused -> return VoicePlan(
+                title = title,
+                subtitle = "NOT READ",
+                steps = emptyList(),
+                say = result.reason,
+                source = "WEB",
+            )
+
+            is WebRead.Result.Ok -> {
+                val page = result.page
+                if (page.isEmpty) {
+                    val line = when (lang.replyLang) {
+                        Lang.HI -> "${page.host} खुला, पर उसमें पढ़ने लायक कुछ नहीं मिला।"
+                        Lang.HINGLISH -> "${page.host} khula, par usme padhne layak kuch nahi mila."
+                        else -> "${page.host} opened, but there was nothing readable in it."
+                    }
+                    return VoicePlan(title, "EMPTY PAGE", emptyList(), line, "WEB")
+                }
+
+                val spoken = if (aiReady(context)) {
+                    val system = """
+                        You are JARVIS, reading one web page for the person whose phone you live on.
+                        Answer only from the text below. Three sentences at most, plain words.
+                        If the text does not contain the answer, say exactly that — never guess and
+                        never fill the gap with general knowledge. Name the site once, at the end,
+                        as "source: <host>". Do not mention a model, provider or API.
+                        Answer in ${lang.label} (${lang.tag}).
+                    """.trimIndent()
+                    val body = "PAGE: ${page.title}\nHOST: ${page.host}\n\n${page.text.take(4_000)}"
+                    when (val reply = AiClient.chat(context, listOf(AiMessage.user(body)), system)) {
+                        is AiResult.Ok -> Persona.sanitize(reply.text.trim()).take(MAX_SPOKEN)
+                        is AiResult.Error -> WebRead.firstSentences(page.text)
+                    }
+                } else {
+                    WebRead.firstSentences(page.text)
+                }
+
+                return VoicePlan(
+                    title = "READ \u00B7 ${page.host.uppercase(Locale.US).take(18)}",
+                    subtitle = page.title.take(28).uppercase(Locale.US),
+                    steps = emptyList(),
+                    say = spoken.ifBlank { "I read the page but could not make sense of it." },
+                    source = "WEB",
+                )
+            }
+        }
+    }
+
+    /** Drafts a routine from the operator's own words, saved off, and says so. */
+    private suspend fun learnFrom(
+        context: Context,
+        spoken: String,
+        gap: Growth.Gap?,
+        lang: Lang,
+    ): VoicePlan {
+        if (!aiReady(context)) {
+            val line = when (lang.replyLang) {
+                Lang.HI -> "सीखने के लिए दिमाग़ चालू चाहिए — Advanced \u2192 AI में चाबी डालिए।"
+                Lang.HINGLISH -> "Seekhne ke liye dimaag chalu chahiye — Advanced \u2192 AI mein chaabi daaliye."
+                else -> "Learning needs the brain on — add a key in Advanced \u2192 AI."
+            }
+            return VoicePlan("NOT YET", "NEEDS KEY", emptyList(), line, "LOCAL")
+        }
+
+        return when (val learned = Growth.learn(context, spoken, gap)) {
+            is Growth.Learned.Drafted -> VoicePlan(
+                title = "LEARNED \u00B7 ${learned.name.uppercase(Locale.US).take(16)}",
+                subtitle = "${learned.steps} STEP \u00B7 OFF",
+                steps = emptyList(),
+                say = Growth.draftedLine(lang, learned.name, learned.steps),
+                source = "AI",
+            )
+
+            is Growth.Learned.Refused -> VoicePlan(
+                title = "COULD NOT LEARN",
+                subtitle = "NOT SAVED",
+                steps = emptyList(),
+                say = learned.message,
+                source = "AI",
+            )
+        }
+    }
+
+    /**
+     * A caption, its hashtags, and the one thing he cannot do.
+     *
+     * The draft is written locally first so there is always something to hand over, then improved by
+     * the model when a key is stored — and every version is run through [Creator.lint] before it is
+     * shown, so the version on the card is the one that would not be cut off at the fold.
+     */
+    private suspend fun captionPlan(
+        context: Context,
+        spokenWords: String,
+        clean: String,
+        lang: Lang,
+    ): VoicePlan? {
+        val topic = Creator.topicOf(clean).ifBlank {
+            // "caption banao" with no subject: use what they last asked about, if anything.
+            Brain.thread(context).lastOrNull { it.kind == Brain.Kind.COMMAND }?.title.orEmpty()
+        }
+        // Without a subject there is nothing to write about, and inventing one would be the exact
+        // failure this app does not have. Let the normal path answer, in conversation.
+        if (topic.isBlank()) return null
+
+        val brief = Creator.Brief(
+            topic = topic,
+            notes = emptyList(),
+            lang = lang,
+        )
+
+        var caption = Creator.draft(brief, seed = topic.length + Brain.thread(context).size)
+        if (aiReady(context) && topic.isNotBlank()) {
+            val system = buildString {
+                appendLine(systemPrompt(context, null))
+                appendLine(Creator.promptBlock())
+            }
+            when (val reply = AiClient.chat(context, listOf(AiMessage.user(spokenWords)), system)) {
+                is AiResult.Ok -> {
+                    val fromModel = Creator.parse(Persona.sanitize(reply.text.trim()))
+                    // Keep the model's words only when they survive the same checks; otherwise the
+                    // local draft is the honest fallback.
+                    if (Creator.blockers(fromModel).isEmpty() && fromModel.hook.isNotBlank()) {
+                        caption = Creator.enforce(fromModel)
+                    }
+                }
+                is AiResult.Error -> Unit
+            }
+        }
+
+        val copied = Creator.copyToClipboard(context, caption.rendered)
+        val issues = Creator.lint(caption)
+        // When to post needs the account's own numbers, and this build has no account connections
+        // at all (they were removed on purpose). So there is no timing advice rather than a blog
+        // post's guess dressed up as data.
+        val window: String? = null
+
+        val spoken = buildList {
+            add(
+                when (lang.replyLang) {
+                    Lang.HI -> "कैप्शन तैयार है, ${caption.hashtags.size} हैशटैग के साथ।"
+                    Lang.HINGLISH -> "Caption taiyaar hai, ${caption.hashtags.size} hashtag ke saath."
+                    else -> "Caption is ready, with ${caption.hashtags.size} hashtags."
+                },
+            )
+            if (copied) {
+                add(
+                    when (lang.replyLang) {
+                        Lang.HI -> "क्लिपबोर्ड में कॉपी कर दिया।"
+                        Lang.HINGLISH -> "Clipboard mein copy kar diya."
+                        else -> "Copied to the clipboard."
+                    },
+                )
+            }
+            add(Creator.publishLine(lang))
+            if (Creator.wantsPublish(clean)) {
+                // The rest of the request belongs to another app's screens; say so once, plainly.
+                add(
+                    when (lang.replyLang) {
+                        Lang.HINGLISH ->
+                            "Aur Arena/Influesh ke andar jaake workspace clear karna, trending topic " +
+                                "uthana — wo unke apne screens hain, wahan main sirf dikha sakta hoon, " +
+                                "bharosa nahi kar sakta ki maine kar diya."
+                        Lang.HI ->
+                            "Arena/Influesh के अंदर जाकर workspace साफ़ करना — वे उनके अपने स्क्रीन हैं।"
+                        else ->
+                            "Clearing the workspace inside Arena or Influesh is their own screen — " +
+                                "I can point you there, but I will not claim I did it."
+                    },
+                )
+            }
+        }.joinToString(" ")
+
+        val shown = buildString {
+            append(caption.rendered)
+            if (window != null) {
+                appendLine()
+                appendLine()
+                append(window)
+            }
+            val warnings = issues.filter { it.severity != Creator.Severity.NICE }
+            if (warnings.isNotEmpty()) {
+                appendLine()
+                appendLine()
+                warnings.forEach { appendLine("• ${it.message}") }
+            }
+        }
+
+        return VoicePlan(
+            title = Creator.titleFor(caption),
+            subtitle = if (copied) "COPIED" else "DRAFT",
+            steps = emptyList(),
+            say = shown,
+            source = if (aiReady(context)) "AI" else "LOCAL",
+            spoken = spoken,
+        )
+    }
+
+    private fun hourNow(): Int = try {
+        java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    } catch (t: Throwable) {
+        12
     }
 
     private suspend fun matchApp(context: Context, target: String): InstalledApp? {

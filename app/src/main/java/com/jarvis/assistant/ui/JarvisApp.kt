@@ -107,6 +107,8 @@ import com.jarvis.assistant.ui.theme.ElectricCyan
 import com.jarvis.assistant.ui.theme.IceBlue
 import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.VoidBlack
+import com.jarvis.assistant.voice.Conversation
+import com.jarvis.assistant.voice.Feelings
 import com.jarvis.assistant.voice.VoiceController
 import com.jarvis.assistant.voice.WakeHandoff
 import com.jarvis.assistant.voice.VoiceSettings
@@ -316,6 +318,11 @@ fun JarvisApp(
     var bubbleEnabled by remember { mutableStateOf(Bubble.isEnabled(context)) }
     var bubbleAllowed by remember { mutableStateOf(Bubble.canDraw(context)) }
     var speechRoute by remember { mutableStateOf(VoiceSettings.route(context)) }
+    var voiceGender by remember { mutableStateOf(VoiceSettings.gender(context)) }
+    var conversationOn by remember { mutableStateOf(Conversation.isEnabled(context)) }
+    var conversationWindow by remember { mutableLongStateOf(Conversation.windowMs(context)) }
+    var feelingsOn by remember { mutableStateOf(Feelings.isEnabled(context)) }
+    var bond by remember { mutableStateOf(Feelings.bond(context)) }
     var dockEditSlot by rememberSaveable { mutableIntStateOf(0) }
 
     // ---- apps + dock ----
@@ -739,6 +746,12 @@ fun JarvisApp(
                     bubbleEnabled = bubbleEnabled,
                     bubbleAllowed = bubbleAllowed,
                     speechRoute = speechRoute,
+                    voiceGender = voiceGender,
+                    conversationEnabled = conversationOn,
+                    conversationWindowMs = conversationWindow,
+                    feelingsEnabled = feelingsOn,
+                    feelingsDays = bond.daysTogether,
+                    feelingsStreak = bond.streakDays,
                     onSetPin = { pin ->
                         scope.launch {
                             val failure = withContext(Dispatchers.Default) { Privacy.setPin(context, pin) }
@@ -776,6 +789,23 @@ fun JarvisApp(
                     onSelectRoute = { picked ->
                         VoiceSettings.setRoute(context, picked)
                         speechRoute = picked
+                    },
+                    onSelectGender = { picked ->
+                        VoiceSettings.setGender(context, picked)
+                        voiceGender = picked
+                    },
+                    onToggleConversation = { enable ->
+                        Conversation.setEnabled(context, enable)
+                        conversationOn = enable
+                        if (!enable) VoiceController.cancel()
+                    },
+                    onSetConversationWindow = { millis ->
+                        Conversation.setWindowMs(context, millis)
+                        conversationWindow = Conversation.windowMs(context)
+                    },
+                    onToggleFeelings = { enable ->
+                        Feelings.setEnabled(context, enable)
+                        feelingsOn = enable
                     },
                     biometricStatus = Biometrics.availability(context),
                     biometricEnabled = biometricEnabled,
@@ -833,7 +863,13 @@ fun JarvisApp(
                     onOpenVault = { route = ROUTE_VAULT },
                     onForgetMemory = {
                         scope.launch {
-                            withContext(Dispatchers.IO) { Brain.forget(context) }
+                            withContext(Dispatchers.IO) {
+                                Brain.forget(context)
+                                // The bond is a memory of a person too, so one key clears all of it.
+                                Feelings.forget(context)
+                            }
+                            feelingsOn = Feelings.isEnabled(context)
+                            bond = Feelings.bond(context)
                             rememberedPeople = emptyList()
                             rememberedFacts = emptyList()
                             rememberedTurns = 0
@@ -1252,7 +1288,13 @@ fun JarvisApp(
                                     locked = false
                                     LockGate.clearNotice(context)
                                 } else {
-                                    pinError = "Wrong PIN"
+                                    val wait = Privacy.lockoutRemainingMs(context)
+                                    pinError = when {
+                                        wait > 0 ->
+                                            "Too many tries \u00B7 wait ${(wait / 1000L) + 1L}s"
+                                        else ->
+                                            "Wrong PIN \u00B7 ${Privacy.attemptsLeft(context)} tries left"
+                                    }
                                 }
                             }
                         }

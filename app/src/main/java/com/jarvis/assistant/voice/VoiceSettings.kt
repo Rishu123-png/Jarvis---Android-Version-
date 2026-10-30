@@ -1,6 +1,7 @@
 package com.jarvis.assistant.voice
 
 import android.content.Context
+import com.jarvis.assistant.automation.SpeechOut
 
 /**
  * How JARVIS listens, chosen by the operator and stored locally.
@@ -21,10 +22,29 @@ enum class SpeechRoute(val id: String, val label: String, val blurb: String) {
     }
 }
 
+/**
+ * Which voice JARVIS speaks with.
+ *
+ * Gender is a setting rather than something inferred from the phone's default, because the
+ * default on most devices is a bright female voice and JARVIS is not written as one. [MALE] is the
+ * default here; a phone with no male voice in its language still gets a lower pitch rather than
+ * the wrong voice (see `SpeechOut`).
+ */
+enum class VoiceGender(val id: String, val label: String, val blurb: String) {
+    MALE("male", "MALE", "A low, steady voice"),
+    FEMALE("female", "FEMALE", "A brighter voice"),
+    ;
+
+    companion object {
+        fun fromId(id: String?): VoiceGender = entries.firstOrNull { it.id == id } ?: MALE
+    }
+}
+
 object VoiceSettings {
 
     private const val PREFS = "jarvis_voice_settings"
     private const val KEY_ROUTE = "speech_route"
+    private const val KEY_GENDER = "voice_gender"
 
     fun route(context: Context): SpeechRoute = SpeechRoute.fromId(
         context.applicationContext
@@ -38,6 +58,23 @@ object VoiceSettings {
             .edit()
             .putString(KEY_ROUTE, route.id)
             .apply()
+    }
+
+    /** The voice JARVIS speaks with. Male by default. */
+    fun gender(context: Context): VoiceGender = VoiceGender.fromId(
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_GENDER, null),
+    )
+
+    fun setGender(context: Context, gender: VoiceGender) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_GENDER, gender.id)
+            .apply()
+        // The engine caches the voice it chose, so a change has to force it to look again.
+        SpeechOut.forgetVoice()
     }
 
     /** True when the device recognizer should be told to prefer an offline model. */

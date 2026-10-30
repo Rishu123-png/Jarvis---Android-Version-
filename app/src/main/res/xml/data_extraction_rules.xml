@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12 and above: device-to-device transfer and cloud backup both ignore `allowBackup` in
+  places, so the exclusions are declared here as well. A new phone starts with an empty memory,
+  which is the honest default for a file about a person.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="root" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="root" path="." />
+    </device-transfer>
+</data-extraction-rules>
