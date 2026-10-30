@@ -115,9 +115,17 @@ object Feelings {
         val lastSeenAt: Long = 0L,
         val streakDays: Int = 0,
         val daysTogether: Int = 0,
-        /** True on the very first day, when he should introduce himself rather than assume. */
-        val isNew: Boolean = true,
-    )
+    ) {
+        /**
+         * True on the very first day, when he should introduce himself rather than assume.
+         *
+         * Derived, never stored: a copy of this carried in a value object goes stale the moment the
+         * clock passes midnight, and "he thinks it is still day one" is exactly the kind of wrong
+         * that reads as not paying attention.
+         */
+        val isNew: Boolean
+            get() = firstMetAt <= 0L || daysTogether <= 1
+    }
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -147,7 +155,6 @@ object Feelings {
             lastSeenAt = store.getLong(KEY_LAST_SEEN, 0L),
             streakDays = store.getInt(KEY_STREAK, 0),
             daysTogether = days,
-            isNew = firstMet <= 0L || days <= 1,
         )
     }
 

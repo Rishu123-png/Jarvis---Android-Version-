@@ -154,6 +154,9 @@ class FeelingsTest {
     @Test
     fun aNewBondSaysSo() {
         assertTrue(Feelings.Bond().isNew)
+        // Derived from the dates, not stored: the day it stops being day one, it stops saying so.
+        assertTrue(Feelings.Bond(firstMetAt = 1L, daysTogether = 1).isNew)
+        assertFalse(Feelings.Bond(firstMetAt = 1L, daysTogether = 2).isNew)
         assertFalse(Feelings.Bond(firstMetAt = 1L, daysTogether = 9).isNew)
     }
 
@@ -165,7 +168,7 @@ class FeelingsTest {
         assertTrue(line!!.contains("Do not name it like a diagnosis"))
         val old = Feelings.observation(
             Feelings.Affect.TIRED,
-            Feelings.Bond(firstMetAt = 1L, turns = 40, daysTogether = 11, isNew = false),
+            Feelings.Bond(firstMetAt = 1L, turns = 40, daysTogether = 11),
         )
         assertTrue(old!!.contains("11 days"))
     }
