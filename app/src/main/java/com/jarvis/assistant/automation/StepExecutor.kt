@@ -15,6 +15,7 @@ import com.jarvis.assistant.R
 import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
+import com.jarvis.assistant.device.SystemToggles
 import com.jarvis.assistant.ai.Translator
 import com.jarvis.assistant.device.Access
 import com.jarvis.assistant.device.AppLaunch
@@ -63,6 +64,15 @@ object StepExecutor {
     private const val WEBHOOK_READ_TIMEOUT_MS = 10_000
     private const val NOTIFY_CHANNEL = "jarvis_runs"
 
+    /** The switches Android will not let an ordinary app flip. */
+    private val SWITCH_ACTIONS = setOf(
+        ActionType.WIFI,
+        ActionType.BLUETOOTH,
+        ActionType.MOBILE_DATA,
+        ActionType.AIRPLANE,
+        ActionType.HOTSPOT,
+    )
+
     /** Human-readable warnings shown before a run when a step cannot possibly work. */
     fun preflight(context: Context, workflow: Workflow): List<String> {
         val warnings = mutableListOf<String>()
@@ -84,6 +94,12 @@ object StepExecutor {
         }
         if (all.any { it.action == ActionType.SHELL } && !ShizukuShell.isReady) {
             warnings.add("Needs an active Shizuku connection for shell steps.")
+        }
+        if (all.any { it.action in SWITCH_ACTIONS } && !ShizukuShell.isReady) {
+            warnings.add(
+                "Wi-Fi, Bluetooth, data and airplane steps open the system switch unless Shizuku " +
+                    "is connected; with it, JARVIS flips them himself.",
+            )
         }
         if (all.any { it.action == ActionType.CALL_CONTACT }) {
             if (!Contacts.canRead(context)) {
@@ -560,6 +576,15 @@ object StepExecutor {
                 Result.Ok("Waited ${seconds}s")
             }
 
+            // ------------------------------------------------------------------ system switches
+            ActionType.WIFI -> setSwitch(context, SystemToggles.Switch.WIFI, step.param)
+            ActionType.BLUETOOTH -> setSwitch(context, SystemToggles.Switch.BLUETOOTH, step.param)
+            ActionType.MOBILE_DATA -> setSwitch(context, SystemToggles.Switch.MOBILE_DATA, step.param)
+            ActionType.AIRPLANE -> setSwitch(context, SystemToggles.Switch.AIRPLANE, step.param)
+            ActionType.HOTSPOT -> setSwitch(context, SystemToggles.Switch.HOTSPOT, step.param)
+            ActionType.BRIGHTNESS -> fromToggle(SystemToggles.setBrightness(context, step.param))
+            ActionType.ROTATION -> fromToggle(SystemToggles.setRotation(context, step.param))
+
             // Control flow never reaches the executor.
             ActionType.IF_BLOCK, ActionType.REPEAT_BLOCK, ActionType.WAIT_UNTIL,
             ActionType.STOP_ROUTINE,
@@ -780,6 +805,24 @@ object StepExecutor {
         } else {
             Result.Failed("Android refused the change")
         }
+    }
+
+    /** A Wi-Fi / Bluetooth / data style switch: name the target, say on or off. */
+    private suspend fun setSwitch(context: Context, switch: SystemToggles.Switch, raw: String): Result {
+        val desired = SystemToggles.parseDesired(raw)
+            ?: return Result.Failed("Say on or off for ${switch.label}.")
+        return fromToggle(SystemToggles.setSwitch(context, switch, desired))
+    }
+
+    /**
+     * A switch that was only opened, not flipped, is reported as done-with-a-tap-needed rather than
+     * a failure: the panel is genuinely in front of the operator, and the detail says so.
+     */
+    private fun fromToggle(outcome: SystemToggles.Outcome): Result = when (outcome) {
+        is SystemToggles.Outcome.Done -> Result.Ok(outcome.detail)
+        is SystemToggles.Outcome.NeedsTap -> Result.Ok(outcome.detail)
+        is SystemToggles.Outcome.Failed -> Result.Failed(outcome.reason)
+        is SystemToggles.Outcome.Unavailable -> Result.Skipped(outcome.reason)
     }
 
     private suspend fun runShell(context: Context, raw: String): Result {

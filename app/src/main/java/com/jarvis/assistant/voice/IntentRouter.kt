@@ -13,6 +13,7 @@ import com.jarvis.assistant.automation.JarvisAccessibilityService
 import com.jarvis.assistant.automation.ParamKind
 import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.ConversationLog
+import com.jarvis.assistant.data.PendingConfirm
 import com.jarvis.assistant.data.Knowledge
 import com.jarvis.assistant.data.Lane
 import com.jarvis.assistant.data.PhraseBook
@@ -56,6 +57,8 @@ data class VoicePlan(
     val source: String,
     /** When set, the screen-aware loop takes over after [steps] and works towards this goal. */
     val screenGoal: String? = null,
+    /** True when the operator has already said yes to the step that needed asking. */
+    val confirmed: Boolean = false,
 )
 
 /**
@@ -76,7 +79,7 @@ object IntentRouter {
 
     private const val VIRTUAL_SEND = "send_message"
     private const val VIRTUAL_SCREEN = "screen_task"
-    private const val MAX_STEPS = 8
+    private const val MAX_STEPS = 24
 
     /**
      * The instruction that makes him a conversationalist as well as an operator.
@@ -87,6 +90,10 @@ object IntentRouter {
     private val CONVERSATION_RULE = """
         Two ways to answer, and you choose:
         - If the operator asks you to DO something on the phone, reply with the JSON object above.
+          Act; do not offer. Never answer "I can do that", "shall I", "would you like me to", or
+          describe the steps you would take — return the steps instead. If the sentence names
+          something the phone can do, it is a command, even when it is phrased as a wish
+          ("it is dark in here" means turn the torch on; "this song is loud" means turn it down).
         - If the operator is talking to you — a question, a feeling, a joke, a memory, a greeting —
           reply with plain sentences and NO JSON. Use what you remember about them; never list it.
         Never do both. Never explain which one you chose.
@@ -96,9 +103,15 @@ object IntentRouter {
     /** How many earlier exchanges go back to the model as real conversation. */
     private const val HISTORY_TURNS = 20
 
-    /** Actions the voice surface may use. Shell and webhooks are excluded on purpose. */
+    /**
+     * Actions the voice surface may use.
+     *
+     * Shell is included: the operator asked for full control, and Shizuku is the only identity that
+     * can flip a switch Android reserves for `adb`. Commands that cannot be undone still go through
+     * [ConfirmPolicy]. Webhooks stay out — a spoken URL is not something to fire blindly.
+     */
     private val voiceActions: List<ActionType> = ActionType.entries.filter {
-        !it.blocks && it != ActionType.SHELL && it != ActionType.WEBHOOK
+        !it.blocks && it != ActionType.WEBHOOK
     }
 
     fun aiReady(context: Context): Boolean = AiKeyStore.config(context) != null
@@ -127,6 +140,35 @@ object IntentRouter {
                 say = Persona.answer(lang),
                 source = "LOCAL",
             )
+        }
+
+        // A question he asked out loud — "call Amit?" — is answered by the next words, before
+        // anything else looks at them. A yes runs the plan that was stored; anything else throws it
+        // away, so a later "yes" can never fire an old action.
+        PendingConfirm.get(context)?.let { waiting ->
+            val words = heard.trim()
+            val lang = Language.detect(words)
+            if (ResearchTalk.isYes(words)) {
+                PendingConfirm.clear(context)
+                SpokenLanguage.remember(context, lang)
+                return resume(waiting)
+            }
+            if (ResearchTalk.isNo(words)) {
+                PendingConfirm.clear(context)
+                SpokenLanguage.remember(context, lang)
+                return VoicePlan(
+                    title = "CANCELLED",
+                    subtitle = "NOT DONE",
+                    steps = emptyList(),
+                    say = when (lang) {
+                        Lang.HI -> "रद्द किया।"
+                        Lang.HINGLISH -> "Cancel kar diya."
+                        else -> "Cancelled."
+                    },
+                    source = "LOCAL",
+                )
+            }
+            PendingConfirm.clear(context)
         }
 
         // A short follow-up ("do that for Amit", "and tomorrow") only means something next to the
@@ -174,6 +216,32 @@ object IntentRouter {
         }
 
         return localPlan(context, completed, previous)
+    }
+
+    /** Rebuilds a plan the operator has just approved. */
+    private fun resume(waiting: PendingConfirm.Pending): VoicePlan {
+        val steps = waiting.steps.mapNotNull { step ->
+            val action = ActionType.fromId(step.action) ?: return@mapNotNull null
+            PlannedStep(action, step.param, step.label.ifBlank { action.label })
+        }
+        if (steps.isEmpty() && waiting.screenGoal == null) {
+            return VoicePlan(
+                title = "NOT DONE",
+                subtitle = "EXPIRED",
+                steps = emptyList(),
+                say = "That one is no longer possible. Say it again.",
+                source = "LOCAL",
+            )
+        }
+        return VoicePlan(
+            title = waiting.title.ifBlank { "CONFIRMED" },
+            subtitle = waiting.subtitle.ifBlank { "CONFIRMED" },
+            steps = steps,
+            say = waiting.say.ifBlank { "Done." },
+            source = "VOICE",
+            screenGoal = waiting.screenGoal,
+            confirmed = true,
+        )
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -358,7 +426,15 @@ object IntentRouter {
               the time, battery — prefer the matching action over prose; it reads the real device.
             - If the request is a question, conversation, or something a phone cannot do, return
               "steps": [] and answer honestly in "say". Never claim an action you did not plan.
-            - Never use shell or webhook. Never return more than $MAX_STEPS steps.
+            - For a switch use wifi, bluetooth, mobile_data or airplane with param on, off or toggle,
+              and hotspot with on or off. Prefer these over opening a settings page.
+            - Brightness takes 0-100 or "auto"; rotation takes on (lock) or off.
+            - shell runs an adb-level command through Shizuku, as the operator asked. Use it only
+              when no action above fits — a vendor setting, a permission toggle, an app's hidden
+              state — and keep it to one line. Never use it to fake something an action can do, and
+              never send the operator's data anywhere. Commands that wipe or uninstall are asked
+              about first, so state them plainly and do not soften them.
+            - Never use webhook. Never return more than $MAX_STEPS steps.
             - Keep "say" under 200 characters and do not describe every step; one sentence is enough.
 
             Installed apps (label — package):

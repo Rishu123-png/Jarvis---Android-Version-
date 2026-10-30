@@ -9,6 +9,7 @@ import com.jarvis.assistant.automation.SpeechOut
 import com.jarvis.assistant.automation.StepExecutor
 import com.jarvis.assistant.automation.WorkflowStep
 import com.jarvis.assistant.data.ConversationLog
+import com.jarvis.assistant.data.PendingConfirm
 import com.jarvis.assistant.data.Lane
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -291,6 +292,34 @@ object VoiceController {
 
         if (plan.steps.isEmpty() && !hasScreenTask) {
             speak(context, plan.say, spokenLanguage)
+            scheduleDismiss(id)
+            return
+        }
+
+        // The one step that waits for a yes. Asked once, and the plan is stored exactly as it was
+        // planned, so the answer runs what the operator heard rather than a fresh guess. Everything
+        // else on the phone runs on the first word.
+        val askable = if (plan.confirmed) null else ConfirmPolicy.firstAskable(plan.steps)
+        if (askable != null) {
+            val question = ConfirmPolicy.question(askable, spokenLang)
+            PendingConfirm.ask(
+                context,
+                PendingConfirm.Pending(
+                    question = question,
+                    title = plan.title,
+                    subtitle = plan.subtitle,
+                    say = plan.say,
+                    steps = plan.steps.map { PendingConfirm.Step(it.action.id, it.param, it.label) },
+                    screenGoal = plan.screenGoal,
+                ),
+            )
+            _state.value = _state.value.copy(
+                phase = VoicePhase.DONE,
+                subtitle = "CONFIRM",
+                reply = question,
+                error = null,
+            )
+            speak(context, question, spokenLanguage)
             scheduleDismiss(id)
             return
         }

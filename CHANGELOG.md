@@ -4,6 +4,28 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 29
+
+**Full control (same version).** Said plainly, it should be done, so:
+
+- **System switches.** `wifi off`, `bluetooth on`, `mobile data off`, `airplane mode on`,
+  `hotspot on`, `brightness 40`, `rotation lock on` are new actions. Android forbids ordinary apps
+  from flipping Wi-Fi, Bluetooth and data, and never allowed airplane or hotspot: through Shizuku he
+  runs the `adb`-level command himself, so the switch really changes. Without Shizuku he opens the
+  panel with the switch in front of you and says so — he never claims a switch he did not flip.
+  Brightness and rotation also work with the app's own system-settings permission.
+- **Longer tasks.** Plans may hold 24 steps instead of 8; the screen agent that taps through an
+  unfamiliar app may take 20 actions instead of 6, with a four-minute ceiling as well.
+- **Act, do not offer.** The prompt now forbids "I can do that" and "shall I": a sentence that asks
+  for something on the phone returns steps, including wishes ("it is dark in here").
+- **Shell for voice.** The privileged tier is available to spoken commands, as asked — real power,
+  running as `adb`. `reboot`, `pm clear`, uninstalling and wiping are asked about first.
+- **One yes.** Calls, messages, replies, saving a contact and adding an event wait for one short
+  question, in the language spoken. The plan is stored exactly as planned, expires in 90 seconds, and
+  any other answer discards it. Everything else runs on the first word.
+- **Tests:** new suites for the switches, the confirmation rule, the stored question, and the
+  conversation log. **versionCode 29.**
+
 ## 1.0.0 — versionCode 28
 
 **Memory that keeps every conversation (same version).** Every exchange is appended to a file on the

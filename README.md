@@ -94,6 +94,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [The crew](#the-crew)
 - [The dial](#the-dial)
 - [The eyes](#the-eyes)
+- [Full control](#full-control)
 - [What he can do](#what-he-can-do)
 - [The lock, honestly](#the-lock-honestly)
 - [Install the APK](#install-the-apk)
@@ -365,6 +366,40 @@ asked. A menu, a sign, a medicine strip, a bill, a page of homework, a plant tha
 
 ---
 
+## Full control
+
+The ask was plain: whatever is said should be done. Three things stood between the app and that, and
+all three are gone.
+
+**The switches Android keeps to itself.** `wifi off`, `bluetooth on`, `mobile data off`,
+`airplane mode on`, `hotspot on`, `brightness 40`, `rotation lock on`. Android stopped letting
+ordinary apps flip Wi-Fi, Bluetooth and mobile data years ago — `svc wifi` is `adb`'s verb, not an
+app's — and airplane mode and hotspot were never available. With **Shizuku** connected he runs those
+commands himself, so the switch is genuinely off. Without it he opens the system panel with the
+switch in front of you and says exactly that. He never claims a switch he did not flip. Brightness
+and rotation need no shell at all once the app may write system settings.
+
+**Long tasks finish.** A plan may now hold 24 steps instead of 8, and the screen agent that taps
+through an app he has never seen may take 20 actions instead of 6 — with a four-minute ceiling as
+well, so nothing can sit inside one app forever. Every action still appears on the card as it
+happens and the whole run can be stopped.
+
+**He acts instead of offering.** The rule he is given is now explicit: never "I can do that", never
+"shall I", never a description of the steps he would take — return the steps. A sentence phrased as
+a wish ("it is dark in here") counts as a request.
+
+**Shell, as asked.** Voice may now use the privileged tier for what no action covers: a vendor
+setting, a permission toggle, an app's hidden state. This is real power — it runs with `adb`'s
+identity. Commands that cannot be undone (`reboot`, `pm clear`, uninstalling, wiping) are asked
+about first.
+
+**The one yes.** Calling somebody, sending a message, replying, saving a contact or adding an event
+waits for one short question, in the language you spoke. The plan is stored exactly as it was
+planned, so the yes runs what you heard rather than a second guess; the question expires after 90
+seconds, and any other answer throws it away. Everything else on the phone runs on the first word.
+
+---
+
 ## What he can do
 
 <table>
@@ -376,6 +411,14 @@ asked. A menu, a sign, a medicine strip, a bill, a page of homework, a plant tha
 
 System intents, skin-specific packages and fuzzy labels — so it works on ColorOS, MIUI, One UI and
 stock alike.</td></tr>
+
+<tr><td><b>System switches</b></td><td>
+
+`wifi off` · `bluetooth on` · `airplane mode on` · `mobile data off` · `hotspot on` ·
+`brightness 40` · `rotation lock on`
+
+Through Shizuku the switch really flips. Without Shizuku the panel opens with the switch in front of
+you, and he says so instead of pretending.</td></tr>
 
 <tr><td><b>The assistant key</b></td><td>
 
@@ -533,8 +576,10 @@ no assistant.
 | Always-on wake word | Android gives its efficient hardware path only to system apps. So "Hey Jarvis" is opt-in: a foreground service listens while you have it on, and costs battery while it does. He uses the assistant key when the wake word is off. |
 | Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
 | Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |
+| Wi-Fi, Bluetooth, data, airplane mode or hotspot without Shizuku | Android reserves those switches for `adb`'s identity. With Shizuku connected he flips them himself; without it he opens the panel and one tap finishes it. |
+| Undo a destructive shell command | The privileged tier runs as `adb`: a wipe is a wipe. That is why `reboot`, `pm clear`, uninstalling and wiping are asked about before they run. |
 
-**Verified by CI:** compilation, 28 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 33 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 

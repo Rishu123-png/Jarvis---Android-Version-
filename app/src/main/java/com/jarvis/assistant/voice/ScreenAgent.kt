@@ -34,7 +34,14 @@ import java.util.Locale
  */
 object ScreenAgent {
 
-    private const val MAX_STEPS = 6
+    private const val MAX_STEPS = 20
+
+    /**
+     * A wall-clock ceiling as well as a step ceiling. A loop that keeps finding something to tap can
+     * otherwise sit in an app for a very long time; four minutes is longer than any single spoken
+     * task should ever take, and it is a promise the operator's phone is not being held.
+     */
+    private const val MAX_TASK_MS = 4 * 60 * 1000L
     private const val MAX_LABELS = 40
     private const val SETTLE_MS = 900L
     private const val DECISION_TIMEOUT_MS = 20_000L
@@ -61,8 +68,12 @@ object ScreenAgent {
         }
 
         val history = mutableListOf<String>()
+        val startedAt = System.currentTimeMillis()
 
         repeat(MAX_STEPS) { index ->
+            if (System.currentTimeMillis() - startedAt > MAX_TASK_MS) {
+                return "That was taking too long, so I stopped. Say it again if you want me to carry on."
+            }
             val app = JarvisAccessibilityService.currentPackage() ?: "unknown"
             var labels = JarvisAccessibilityService.visibleLabels(MAX_LABELS)
             var viaOcr = false
