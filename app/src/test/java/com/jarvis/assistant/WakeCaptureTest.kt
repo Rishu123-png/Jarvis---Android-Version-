@@ -32,26 +32,35 @@ class WakeCaptureTest {
 
     @Test
     fun theRingDropsTheOldestWhenItOverflows() {
-        val ring = WakeCapture.Ring(capacity = 8)
-        ring.append(byteArrayOf(1, 2, 3, 4, 5, 6), 6)
-        ring.append(byteArrayOf(7, 8, 9, 10), 4)
-        // Newest eight bytes survive, in order.
-        assertArrayEquals(byteArrayOf(3, 4, 5, 6, 7, 8, 9, 10), ring.snapshot())
-        assertEquals(8, ring.length)
+        // A real capacity: the ring refuses to be smaller than one millisecond of audio.
+        val ring = WakeCapture.Ring(capacity = 32)
+        ring.append(ByteArray(24) { (it + 1).toByte() }, 24)
+        ring.append(ByteArray(16) { (it + 25).toByte() }, 16)
+
+        // Forty bytes went in; the newest thirty-two survive, oldest first: 9 through 40.
+        assertEquals(32, ring.length)
+        assertArrayEquals(ByteArray(32) { (it + 9).toByte() }, ring.snapshot())
     }
 
     @Test
-    fun theRingHandlesWrapsAndOverlongReads() {
-        val ring = WakeCapture.Ring(capacity = 4)
+    fun aCapacityBelowTheFloorIsRaisedRatherThanBreaking() {
+        // Zero or negative capacity would be a crash waiting to happen, so it is clamped.
+        val ring = WakeCapture.Ring(capacity = 0)
+        ring.append(ByteArray(WakeCapture.BYTES_PER_MS * 2) { 1 }, WakeCapture.BYTES_PER_MS * 2)
+        assertEquals(WakeCapture.BYTES_PER_MS, ring.length)
+    }
+
+    @Test
+    fun theRingHandlesOverlongReads() {
+        val ring = WakeCapture.Ring(capacity = 32)
         ring.append(byteArrayOf(1, 2), 2)
         ring.append(byteArrayOf(3, 4), 2)
         ring.append(byteArrayOf(5, 6), 2)
-        assertArrayEquals(byteArrayOf(3, 4, 5, 6), ring.snapshot())
+        assertArrayEquals(byteArrayOf(1, 2, 3, 4, 5, 6), ring.snapshot())
 
-        // A count larger than the array must be clamped, not read past the end.
+        // A count larger than the array must be clamped, not read past the end of it.
         ring.clear()
-        val short = byteArrayOf(9, 9)
-        ring.append(short, 50)
+        ring.append(byteArrayOf(9, 9), 50)
         assertArrayEquals(byteArrayOf(9, 9), ring.snapshot())
     }
 

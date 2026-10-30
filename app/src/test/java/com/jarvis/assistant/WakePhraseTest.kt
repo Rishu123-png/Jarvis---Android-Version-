@@ -52,7 +52,8 @@ class WakePhraseTest {
     @Test
     fun thePhraseIsCutOffTheFrontOfTheCommand() {
         assertEquals("open whatsapp", WakePhrase.strip("hey jarvis open whatsapp"))
-        assertEquals("open whatsapp", WakePhrase.strip("Hey, Jarvis! Open WhatsApp"))
+        // The rest of the sentence keeps its own case and spelling: only the phrase is removed.
+        assertEquals("Open WhatsApp", WakePhrase.strip("Hey, Jarvis! Open WhatsApp"))
         assertEquals("open whatsapp", WakePhrase.strip("hey jarvis, open whatsapp"))
         assertEquals("what time is it", WakePhrase.strip("jarvis what time is it"))
         assertEquals("open whatsapp", WakePhrase.strip("  HEY   JARVIS   open whatsapp  "))
