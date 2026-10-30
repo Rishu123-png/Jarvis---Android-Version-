@@ -178,6 +178,15 @@ object IntentRouter {
 
     private suspend fun aiPlan(context: Context, heard: String, previous: String?): VoicePlan? {
         val lang = Language.detect(heard)
+        // How they sound, and how long this has been going on: both are handed to the model so the
+        // warmth is part of the answer instead of a fixed sentence bolted on top of it.
+        val affect = Feelings.affect(heard)
+        val bond = try {
+            Feelings.bond(context)
+        } catch (t: Throwable) {
+            Feelings.Bond()
+        }
+        val mood = Feelings.moodOf(hourNow(), affect, bond)
         val brainBlock = try {
             Brain.contextBlock(
                 world = Brain.world(context),
@@ -185,6 +194,9 @@ object IntentRouter {
                 facts = Brain.facts(context),
                 thread = Brain.thread(context),
                 language = lang,
+                affect = affect,
+                mood = mood,
+                bond = bond,
             )
         } catch (t: Throwable) {
             ""
@@ -1132,6 +1144,23 @@ object IntentRouter {
         if (ResearchTalk.asksWhatHeKnows(heard)) return shelfAnswer(context, lang)
         ResearchTalk.topicOf(heard)?.let { topic -> return research(context, topic, lang) }
 
+        // ---- how they sound -------------------------------------------------------------------
+        // Said before anything else, and only when the sentence is not also an order: "gussa aa
+        // raha hai, message bhej do" must still send the message.
+        if (!Feelings.carriesCommand(heard)) {
+            val affect = Feelings.affect(heard)
+            val bond = try {
+                Feelings.bond(context)
+            } catch (t: Throwable) {
+                Feelings.Bond()
+            }
+            Feelings.acknowledge(affect, lang, bond.turns)?.let { reply ->
+                // A real reading of the phone is offered where one exists, but the sentence stands
+                // on its own if every sensor is unavailable.
+                return answer("HOW YOU SOUND", reply, subtitle = "JARVIS")
+            }
+        }
+
         // ---- conversation, with or without a key -----------------------------------------------
         Brain.smallTalk(clean, lang, Brain.fact(context, "name"))?.let { reply ->
             return answer("JARVIS", reply, subtitle = "CONVERSATION")
@@ -1519,6 +1548,12 @@ object IntentRouter {
             (if (clean.contains(" plus ") || clean.contains(" minus ")) 1 else 0) +
             (if (clean.contains(" times ") || clean.contains(" into ")) 1 else 0)
         return digits >= 2 && operators >= 1
+    }
+
+    private fun hourNow(): Int = try {
+        java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    } catch (t: Throwable) {
+        12
     }
 
     private suspend fun matchApp(context: Context, target: String): InstalledApp? {

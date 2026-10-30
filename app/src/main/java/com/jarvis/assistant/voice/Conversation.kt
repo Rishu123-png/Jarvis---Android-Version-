@@ -95,11 +95,25 @@ object Conversation {
      * message, after an alarm it is whether anything else needs remembering. A generic "what next?"
      * every time is what makes an assistant feel like a form.
      */
-    fun prompt(lang: Lang, lastTitle: String = ""): String = when (lang.replyLang) {
-        Lang.HINGLISH -> hinglishPrompt(lastTitle)
-        Lang.HI -> hindiPrompt(lastTitle)
-        else -> englishPrompt(lastTitle)
+    fun prompt(lang: Lang, lastTitle: String = "", fallback: String? = null): String {
+        val generic = when (lang.replyLang) {
+            Lang.HINGLISH -> hinglishPrompt(lastTitle)
+            Lang.HI -> hindiPrompt(lastTitle)
+            else -> englishPrompt(lastTitle)
+        }
+        // [fallback] exists so a real observation from the phone (a battery at 8%, a water log at
+        // zero) can replace "what next?" instead of being spoken over it. It is used only where the
+        // line would otherwise be generic, so a useful question is never replaced by a kind one.
+        val isGeneric = generic in GENERIC
+        return if (isGeneric && !fallback.isNullOrBlank()) fallback else generic
     }
+
+    /** The "nothing specific to ask" lines, per language. */
+    private val GENERIC = setOf(
+        "Boss, aur kya karna hai?",
+        "बॉस, अब क्या करना है?",
+        "What else, boss?",
+    )
 
     /** Said when the operator ends the conversation, so it closes politely instead of going mute. */
     fun goodbye(lang: Lang): String = when (lang.replyLang) {

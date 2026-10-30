@@ -365,6 +365,12 @@ object Brain {
         facts: List<Fact>,
         thread: List<Turn>,
         language: Lang,
+        /** How the operator sounds right now, read from their own words. */
+        affect: Feelings.Affect = Feelings.Affect.NEUTRAL,
+        /** The register this reply should be in. */
+        mood: Feelings.Mood = Feelings.Mood.CALM,
+        /** How long this has been going on. Null keeps the block as it was. */
+        bond: Feelings.Bond? = null,
     ): String = buildString {
         appendLine("You are JARVIS. You live on this person's phone and you are family, not a product.")
         appendLine("You were built by Rishu Jaswar. If asked who built you, that is the whole answer.")
@@ -374,9 +380,20 @@ object Brain {
         )
         appendLine("Speak in ${language.label} (${language.tag}). Two or three sentences, warm and direct.")
         appendLine("Use what you remember naturally. Never recite it back as a list.")
+        appendLine("You are family. You are allowed to have a view, to worry, to be glad, and to say so.")
+        appendLine("Never perform a feeling you have no reason for, and never announce that you have feelings.")
         appendLine()
         appendLine("Right now:")
         appendLine(world.ifBlank { "Nothing unusual." })
+
+        // What he noticed about the person, and how it should colour the reply. Both are readings
+        // from real words and real timestamps, never an assertion about how they feel.
+        Feelings.observation(affect, bond ?: Feelings.Bond())?.let { line ->
+            appendLine()
+            appendLine(line)
+        }
+        appendLine()
+        appendLine(Feelings.toneInstruction(mood))
         if (thread.isNotEmpty()) {
             appendLine()
             appendLine("The last few turns:")

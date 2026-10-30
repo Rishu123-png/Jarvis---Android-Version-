@@ -43,6 +43,14 @@ object VoiceController {
     /** Two seconds of 16 kHz mono 16-bit audio, the window the silence check looks at. */
     private const val TAIL_SAMPLES_BYTES = 16_000 * 2 * 2
 
+    /**
+     * A feeling has to be at least this old before he asks about it.
+     *
+     * Anything newer belongs to the turn that just finished — asking "how are you now?" three
+     * seconds after hearing "I am tired" would be absurd.
+     */
+    private const val CARRY_OVER_MIN_AGE_MS = 2 * 60 * 60 * 1000L
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _state = MutableStateFlow(VoiceTask())
@@ -251,6 +259,21 @@ object VoiceController {
         conversation: Boolean = false,
     ) {
         if (id != taskId) return
+
+        // Read once per turn and carried through it: the tone of the reply has to match the mood
+        // of the sentence that caused it, even if the step takes a while to run.
+        val affect = try {
+            Feelings.affect(heard)
+        } catch (t: Throwable) {
+            Feelings.Affect.NEUTRAL
+        }
+        val mood = try {
+            Feelings.moodOf(hourNow(), affect, Feelings.bond(context))
+        } catch (t: Throwable) {
+            Feelings.Mood.CALM
+        }
+        val tone = Feelings.Tone.forMood(mood)
+
         _state.value = _state.value.copy(
             phase = VoicePhase.THINKING,
             heard = heard,
@@ -309,6 +332,9 @@ object VoiceController {
                 ),
             )
             Brain.absorb(context, heard)
+            // One finished turn is one line in the relationship: turn count, streak, and the
+            // feeling heard in it, so the next greeting can ask about it once.
+            Feelings.recordTurn(context, affect)
         }
         lastHeard = heard
         val spokenLang = Language.detect(heard)
@@ -316,7 +342,7 @@ object VoiceController {
         val spokenLanguage = spokenLang.tag
 
         if (plan.steps.isEmpty() && !hasScreenTask) {
-            continueOrDismiss(context, id, plan.say, spokenLang, plan.title)
+            continueOrDismiss(context, id, plan.say, spokenLang, plan.title, tone)
             return
         }
 
@@ -360,8 +386,16 @@ object VoiceController {
         }
 
         if (failure == null) {
-            _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = plan.say, error = null)
-            continueOrDismiss(context, id, plan.say, spokenLang, plan.title)
+            // A finished task should not end on a step count when the operator was clearly having a
+            // hard day: one short sentence, then the conversation can continue as usual.
+            val tail = try {
+                if (plan.steps.isEmpty()) null else Feelings.afterCommand(affect, spokenLang, plan.steps.size)
+            } catch (t: Throwable) {
+                null
+            }
+            val answer = if (tail.isNullOrBlank()) plan.say else "${plan.say.trim()} $tail"
+            _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = answer, error = null)
+            continueOrDismiss(context, id, answer, spokenLang, plan.title, tone)
         } else {
             // A failure ends the session: holding the ear open after something broke would invite
             // a second doomed attempt without explaining the first.
@@ -373,7 +407,7 @@ object VoiceController {
                 conversation = false,
                 turn = 0,
             )
-            speak(context, failure, spokenLanguage)
+            speak(context, failure, spokenLanguage, tone)
         }
     }
 
@@ -413,21 +447,45 @@ object VoiceController {
         answer: String,
         lang: Lang,
         title: String,
+        tone: Feelings.Tone = Feelings.Tone.NEUTRAL,
     ) {
         if (!Conversation.isEnabled(context) || conversationTurns >= Conversation.maxTurns(context)) {
             _state.value = _state.value.copy(conversation = false, turn = 0)
-            speak(context, answer, lang.tag)
+            speak(context, answer, lang.tag, tone)
             scheduleDismiss(id)
             return
         }
 
         // Speak first, listen after: a microphone opened while the answer is still playing
         // transcribes JARVIS instead of the operator.
-        sayAndWait(context, answer, lang.tag)
+        sayAndWait(context, answer, lang.tag, tone)
         if (id != taskId) return
 
         conversationTurns += 1
-        val ask = Conversation.prompt(lang, title)
+
+        // What to ask next, in order of what he actually knows: a feeling he heard earlier, then a
+        // real reading of the phone, then the plain question.
+        val carry = try {
+            Feelings.carryOver(
+                context,
+                minAgeMs = CARRY_OVER_MIN_AGE_MS,
+            )?.also { Feelings.clearCarryOver(context) }
+        } catch (t: Throwable) {
+            null
+        }
+        val ask = if (carry != null) {
+            Feelings.carryOverLine(carry, lang).ifBlank { Conversation.prompt(lang, title) }
+        } else {
+            Conversation.prompt(
+                lang = lang,
+                lastTitle = title,
+                fallback = try {
+                    Feelings.careFor(context, lang)
+                } catch (t: Throwable) {
+                    null
+                },
+            )
+        }
         _state.value = _state.value.copy(
             phase = VoicePhase.LISTENING,
             conversation = true,
@@ -440,7 +498,7 @@ object VoiceController {
                 "VOICE"
             },
         )
-        sayAndWait(context, ask, lang.tag)
+        sayAndWait(context, ask, lang.tag, tone)
         if (id != taskId) return
 
         val heard = captureFollowUp(context, Conversation.windowMs(context))
@@ -582,11 +640,16 @@ object VoiceController {
         }
 
     /** Speech that blocks until it is finished, used where the microphone opens straight after. */
-    private suspend fun sayAndWait(context: Context, text: String, language: String?) {
+    private suspend fun sayAndWait(
+        context: Context,
+        text: String,
+        language: String?,
+        tone: Feelings.Tone = Feelings.Tone.NEUTRAL,
+    ) {
         if (text.isBlank()) return
         try {
             withTimeoutOrNull(SAY_TIMEOUT_MS) {
-                SpeechOut.speak(context, text.take(240), language = language)
+                SpeechOut.speak(context, text.take(240), language = language, tone = tone)
             }
         } catch (t: Throwable) {
             // Speech is a courtesy; silence is not an error, and the window still opens.
@@ -646,15 +709,26 @@ object VoiceController {
         )
     }
 
-    private fun speak(context: Context, text: String, language: String? = null) {
+    private fun speak(
+        context: Context,
+        text: String,
+        language: String? = null,
+        tone: Feelings.Tone = Feelings.Tone.NEUTRAL,
+    ) {
         if (text.isBlank()) return
         scope.launch {
             try {
-                SpeechOut.speak(context, text.take(240), language = language)
+                SpeechOut.speak(context, text.take(240), language = language, tone = tone)
             } catch (t: Throwable) {
                 // Speech is a courtesy; silence is not an error.
             }
         }
+    }
+
+    private fun hourNow(): Int = try {
+        java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    } catch (t: Throwable) {
+        12
     }
 
     private fun scheduleDismiss(id: Int) {

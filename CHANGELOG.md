@@ -4,7 +4,33 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
-## 1.0.0 — versionCode 22
+## 1.0.0 — versionCode 23
+
+**He answers the person before the request.** A command router can be correct and still feel cold:
+"Torch on." is true, and it is also what a switch says. Three things now sit between the sentence and
+the reply, and all three are readings rather than inventions:
+
+* **How you sound.** Tired, low, angry, anxious, happy, excited, warm — read from your own words in
+  English, Hindi and Hinglish. A feeling word inside a command never swallows the command: *"tired
+  hoon, alarm laga do"* still sets the alarm, while *"bahut gussa hai, message bhej do"* is heard as
+  anger **and** sends the message. "khush nahi hoon" is not happiness, and the everyday fillers
+  (*accha*, *theek hai*, *haan*) are not emotions.
+* **How long you two have been talking.** First day, days together, streak, total turns — real
+  arithmetic over real timestamps, on the phone, cleared by the same one key as the rest of his memory.
+* **His register.** A heavy feeling gets a careful reply, tiredness a quiet one, a good mood a light
+  one, an old bond a warm one. The register reaches the voice too: concern is spoken slower and
+  softer, playfulness a touch quicker, all layered on top of the chosen voice rather than replacing it.
+
+When he is the one finishing a task on a hard day, one short sentence follows it instead of a step
+count. Care is only ever offered from a real reading — a battery at 8%, a water log at zero, past
+midnight — so he cannot be caught inventing a reason to be kind, and a signal the phone cannot read
+produces silence rather than a guess. A feeling heard earlier is asked about **once**, and only if it
+is at least two hours old, so it reads as memory and not as nagging.
+
+**Advanced → Feelings** shows days together and the streak, and has a quiet mode that keeps every
+command working while dropping the warmth. **versionCode 23**, 24 suites.
+
+
 
 **He stays in the conversation.** One sentence used to be the whole session: say *"open whatsapp"*,
 he opens it, says "done", and the microphone closes — so the obvious next sentence (*"message Divik

@@ -103,6 +103,7 @@ import com.jarvis.assistant.ui.theme.IceBlue
 import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.VoidBlack
 import com.jarvis.assistant.voice.Conversation
+import com.jarvis.assistant.voice.Feelings
 import com.jarvis.assistant.voice.VoiceController
 import com.jarvis.assistant.voice.VoiceGender
 import com.jarvis.assistant.voice.VoiceSettings
@@ -229,6 +230,8 @@ fun JarvisApp(
     var voiceGender by remember { mutableStateOf(VoiceSettings.gender(context)) }
     var conversationOn by remember { mutableStateOf(Conversation.isEnabled(context)) }
     var conversationWindow by remember { mutableLongStateOf(Conversation.windowMs(context)) }
+    var feelingsOn by remember { mutableStateOf(Feelings.isEnabled(context)) }
+    var bond by remember { mutableStateOf(Feelings.bond(context)) }
     var dockEditSlot by rememberSaveable { mutableIntStateOf(0) }
 
     // ---- apps + dock ----
@@ -595,6 +598,9 @@ fun JarvisApp(
                     voiceGender = voiceGender,
                     conversationEnabled = conversationOn,
                     conversationWindowMs = conversationWindow,
+                    feelingsEnabled = feelingsOn,
+                    feelingsDays = bond.daysTogether,
+                    feelingsStreak = bond.streakDays,
                     onSetPin = { pin ->
                         scope.launch {
                             val failure = withContext(Dispatchers.Default) { Privacy.setPin(context, pin) }
@@ -646,6 +652,10 @@ fun JarvisApp(
                         Conversation.setWindowMs(context, millis)
                         conversationWindow = Conversation.windowMs(context)
                     },
+                    onToggleFeelings = { enable ->
+                        Feelings.setEnabled(context, enable)
+                        feelingsOn = enable
+                    },
                     biometricStatus = Biometrics.availability(context),
                     biometricEnabled = biometricEnabled,
                     onToggleBiometric = { enable ->
@@ -685,6 +695,10 @@ fun JarvisApp(
                     rememberedTurns = rememberedTurns,
                     onForgetMemory = {
                         Brain.forget(context)
+                        // The bond is a memory of a person too, so one key clears all of it.
+                        Feelings.forget(context)
+                        feelingsOn = Feelings.isEnabled(context)
+                        bond = Feelings.bond(context)
                         rememberedPeople = emptyList()
                         rememberedFacts = emptyList()
                         rememberedTurns = 0

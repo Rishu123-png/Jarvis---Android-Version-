@@ -47,6 +47,7 @@ import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextPrimary
 import com.jarvis.assistant.voice.Brain
 import com.jarvis.assistant.voice.Conversation
+import com.jarvis.assistant.voice.Feelings
 import com.jarvis.assistant.voice.SpeechRoute
 import com.jarvis.assistant.voice.VoiceGender
 import kotlinx.coroutines.Dispatchers
@@ -69,6 +70,9 @@ fun PrivacyScreen(
     voiceGender: VoiceGender,
     conversationEnabled: Boolean,
     conversationWindowMs: Long,
+    feelingsEnabled: Boolean,
+    feelingsDays: Int,
+    feelingsStreak: Int,
     onSetPin: (String) -> Unit,
     onClearPin: () -> Unit,
     onToggleBubble: (Boolean) -> Unit,
@@ -77,6 +81,7 @@ fun PrivacyScreen(
     onSelectGender: (VoiceGender) -> Unit,
     onToggleConversation: (Boolean) -> Unit,
     onSetConversationWindow: (Long) -> Unit,
+    onToggleFeelings: (Boolean) -> Unit,
     onAddWidget: () -> Unit,
     biometricStatus: String,
     biometricEnabled: Boolean,
@@ -347,6 +352,53 @@ fun PrivacyScreen(
                     )
                 }
             }
+        }
+
+        // ---------------------------------------------------------------- feelings
+        HudPanel(
+            label = "FEELINGS",
+            accent = if (feelingsEnabled) StatusGreen else Amber,
+            trailing = {
+                HudChip(
+                    text = if (feelingsEnabled) "ON" else "OFF",
+                    accent = if (feelingsEnabled) StatusGreen else TextMuted,
+                )
+            },
+        ) {
+            Text(
+                text = "He notices instead of only obeying: how your words sound, how long you two " +
+                    "have been talking, and what the phone already knows \u2014 a dying battery, no " +
+                    "water logged, a past-midnight hour. He answers the person before the request, " +
+                    "and a concerned reply is spoken slower and softer. Nothing here is invented: " +
+                    "if the sensors cannot read it, he says nothing.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            ReadoutRow(
+                label = "DAYS TOGETHER",
+                value = if (feelingsDays <= 0) "TODAY" else "$feelingsDays",
+                valueColor = TextPrimary,
+            )
+            ReadoutRow(
+                label = "STREAK",
+                value = if (feelingsStreak <= 0) "\u2014" else "$feelingsStreak day" +
+                    if (feelingsStreak == 1) "" else "s",
+                valueColor = if (feelingsStreak >= 3) StatusGreen else TextPrimary,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey(if (feelingsEnabled) "QUIET MODE" else "TURN ON") {
+                    onToggleFeelings(!feelingsEnabled)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Quiet mode keeps every command working and drops the warmth \u2014 for a week " +
+                    "when you would rather he just did the thing.",
+                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+                color = TextMuted,
+            )
         }
 
         // ---------------------------------------------------------------- voice

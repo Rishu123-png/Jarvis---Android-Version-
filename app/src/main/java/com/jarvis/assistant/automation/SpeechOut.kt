@@ -4,6 +4,7 @@ import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import com.jarvis.assistant.voice.Feelings
 import com.jarvis.assistant.voice.VoiceGender
 import com.jarvis.assistant.voice.VoiceSettings
 import kotlinx.coroutines.CompletableDeferred
@@ -36,6 +37,15 @@ object SpeechOut {
 
     /** Language + gender of the voice currently installed, so the picker is scanned rarely. */
     private var currentVoiceKey: String? = null
+
+    /**
+     * The chosen voice's own pitch and rate.
+     *
+     * Kept separately from what is actually applied so a mood can be layered on top without the
+     * engine drifting: base × tone, every time, never base × tone × tone.
+     */
+    private var basePitch = 1f
+    private var baseRate = 1f
 
     private suspend fun ensureEngine(context: Context): TextToSpeech? {
         engine?.let { if (ready?.isCompleted == true) return it }
@@ -92,6 +102,8 @@ object SpeechOut {
         timeoutMillis: Long = 20_000L,
         /** BCP-47 tag, e.g. "hi-IN". Null keeps the device default. */
         language: String? = null,
+        /** Mood colouring: concern is slower and softer, playfulness a touch quicker. */
+        tone: Feelings.Tone = Feelings.Tone.NEUTRAL,
     ): String? {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return "Nothing to say"
@@ -99,6 +111,7 @@ object SpeechOut {
         val tts = ensureEngine(context) ?: return "No speech engine available on this device"
         applyLanguage(tts, language)
         applyVoice(context, tts)
+        applyTone(tts, tone)
 
         val utteranceId = "jarvis-" + UUID.randomUUID()
         val done = CompletableDeferred<Boolean>()
@@ -197,14 +210,16 @@ object SpeechOut {
         withContext(Dispatchers.Main) {
             try {
                 val installed = chosen != null && tts.setVoice(chosen) == TextToSpeech.SUCCESS
-                when {
+                basePitch = when {
                     // A real male voice: keep it natural, only a touch below centre.
-                    gender == VoiceGender.MALE && installed -> tts.setPitch(0.94f)
+                    gender == VoiceGender.MALE && installed -> 0.94f
                     // No male voice on this phone: the pitch is the only honest lever left.
-                    gender == VoiceGender.MALE -> tts.setPitch(0.78f)
-                    else -> tts.setPitch(1.05f)
+                    gender == VoiceGender.MALE -> 0.78f
+                    else -> 1.05f
                 }
-                tts.setSpeechRate(if (gender == VoiceGender.MALE) 0.97f else 1.0f)
+                baseRate = if (gender == VoiceGender.MALE) 0.97f else 1.0f
+                tts.setPitch(basePitch)
+                tts.setSpeechRate(baseRate)
             } catch (t: Throwable) {
                 // Keep whatever voice the engine chose rather than failing the sentence.
             }
@@ -249,6 +264,25 @@ object SpeechOut {
         if (!voice.isNetworkConnectionRequired) score += 2
         if (tokens.contains("high")) score += 1
         return score
+    }
+
+    /**
+     * Applies mood on top of the voice, for this sentence only.
+     *
+     * Bounded on purpose: a concerned voice should sound like the same person speaking gently, not
+     * like a different engine. Anything outside a narrow band would read as a broken pitch.
+     */
+    private suspend fun applyTone(tts: TextToSpeech, tone: Feelings.Tone) {
+        val pitch = (basePitch * tone.pitch).coerceIn(0.55f, 1.6f)
+        val rate = (baseRate * tone.rate).coerceIn(0.6f, 1.3f)
+        withContext(Dispatchers.Main) {
+            try {
+                tts.setPitch(pitch)
+                tts.setSpeechRate(rate)
+            } catch (t: Throwable) {
+                // Keep the previous tone rather than failing the sentence.
+            }
+        }
     }
 
     /** Forces the next sentence to choose a voice again. Called when the setting changes. */
