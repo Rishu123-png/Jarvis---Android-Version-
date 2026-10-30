@@ -206,9 +206,12 @@ object Creator {
         if (emoji > 8) {
             issues.add(Issue(Severity.NICE, "$emoji symbols is a lot \u2014 it reads as noise."))
         }
-        val letters = text.count { it.isLetter() }
-        val caps = text.count { it.isLetter() && it.isUpperCase() }
-        if (letters > 40 && caps.toDouble() / letters > 0.6) {
+        // Measured over the written words only: hashtags are always lowercase, so including them
+        // silently diluted the ratio and let a shouted caption pass.
+        val written = (listOf(caption.hook) + caption.body + listOf(caption.cta)).joinToString(" ")
+        val letters = written.count { it.isLetter() }
+        val caps = written.count { it.isLetter() && it.isUpperCase() }
+        if (letters >= 20 && caps.toDouble() / letters > 0.5) {
             issues.add(Issue(Severity.WARNING, "Mostly capitals \u2014 it reads as shouting."))
         }
         if (text.isNotBlank() && !text.any { it.isLetter() }) {
