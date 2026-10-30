@@ -476,12 +476,29 @@ object VoiceController {
         if (id != taskId) return
 
         if (failure == null) {
-            _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = plan.say, error = null)
-            speak(context, plan.say, spokenLanguage)
-            scheduleDismiss(id)
+            // A finished task should not end on a step count when the operator was clearly having a
+            // hard day: one short sentence, then the conversation can continue as usual.
+            val tail = try {
+                if (plan.steps.isEmpty()) null else Feelings.afterCommand(affect, spokenLang, plan.steps.size)
+            } catch (t: Throwable) {
+                null
+            }
+            val said = plan.spoken ?: plan.say
+            val answer = if (tail.isNullOrBlank()) said else "${said.trim()} $tail"
+            _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = answer, error = null)
+            continueOrDismiss(context, id, answer, spokenLang, plan.title, tone)
         } else {
-            _state.value = _state.value.copy(phase = VoicePhase.FAILED, reply = failure, error = failure)
-            speak(context, failure)
+            // A failure ends the session: holding the ear open after something broke would invite
+            // a second doomed attempt without explaining the first.
+            conversationTurns = 0
+            _state.value = _state.value.copy(
+                phase = VoicePhase.FAILED,
+                reply = failure,
+                error = failure,
+                conversation = false,
+                turn = 0,
+            )
+            speak(context, failure, spokenLanguage, tone)
         }
     }
 
@@ -535,30 +552,6 @@ object VoiceController {
             if (id != taskId) return
         }
 
-        if (failure == null) {
-            // A finished task should not end on a step count when the operator was clearly having a
-            // hard day: one short sentence, then the conversation can continue as usual.
-            val tail = try {
-                if (plan.steps.isEmpty()) null else Feelings.afterCommand(affect, spokenLang, plan.steps.size)
-            } catch (t: Throwable) {
-                null
-            }
-            val answer = if (tail.isNullOrBlank()) plan.say else "${plan.say.trim()} $tail"
-            _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = answer, error = null)
-            continueOrDismiss(context, id, answer, spokenLang, plan.title, tone)
-        } else {
-            // A failure ends the session: holding the ear open after something broke would invite
-            // a second doomed attempt without explaining the first.
-            conversationTurns = 0
-            _state.value = _state.value.copy(
-                phase = VoicePhase.FAILED,
-                reply = failure,
-                error = failure,
-                conversation = false,
-                turn = 0,
-            )
-            speak(context, failure, spokenLanguage, tone)
-        }
         return failure
     }
 
