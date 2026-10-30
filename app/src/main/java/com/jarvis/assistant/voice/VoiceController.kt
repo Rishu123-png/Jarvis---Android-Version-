@@ -549,7 +549,7 @@ object VoiceController {
         val goal = plan.screenGoal
         if (failure == null && goal != null) {
             failure = runScreenTask(context, id, goal)
-            if (id != taskId) return
+            if (id != taskId) return failure
         }
 
         return failure
