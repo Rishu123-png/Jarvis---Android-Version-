@@ -84,25 +84,6 @@ jobs:
           set -o pipefail
           ./gradlew --no-daemon --console=plain testDebugUnitTest 2>&1 | tee build.log
 
-      # TEMPORARY diagnostic: the Actions log download is unreadable from this sandbox, so the
-      # failure lines are posted back as a commit comment. Removed once the branch is green.
-      - name: Diagnose failure
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          {
-            echo 'Reported by CI.'
-            echo
-            echo '```'
-            grep -aE "^(e: |w: ).*|FAILED|> Task .*FAILED|Assertion|expected:|but was|java\.lang\.|Caused by:" build.log 2>/dev/null | head -60 || true
-            echo '```'
-          } > /tmp/diag.md
-          gh api -X POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" \
-            -f body="$(cat /tmp/diag.md)" > /dev/null || true
-          cat /tmp/diag.md
-
       - name: Build debug + release APKs
         run: |
           set -o pipefail
