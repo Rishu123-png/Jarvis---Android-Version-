@@ -371,6 +371,19 @@ asked. A menu, a sign, a medicine strip, a bill, a page of homework, a plant tha
 The ask was plain: whatever is said should be done. Three things stood between the app and that, and
 all three are gone.
 
+**Shizuku comes inside the APK.** Shizuku is the companion app that lends JARVIS the `adb` shell
+identity, and it is the one thing the switches below need. Asking you to find a second download and
+install it was the last rough edge, so the release APK now carries it: the build fetches the pinned
+release (13.6.0, Apache-2.0, from RikkaApps' official GitHub release) and packs it inside the JARVIS
+APK. One button — *Install Shizuku* in Launcher settings — opens Android's own install screen with one
+tap to confirm. If a build had no network when it was made, there is no bundled copy and the same
+button downloads it on the phone instead. Either way you then open Shizuku once, start it over
+wireless debugging, and authorise JARVIS.
+
+Android never lets one app install another silently, and that is deliberate: the confirmation screen
+is the system's, not JARVIS's. This is also why the APK is for sideloading, not Google Play, whose
+policy forbids `REQUEST_INSTALL_PACKAGES` for an app like this.
+
 **The switches Android keeps to itself.** `wifi off`, `bluetooth on`, `mobile data off`,
 `airplane mode on`, `hotspot on`, `brightness 40`, `rotation lock on`. Android stopped letting
 ordinary apps flip Wi-Fi, Bluetooth and mobile data years ago — `svc wifi` is `adb`'s verb, not an
@@ -577,9 +590,11 @@ no assistant.
 | Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
 | Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |
 | Wi-Fi, Bluetooth, data, airplane mode or hotspot without Shizuku | Android reserves those switches for `adb`'s identity. With Shizuku connected he flips them himself; without it he opens the panel and one tap finishes it. |
+| Install Shizuku without a tap | Android requires the system's own confirmation for any app install. JARVIS opens that screen; your tap finishes it. |
+| Keep the bundled Shizuku up to date by itself | The copy inside the APK is pinned to one version. A newer Shizuku comes when a newer JARVIS does. |
 | Undo a destructive shell command | The privileged tier runs as `adb`: a wipe is a wipe. That is why `reboot`, `pm clear`, uninstalling and wiping are asked about before they run. |
 
-**Verified by CI:** compilation, 33 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 34 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 

@@ -4,6 +4,17 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 30
+
+**Shizuku travels with the app (same version).** The companion app that gives JARVIS its `adb`-level
+shell identity — and therefore the ability to actually flip Wi-Fi, Bluetooth, data and airplane mode —
+is now fetched at build time and packed inside the JARVIS APK (pinned to 13.6.0, Apache-2.0, from
+RikkaApps' official release, checked by exact byte size). *Install Shizuku* in Launcher settings opens
+Android's own one-tap install screen instead of a browser. A build made without network simply ships
+without it, and the same button downloads it on the phone. The licence travels with it in
+`assets/shizuku/LICENSE.txt`. Adds `REQUEST_INSTALL_PACKAGES`, which is why this APK is for
+sideloading rather than Google Play. **versionCode 30.**
+
 ## 1.0.0 — versionCode 29
 
 **Full control (same version).** Said plainly, it should be done, so:

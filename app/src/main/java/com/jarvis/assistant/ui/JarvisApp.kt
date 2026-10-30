@@ -3,9 +3,9 @@ package com.jarvis.assistant.ui
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.CancellationSignal
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -71,6 +71,7 @@ import com.jarvis.assistant.device.LauncherStatus
 import com.jarvis.assistant.device.NotificationAccess
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
+import com.jarvis.assistant.device.ShizukuInstaller
 import com.jarvis.assistant.device.readStorage
 import com.jarvis.assistant.device.rememberDeviceInfo
 import com.jarvis.assistant.device.rememberSystemStatus
@@ -573,14 +574,14 @@ fun JarvisApp(
                 if (intent != null) LauncherStatus.openSystemScreen(context, intent)
             }
 
+            // The Shizuku APK ships inside this one, so this installs it instead of sending the
+            // operator to a browser. Android still shows its own confirmation: one tap.
             ShizukuShell.Status.NOT_INSTALLED -> {
-                try {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/"))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                } catch (t: Throwable) {
-                    // No browser installed; the status row already says what is missing.
+                scope.launch {
+                    val outcome = withContext(Dispatchers.IO) { ShizukuInstaller.install(context) }
+                    if (outcome is ShizukuInstaller.Outcome.Failed) {
+                        Toast.makeText(context, outcome.reason, Toast.LENGTH_LONG).show()
+                    }
                 }
             }
 

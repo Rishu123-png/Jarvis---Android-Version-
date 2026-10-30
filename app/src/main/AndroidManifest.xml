@@ -123,6 +123,16 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!--
+      Installing Shizuku.
+
+      The Shizuku APK travels inside this APK, because it is the one app JARVIS needs to flip the
+      switches Android reserves for `adb`. Installing another app always shows the system's own
+      confirmation — no app may do it silently — so this permission only lets that dialog open.
+      Required on Android 8+, where it is also what the "Install unknown apps" toggle is for.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!--
       Shizuku (optional).
 
       `moe.shizuku.manager.permission.API_V23` and the `<meta-data>` marker below are contributed by
@@ -298,6 +308,15 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Operator-armed automation triggers" />
         </service>
+
+        <!-- Answers the package-installer session that installs the bundled Shizuku APK. -->
+        <receiver
+            android:name=".device.ShizukuInstallReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.jarvis.assistant.INSTALL_SHIZUKU" />
+            </intent-filter>
+        </receiver>
 
         <!-- One-shot time triggers. Not exported: only the AlarmManager fires this. -->
         <receiver
