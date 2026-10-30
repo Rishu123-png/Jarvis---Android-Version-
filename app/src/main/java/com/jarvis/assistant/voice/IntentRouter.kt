@@ -41,6 +41,7 @@ import com.jarvis.assistant.device.readStorage
 import com.jarvis.assistant.data.InstalledApp
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 
 /** One executable step, already resolved to something [com.jarvis.assistant.automation.StepExecutor] knows. */
@@ -144,6 +145,10 @@ object IntentRouter {
             return readPage(context, url, Language.detect(spoken))
         }
 
+        // One normalised copy of the sentence for the blocks below: the caption and the growth
+        // questions both key off the same words.
+        val growthWords = VoiceParsing.normalise(spoken)
+
         // ---- captions, hashtags and reels ------------------------------------------------------
         // Decided here rather than by the model, because this is where his own limits live: he can
         // write the caption and hand it over, and he cannot post it.
@@ -152,7 +157,6 @@ object IntentRouter {
         }
 
         // ---- what he cannot do yet, and being taught -------------------------------------------
-        val growthWords = VoiceParsing.normalise(spoken)
         if (Growth.wantsCatalogue(growthWords)) {
             val worst = Growth.worst(context)
             // The top gap becomes the thing he offers to be taught, so the next sentence has an
