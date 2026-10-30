@@ -57,10 +57,14 @@ class PresenceTest {
 
     @Test
     fun theLevelRisesFastAndFallsSlow() {
-        // A voice should show up at once; a pause should fade rather than flicker.
+        // A voice should show up at once; a pause should fade rather than flicker. The comparison
+        // that matters is how much of the gap each step covers — not the two levels themselves,
+        // since one starts at zero and the other at one.
         val rise = Presence.smooth(0f, 1f)
         val fall = Presence.smooth(1f, 0f)
-        assertTrue(rise > fall)
+        val climbed = rise - 0f
+        val dropped = 1f - fall
+        assertTrue("climb $climbed should exceed drop $dropped", climbed > dropped)
         assertTrue(rise in 0.5f..0.6f)
         assertTrue(fall in 0.8f..0.85f)
         assertEquals(0.5f, Presence.smooth(0.5f, 0.5f), 0.0001f)
