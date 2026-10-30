@@ -2,6 +2,8 @@ package com.jarvis.assistant.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -133,12 +136,22 @@ fun VoiceTaskCard(
 
         if (task.reply.isNotBlank()) {
             Spacer(Modifier.height(9.dp))
+            // A caption is meant to be read and copied, so a long reply scrolls instead of being
+            // cut at four lines like a one-sentence status.
+            val long = task.reply.length > 220
             Text(
                 text = task.reply,
                 style = HudType.valueSmall,
                 color = if (task.phase == VoicePhase.FAILED) AlertRed else IceBlue,
-                maxLines = 4,
+                maxLines = if (long) 14 else 4,
                 overflow = TextOverflow.Ellipsis,
+                modifier = if (long) {
+                    Modifier
+                        .heightIn(max = 220.dp)
+                        .verticalScroll(rememberScrollState())
+                } else {
+                    Modifier
+                },
             )
         }
 

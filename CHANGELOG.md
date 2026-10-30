@@ -4,7 +4,31 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
-## 1.0.0 — versionCode 24
+## 1.0.0 — versionCode 25
+
+**He knows how a caption works.** Say *"reel ka caption banao about phone editing"* and he writes one
+on the rules that actually decide whether it lands: the hook fits inside the ~125 characters that show
+before "more", the caption stays under 2,200, hashtags are a handful of specific ones rather than a
+wall of generic ones, there is exactly one call to action, and nothing in it reads as
+"follow for follow". The draft is **copied to the clipboard** and shown on the card, so posting is
+one paste away.
+
+He also checks work he did not write: every caption — his own, or a model's — goes through the same
+linter first, and the card shows what would be cut off, what would be down-ranked and what is missing.
+`Creator.RULES` writes the platform knowledge down in one place (watch time over likes, sends and
+saves over likes, captions are searchable, watermarks cost reach, the first hour matters, consistency
+beats bursts), and the model is handed the same list when it drafts, so the two agree.
+
+**What he will not do, still.** There is no publishing path: Instagram does not let an ordinary app
+post on someone's behalf, and the unofficial route can get an account restricted — so he hands the
+text over and says so out loud instead of pretending. Work inside another app's own screens (clearing
+a workspace in a browser, pulling a trending topic out of an editor) is reported as *"I can point you
+there, I will not claim I did it"*. When the account is connected, the best time to post comes from
+the operator's own analytics, and from silence when there is not enough data to have one.
+
+**versionCode 25**, 28 suites.
+
+
 
 **He can read the web, one page at a time.** Say *"padho https://…"* or *"read this link"* and he
 fetches that page, keeps only the prose, and answers from it — naming the site, and saying so plainly

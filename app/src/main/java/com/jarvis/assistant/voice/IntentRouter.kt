@@ -15,6 +15,10 @@ import com.jarvis.assistant.data.Knowledge
 import com.jarvis.assistant.data.PhraseBook
 import com.jarvis.assistant.data.ResearchDesk
 import com.jarvis.assistant.connect.WebRead
+import com.jarvis.assistant.data.Creator
+import com.jarvis.assistant.social.InstagramAnalytics
+import com.jarvis.assistant.social.InstagramClient
+import com.jarvis.assistant.social.InstagramStore
 import com.jarvis.assistant.data.PhraseIntent
 import com.jarvis.assistant.data.Units
 import com.jarvis.assistant.data.When
@@ -50,6 +54,13 @@ data class VoicePlan(
     val source: String,
     /** When set, the screen-aware loop takes over after [steps] and works towards this goal. */
     val screenGoal: String? = null,
+    /**
+     * What is *said* when it differs from what is *shown*.
+     *
+     * A caption belongs on the card, where it can be read and copied; reading it out loud would take
+     * half a minute and nobody would keep it. Null keeps the old behaviour: show and speak the same.
+     */
+    val spoken: String? = null,
 )
 
 /**
@@ -131,6 +142,13 @@ object IntentRouter {
         // letting the model answer from memory instead would be inventing.
         WebRead.urlIn(spoken)?.let { url ->
             return readPage(context, url, Language.detect(spoken))
+        }
+
+        // ---- captions, hashtags and reels ------------------------------------------------------
+        // Decided here rather than by the model, because this is where his own limits live: he can
+        // write the caption and hand it over, and he cannot post it.
+        if (Creator.wantsCaption(growthWords) || Creator.wantsPublish(growthWords)) {
+            captionPlan(context, spoken, growthWords, Language.detect(spoken))?.let { return it }
         }
 
         // ---- what he cannot do yet, and being taught -------------------------------------------
@@ -388,6 +406,10 @@ object IntentRouter {
               "steps": [] and answer honestly in "say". Never claim an action you did not plan.
             - Never use shell or webhook. Never return more than $MAX_STEPS steps.
             - Keep "say" under 200 characters and do not describe every step; one sentence is enough.
+
+            When the request is a caption, a hashtag set or a reel idea, follow these and return the
+            caption as plain sentences (no JSON, no markdown, no code fence):
+            ${Creator.promptBlock()}
 
             Installed apps (label — package):
             $installed
@@ -1684,6 +1706,129 @@ object IntentRouter {
                 source = "AI",
             )
         }
+    }
+
+    /**
+     * A caption, its hashtags, when to post it, and the one thing he cannot do.
+     *
+     * The draft is written locally first so there is always something to hand over, then improved by
+     * the model when a key is stored — and every version is run through [Creator.lint] before it is
+     * shown, so the version on the card is the one that would not be cut off at the fold.
+     */
+    private suspend fun captionPlan(
+        context: Context,
+        spokenWords: String,
+        clean: String,
+        lang: Lang,
+    ): VoicePlan? {
+        val topic = Creator.topicOf(clean).ifBlank {
+            // "caption banao" with no subject: use what they last asked about, if anything.
+            Brain.thread(context).lastOrNull { it.kind == Brain.Kind.COMMAND }?.title.orEmpty()
+        }
+        // Without a subject there is nothing to write about, and inventing one would be the exact
+        // failure this app does not have. Let the normal path answer, in conversation.
+        if (topic.isBlank()) return null
+
+        val brief = Creator.Brief(
+            topic = topic,
+            notes = emptyList(),
+            lang = lang,
+        )
+
+        var caption = Creator.draft(brief, seed = topic.length + Brain.thread(context).size)
+        if (aiReady(context) && topic.isNotBlank()) {
+            val system = buildString {
+                appendLine(systemPrompt(context, null))
+                appendLine(Creator.promptBlock())
+            }
+            when (val reply = AiClient.chat(context, listOf(AiMessage.user(spokenWords)), system)) {
+                is AiResult.Ok -> {
+                    val fromModel = Creator.parse(Persona.sanitize(reply.text.trim()))
+                    // Keep the model's words only when they survive the same checks; otherwise the
+                    // local draft is the honest fallback.
+                    if (Creator.blockers(fromModel).isEmpty() && fromModel.hook.isNotBlank()) {
+                        caption = Creator.enforce(fromModel)
+                    }
+                }
+                is AiResult.Error -> Unit
+            }
+        }
+
+        val copied = Creator.copyToClipboard(context, caption.rendered)
+        val issues = Creator.lint(caption)
+        // When to post, from their own numbers when the account is connected — and silence when it
+        // is not. A blog post's advice is not data about this account.
+        val window = try {
+            if (!InstagramStore.isConnected(context)) null else when (val fetched = withTimeoutOrNull(6_000L) { InstagramClient.fetch(context) }) {
+                is InstagramClient.Result.Ok -> {
+                    val analysis = InstagramAnalytics.compute(fetched.snapshot, emptyList())
+                    Creator.bestWindowLine(analysis.bestViewDay, analysis.bestViewHour, lang)
+                }
+                else -> null
+            }
+        } catch (t: Throwable) {
+            null
+        }
+
+        val spoken = buildList {
+            add(
+                when (lang.replyLang) {
+                    Lang.HI -> "कैप्शन तैयार है, ${caption.hashtags.size} हैशटैग के साथ।"
+                    Lang.HINGLISH -> "Caption taiyaar hai, ${caption.hashtags.size} hashtag ke saath."
+                    else -> "Caption is ready, with ${caption.hashtags.size} hashtags."
+                },
+            )
+            if (copied) {
+                add(
+                    when (lang.replyLang) {
+                        Lang.HI -> "क्लिपबोर्ड में कॉपी कर दिया।"
+                        Lang.HINGLISH -> "Clipboard mein copy kar diya."
+                        else -> "Copied to the clipboard."
+                    },
+                )
+            }
+            add(Creator.publishLine(lang))
+            if (Creator.wantsPublish(clean)) {
+                // The rest of the request belongs to another app's screens; say so once, plainly.
+                add(
+                    when (lang.replyLang) {
+                        Lang.HINGLISH ->
+                            "Aur Arena/Influesh ke andar jaake workspace clear karna, trending topic " +
+                                "uthana — wo unke apne screens hain, wahan main sirf dikha sakta hoon, " +
+                                "bharosa nahi kar sakta ki maine kar diya."
+                        Lang.HI ->
+                            "Arena/Influesh के अंदर जाकर workspace साफ़ करना — वे उनके अपने स्क्रीन हैं।"
+                        else ->
+                            "Clearing the workspace inside Arena or Influesh is their own screen — " +
+                                "I can point you there, but I will not claim I did it."
+                    },
+                )
+            }
+        }.joinToString(" ")
+
+        val shown = buildString {
+            append(caption.rendered)
+            if (window != null) {
+                appendLine()
+                appendLine()
+                append(window)
+            }
+            val warnings = issues.filter { it.severity != Creator.Severity.NICE }
+            if (warnings.isNotEmpty()) {
+                appendLine()
+                appendLine()
+                warnings.forEach { appendLine("• ${it.message}") }
+            }
+        }
+
+        return VoicePlan(
+            title = Creator.titleFor(caption),
+            subtitle = if (copied) "COPIED" else "DRAFT",
+            steps = emptyList(),
+            say = shown,
+            source = if (aiReady(context)) "AI" else "LOCAL",
+            spoken = spoken,
+        )
     }
 
     private fun hourNow(): Int = try {

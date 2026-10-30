@@ -342,7 +342,7 @@ object VoiceController {
         val spokenLanguage = spokenLang.tag
 
         if (plan.steps.isEmpty() && !hasScreenTask) {
-            continueOrDismiss(context, id, plan.say, spokenLang, plan.title, tone)
+            continueOrDismiss(context, id, plan.spoken ?: plan.say, spokenLang, plan.title, tone)
             return
         }
 

@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-26%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-28%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
