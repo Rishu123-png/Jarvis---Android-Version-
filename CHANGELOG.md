@@ -4,6 +4,83 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 32
+
+**"Hey Jarvis" now hears the rest of the sentence (same version).** The wake word used to be the
+whole story: the service handed the microphone to Vosk, whose grammar knows exactly one phrase, so
+"hey jarvis open whatsapp" decoded to "hey jarvis" and the command was thrown away before the app
+could ever see it. The service now reads the microphone itself.
+
+- **1.2 s pre-roll** — audio from just before the hit is kept, so the first word after the phrase is
+  not clipped.
+- **Captures until you stop speaking**, from loudness alone: a one-second pause ends the sentence, an
+  eight-second ceiling bounds it, and a mere cough gives up at once instead of holding the microphone.
+- **One breath, no tap:** the sentence is transcribed and planned immediately, and `hey jarvis` is
+  stripped from the transcript so it never becomes part of the request.
+- **A second wake while already listening no longer stops the session.** The handoff used to call
+  toggle, which *stopped* an open listening session — which is why saying it twice appeared to work.
+- **Tapped listening stops itself too:** pause for a second and it transcribes, instead of waiting
+  for a tap.
+- **New suites:** `WakeCaptureTest` (12 cases) and phrase-stripping cases. **versionCode 32.**
+
+## 1.0.0 — versionCode 31
+
+**Presence, the sideways wheel, and the Vault (same version).** The three ideas worth taking from the
+OSO concept reel, built rather than rendered:
+
+- **Presence.** The microphone buffer's real loudness is published to the orb ~20 times a second, so
+  it lifts with a voice and settles in a pause; a fast arc appears only while he is thinking. No
+  timers, and the signal is measured, not invented.
+- **The sideways wheel.** In landscape the module ring rotates 90° and the disc shrinks, so the dock
+  reads as a wheel in the hand. Portrait is untouched.
+- **The Vault.** A fingerprint-locked drawer holding health today, the conversation archive with its
+  export, and private notes. It uses the phone's own biometric prompt, says so honestly when no
+  biometric is enrolled, and never claims to encrypt what it does not.
+- New pure-logic suites: `PresenceTest`, `VaultTest`. **versionCode 31.**
+
+## 1.0.0 — versionCode 30
+
+**Shizuku travels with the app (same version).** The companion app that gives JARVIS its `adb`-level
+shell identity — and therefore the ability to actually flip Wi-Fi, Bluetooth, data and airplane mode —
+is now fetched at build time and packed inside the JARVIS APK (pinned to 13.6.0, Apache-2.0, from
+RikkaApps' official release, checked by exact byte size). *Install Shizuku* in Launcher settings opens
+Android's own one-tap install screen instead of a browser. A build made without network simply ships
+without it, and the same button downloads it on the phone. The licence travels with it in
+`assets/shizuku/LICENSE.txt`. Adds `REQUEST_INSTALL_PACKAGES`, which is why this APK is for
+sideloading rather than Google Play. **versionCode 30.**
+
+## 1.0.0 — versionCode 29
+
+**Full control (same version).** Said plainly, it should be done, so:
+
+- **System switches.** `wifi off`, `bluetooth on`, `mobile data off`, `airplane mode on`,
+  `hotspot on`, `brightness 40`, `rotation lock on` are new actions. Android forbids ordinary apps
+  from flipping Wi-Fi, Bluetooth and data, and never allowed airplane or hotspot: through Shizuku he
+  runs the `adb`-level command himself, so the switch really changes. Without Shizuku he opens the
+  panel with the switch in front of you and says so — he never claims a switch he did not flip.
+  Brightness and rotation also work with the app's own system-settings permission.
+- **Longer tasks.** Plans may hold 24 steps instead of 8; the screen agent that taps through an
+  unfamiliar app may take 20 actions instead of 6, with a four-minute ceiling as well.
+- **Act, do not offer.** The prompt now forbids "I can do that" and "shall I": a sentence that asks
+  for something on the phone returns steps, including wishes ("it is dark in here").
+- **Shell for voice.** The privileged tier is available to spoken commands, as asked — real power,
+  running as `adb`. `reboot`, `pm clear`, uninstalling and wiping are asked about first.
+- **One yes.** Calls, messages, replies, saving a contact and adding an event wait for one short
+  question, in the language spoken. The plan is stored exactly as planned, expires in 90 seconds, and
+  any other answer discards it. Everything else runs on the first word.
+- **Tests:** new suites for the switches, the confirmation rule, the stored question, and the
+  conversation log. **versionCode 29.**
+
+## 1.0.0 — versionCode 28
+
+**Memory that keeps every conversation (same version).** Every exchange is appended to a file on the
+phone, so the record survives restarts. The next reply reads only the newest 256 KB, so a long history
+does not slow him down. He counts the requests you make by time of day and, once one has come three
+times, treats it as a habit in the prompt. Privacy shows how many conversations are saved, their size,
+and lets you pause recording or clear them. *Forget everything* and the archive export both include the
+full record; restore merges it without duplicates. The full record never leaves the phone; only the last
+20 exchanges go with each AI request. **versionCode 28.**
+
 ## 1.0.0 — versionCode 24
 
 **The version number restarts here.** From this release on, JARVIS is **1.0.0** and stays there in

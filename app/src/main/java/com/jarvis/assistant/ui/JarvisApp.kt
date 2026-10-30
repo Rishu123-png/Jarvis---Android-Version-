@@ -3,9 +3,9 @@ package com.jarvis.assistant.ui
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.CancellationSignal
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,6 +55,7 @@ import com.jarvis.assistant.automation.RunState
 import com.jarvis.assistant.automation.Workflow
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.data.AppRepository
+import com.jarvis.assistant.data.ConversationLog
 import com.jarvis.assistant.data.DockPrefs
 import com.jarvis.assistant.data.HudGeometry
 import com.jarvis.assistant.data.NeedsYou
@@ -70,6 +71,7 @@ import com.jarvis.assistant.device.LauncherStatus
 import com.jarvis.assistant.device.NotificationAccess
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
+import com.jarvis.assistant.device.ShizukuInstaller
 import com.jarvis.assistant.device.readStorage
 import com.jarvis.assistant.device.rememberDeviceInfo
 import com.jarvis.assistant.device.rememberSystemStatus
@@ -95,6 +97,7 @@ import com.jarvis.assistant.ui.screens.ModuleScaffold
 import com.jarvis.assistant.ui.screens.NetworkScreen
 import com.jarvis.assistant.ui.screens.NotificationsScreen
 import com.jarvis.assistant.ui.screens.PrivacyScreen
+import com.jarvis.assistant.ui.screens.VaultScreen
 import com.jarvis.assistant.ui.screens.PowerScreen
 import com.jarvis.assistant.ui.screens.LockScreen
 import com.jarvis.assistant.ui.screens.TerminalScreen
@@ -105,6 +108,7 @@ import com.jarvis.assistant.ui.theme.IceBlue
 import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.VoidBlack
 import com.jarvis.assistant.voice.VoiceController
+import com.jarvis.assistant.voice.WakeHandoff
 import com.jarvis.assistant.voice.VoiceSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -125,6 +129,7 @@ private const val ROUTE_COMPOSE = "compose"
 private const val ROUTE_ADVANCED = "advanced"
 private const val ROUTE_ACTIVITY = "activity"
 private const val ROUTE_KNOWLEDGE = "knowledge"
+private const val ROUTE_VAULT = "vault"
 
 /** Routes a shortcut or an intent extra may ask for. Anything else is ignored. */
 private val KNOWN_ROUTES = setOf(ROUTE_HOME, ROUTE_DASHBOARD, ROUTE_KNOWLEDGE, ROUTE_ACTIVITY)
@@ -192,11 +197,23 @@ fun JarvisApp(
     var rememberedPeople by remember { mutableStateOf<List<Brain.Person>>(emptyList()) }
     var rememberedFacts by remember { mutableStateOf<List<Brain.Fact>>(emptyList()) }
     var rememberedTurns by remember { mutableIntStateOf(0) }
+    // The conversation log is counted off the main thread, once, when the screen opens. Nothing polls.
+    var conversationCount by remember { mutableIntStateOf(0) }
+    var conversationBytes by remember { mutableLongStateOf(0L) }
+    var recordingPaused by remember { mutableStateOf(false) }
+    var habitLines by remember { mutableStateOf<List<String>>(emptyList()) }
     LaunchedEffect(route) {
         if (route == ROUTE_ADVANCED) {
             rememberedPeople = Brain.people(context)
             rememberedFacts = Brain.facts(context)
             rememberedTurns = Brain.thread(context).size
+            recordingPaused = ConversationLog.isPaused(context)
+            val log = withContext(Dispatchers.IO) {
+                Triple(ConversationLog.count(context), ConversationLog.sizeBytes(context), ConversationLog.habitLines(context))
+            }
+            conversationCount = log.first
+            conversationBytes = log.second
+            habitLines = log.third
         }
     }
 
@@ -446,7 +463,20 @@ fun JarvisApp(
     LaunchedEffect(voiceArmed) {
         if (voiceArmed) {
             onVoiceConsumed()
-            if (!locked) VoiceController.toggle(context)
+            if (locked) {
+                // Nothing may run behind the lock, and a recording must not sit around waiting.
+                WakeHandoff.clear()
+            } else {
+                // A wake word usually arrives with the sentence attached ("hey jarvis open
+                // whatsapp"). When it does, that audio is used exactly once and transcribed;
+                // when it does not, he listens as before.
+                val captured = WakeHandoff.take()
+                if (captured != null) {
+                    VoiceController.submitCaptured(context, captured)
+                } else {
+                    VoiceController.startFromWake(context)
+                }
+            }
         }
     }
 
@@ -560,14 +590,14 @@ fun JarvisApp(
                 if (intent != null) LauncherStatus.openSystemScreen(context, intent)
             }
 
+            // The Shizuku APK ships inside this one, so this installs it instead of sending the
+            // operator to a browser. Android still shows its own confirmation: one tap.
             ShizukuShell.Status.NOT_INSTALLED -> {
-                try {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/"))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                } catch (t: Throwable) {
-                    // No browser installed; the status row already says what is missing.
+                scope.launch {
+                    val outcome = withContext(Dispatchers.IO) { ShizukuInstaller.install(context) }
+                    if (outcome is ShizukuInstaller.Outcome.Failed) {
+                        Toast.makeText(context, outcome.reason, Toast.LENGTH_LONG).show()
+                    }
                 }
             }
 
@@ -784,11 +814,33 @@ fun JarvisApp(
                     rememberedPeople = rememberedPeople,
                     rememberedFacts = rememberedFacts,
                     rememberedTurns = rememberedTurns,
+                    conversationCount = conversationCount,
+                    conversationBytes = conversationBytes,
+                    recordingPaused = recordingPaused,
+                    habitLines = habitLines,
+                    onToggleRecording = { paused ->
+                        ConversationLog.setPaused(context, paused)
+                        recordingPaused = paused
+                    },
+                    onClearConversations = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { ConversationLog.clear(context) }
+                            conversationCount = 0
+                            conversationBytes = 0L
+                            habitLines = emptyList()
+                        }
+                    },
+                    onOpenVault = { route = ROUTE_VAULT },
                     onForgetMemory = {
-                        Brain.forget(context)
-                        rememberedPeople = emptyList()
-                        rememberedFacts = emptyList()
-                        rememberedTurns = 0
+                        scope.launch {
+                            withContext(Dispatchers.IO) { Brain.forget(context) }
+                            rememberedPeople = emptyList()
+                            rememberedFacts = emptyList()
+                            rememberedTurns = 0
+                            conversationCount = 0
+                            conversationBytes = 0L
+                            habitLines = emptyList()
+                        }
                     },
                     lockNoticeEnabled = lockNoticeEnabled,
                     onToggleLockNotice = { enable ->
@@ -1070,6 +1122,14 @@ fun JarvisApp(
                         )
                     }
                 }
+
+                ROUTE_VAULT -> VaultScreen(
+                    stepsToday = stepsToday,
+                    waterToday = waterToday,
+                    conversationCount = conversationCount,
+                    conversationBytes = conversationBytes,
+                    onBack = { route = ROUTE_ADVANCED },
+                )
 
                 else -> DashboardScreen(
                     clock = clock,

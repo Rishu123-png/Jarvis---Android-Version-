@@ -27,6 +27,23 @@ object WakePhrase {
         return normalize(spoken).contains(PHRASE)
     }
 
+    /**
+     * The command without the wake phrase in front of it.
+     *
+     * The audio handed over after detection starts slightly *before* the phrase ended, so its
+     * transcript begins with "hey jarvis". Left in, it would be planned as part of the request.
+     * Only a leading occurrence is removed, so "open the jarvis notes" is untouched.
+     */
+    private val LEADING_PHRASE = Regex(
+        "^\\s*(?:(?:hey|hay|hi|ok|okay)\\s*,?\\s*)?jarvis\\b[\\s,.:;!?\\-]*",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun strip(text: String?): String {
+        if (text.isNullOrBlank()) return ""
+        return text.replace(LEADING_PHRASE, "").trim()
+    }
+
     fun normalize(text: String): String =
         text.lowercase()
             .replace(Regex("[^a-z ]"), " ")

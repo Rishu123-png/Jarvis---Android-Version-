@@ -93,6 +93,15 @@ enum class ActionType(
     PRESS_TEXT("press", "PRESS ON SCREEN", "Tap a control with an exact label", ParamKind.TEXT, needsAccessibility = true, sensitive = true),
     TYPE_TEXT("type_text", "TYPE TEXT", "Type into the focused text field", ParamKind.TEXT, needsAccessibility = true, sensitive = true),
 
+    // ---- the switches Android keeps to itself ----
+    WIFI("wifi", "WI-FI", "Turn Wi-Fi on or off: on|off|toggle", ParamKind.TEXT),
+    BLUETOOTH("bluetooth", "BLUETOOTH", "Turn Bluetooth on or off: on|off|toggle", ParamKind.TEXT),
+    MOBILE_DATA("mobile_data", "MOBILE DATA", "Turn mobile data on or off: on|off|toggle", ParamKind.TEXT),
+    AIRPLANE("airplane", "AIRPLANE MODE", "Turn airplane mode on or off: on|off|toggle", ParamKind.TEXT),
+    HOTSPOT("hotspot", "HOTSPOT", "Turn the Wi-Fi hotspot on or off: on|off", ParamKind.TEXT),
+    BRIGHTNESS("brightness", "BRIGHTNESS", "Set screen brightness to 0-100, or auto", ParamKind.TEXT),
+    ROTATION("rotation", "ROTATION LOCK", "Lock or unlock screen rotation: on|off", ParamKind.TEXT),
+
     // ---- timing ----
     WAIT("wait", "WAIT", "Pause the routine, in seconds", ParamKind.NUMBER),
     WAIT_UNTIL("wait_until", "WAIT UNTIL", "Hold the routine until a condition is true", ParamKind.NONE, blocks = true),

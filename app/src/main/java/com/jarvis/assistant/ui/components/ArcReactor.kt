@@ -4,6 +4,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -57,6 +58,10 @@ fun ArcReactor(
     powerLevel: Int = 100,
     isCharging: Boolean = false,
     accent: Color = ElectricCyan,
+    /** 0..1 loudness from [com.jarvis.assistant.voice.Presence]. 0 leaves the orb as it was. */
+    level: Float = 0f,
+    /** True while he is working something out: an extra fast arc, nothing else. */
+    thinking: Boolean = false,
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     val transition = rememberInfiniteTransition(label = "arc-reactor")
@@ -94,6 +99,21 @@ fun ArcReactor(
         animationSpec = infiniteRepeatable(tween(11_000, easing = LinearEasing)),
         label = "orbit",
     )
+    // Only drawn while thinking, so the extra motion is a signal rather than decoration.
+    val thought by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(1_100, easing = LinearEasing)),
+        label = "thought",
+    )
+
+    // A voice lifts the whole disc a little and brightens the halo. Smoothly, so a syllable does not
+    // make it jump: the recorder publishes ~20 times a second and this interpolates between them.
+    val lift by animateFloatAsState(
+        targetValue = 1f + level.coerceIn(0f, 1f) * 0.09f,
+        animationSpec = tween(120, easing = LinearEasing),
+        label = "lift",
+    )
 
     val powerColor = when {
         isCharging -> StatusGreen
@@ -108,21 +128,42 @@ fun ArcReactor(
             val c = center
             val stroke = 1.dp.toPx()
 
-            drawReactorHalo(r, c, accent, breathe)
+            drawReactorHalo(r, c, accent, breathe * lift)
             drawBezelTicks(r, c, accent, stroke)
             drawPowerArc(r, c, powerLevel, powerColor, stroke)
             drawSegmentedRing(r, c, accent, outerSpin, stroke)
             drawDashedRing(r, c, innerSpin)
             drawRadialScale(r, c, accent)
             drawScanComet(r, c, accent, scan)
-            drawLens(r, c, accent, breathe)
+            drawLens(r, c, accent, breathe * lift)
             drawOrbitingDots(r, c, accent, orbit)
+            if (thinking) drawThoughtArc(r, c, accent, thought, stroke)
         }
 
         Box(
             modifier = Modifier.size(diameter * 0.70f),
             contentAlignment = Alignment.Center,
             content = content,
+        )
+    }
+}
+
+/**
+ * A fast, short arc that only exists while he is thinking.
+ *
+ * It is a state, not decoration: the same three phases the card shows, on the disc itself, so a
+ * glance at the orb says whether he heard you, is working, or is done.
+ */
+private fun DrawScope.drawThoughtArc(r: Float, c: Offset, accent: Color, angle: Float, stroke: Float) {
+    rotate(angle, pivot = c) {
+        drawArc(
+            color = accent.copy(alpha = 0.75f),
+            startAngle = 0f,
+            sweepAngle = 52f,
+            useCenter = false,
+            topLeft = Offset(c.x - r, c.y - r),
+            size = Size(r * 2f, r * 2f),
+            style = Stroke(width = stroke * 2.2f, cap = StrokeCap.Round),
         )
     }
 }

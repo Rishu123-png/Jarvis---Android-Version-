@@ -496,8 +496,10 @@ fun LauncherSettingsScreen(
             Spacer(Modifier.height(8.dp))
             Text(
                 text = shizuku.detail.ifBlank {
-                    "Optional adb-level shell for routine steps. Nothing binds until a routine or " +
-                        "the terminal asks for it."
+                    "The Shizuku app travels inside this one, so there is nothing to go and find. " +
+                        "Install it here, open it, and let it start over wireless debugging; then " +
+                        "authorise JARVIS. Nothing binds until a routine, a switch or the terminal " +
+                        "asks for it."
                 },
                 style = HudType.terminal.copy(fontSize = 10.sp),
                 color = TextSecondary,
@@ -508,7 +510,7 @@ fun LauncherSettingsScreen(
                     ShizukuShell.Status.READY -> "CONNECTED · MANAGE IN SHIZUKU"
                     ShizukuShell.Status.PERMISSION_NEEDED -> "AUTHORISE JARVIS"
                     ShizukuShell.Status.NOT_RUNNING -> "START SHIZUKU"
-                    ShizukuShell.Status.NOT_INSTALLED -> "GET SHIZUKU"
+                    ShizukuShell.Status.NOT_INSTALLED -> "INSTALL SHIZUKU"
                 },
                 icon = Icons.Outlined.Tune,
                 accent = if (shizuku.isReady) StatusGreen else ElectricCyan,

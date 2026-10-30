@@ -68,6 +68,11 @@ fun RingNav(
     coreFraction: Float = 0.80f,
     /** A segment drawn as chosen — used when this ring is the active navigation. */
     activeId: String? = null,
+    /**
+     * Turns the whole dial. Landscape passes 90 so the ring reads sideways, level with a phone held
+     * in two hands; zero is the portrait default and changes nothing.
+     */
+    rotationDegrees: Float = 0f,
 ) {
     if (modules.isEmpty()) return
 
@@ -114,7 +119,7 @@ fun RingNav(
             }
 
             modules.forEachIndexed { index, module ->
-                val centreDegrees = HudGeometry.centerDegrees(index, modules.size)
+                val centreDegrees = HudGeometry.centerDegrees(index, modules.size) + rotationDegrees
                 val selected = module.id == pressedId || module.id == activeId
                 val tint = if (selected) IceBlue else module.accent
 
@@ -175,7 +180,7 @@ fun RingNav(
         // Touch targets. Deliberately not one full-size hit test: the centre of the dial must stay
         // free for the orb underneath.
         modules.forEachIndexed { index, module ->
-            val centreDegrees = HudGeometry.centerDegrees(index, modules.size)
+            val centreDegrees = HudGeometry.centerDegrees(index, modules.size) + rotationDegrees
             val source = remember(module.id) { MutableInteractionSource() }
             val pressed by source.collectIsPressedAsState()
             LaunchedEffect(pressed) {

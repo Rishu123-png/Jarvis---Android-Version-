@@ -3,6 +3,7 @@ package com.jarvis.assistant.ui.screens
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -42,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -70,6 +72,7 @@ import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextPrimary
 import com.jarvis.assistant.voice.Contacts
+import com.jarvis.assistant.voice.Presence
 import com.jarvis.assistant.voice.VoiceController
 import com.jarvis.assistant.voice.VoicePhase
 import com.jarvis.assistant.voice.VoiceTask
@@ -96,6 +99,9 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val task by VoiceController.state.collectAsState()
+    // The real loudness of the room while the microphone is open; zero at every other moment.
+    val presence by Presence.level.collectAsState()
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     var contactsGranted by remember { mutableStateOf(granted(context, Manifest.permission.READ_CONTACTS)) }
     var callsGranted by remember { mutableStateOf(granted(context, Manifest.permission.CALL_PHONE)) }
@@ -154,6 +160,8 @@ fun HomeScreen(
                 status = status,
                 task = task,
                 notificationCount = notificationCount,
+                presence = presence,
+                landscape = landscape,
                 onTap = { tapOrb() },
                 onOpenModule = onOpenModule,
             )
@@ -297,6 +305,8 @@ private fun OrbBlock(
     status: SystemStatus,
     task: VoiceTask,
     notificationCount: Int,
+    presence: Float,
+    landscape: Boolean,
     onTap: () -> Unit,
     onOpenModule: (HudModule) -> Unit,
 ) {
@@ -315,7 +325,9 @@ private fun OrbBlock(
     ) {
         // The dial is the hero now: the reactor shrinks to eighty per cent of it and the modules
         // take the ring, so opening one is a single gesture from the home screen.
-        val diameter: Dp = minOf(maxWidth * 0.94f, 344.dp)
+        // Sideways the screen is short, so the dial gives up its height and the rest of the home
+        // screen stays visible. Portrait is unchanged.
+        val diameter: Dp = minOf(maxWidth * 0.94f, if (landscape) 236.dp else 344.dp)
 
         Box(modifier = Modifier.size(diameter), contentAlignment = Alignment.Center) {
         ArcReactor(
@@ -328,6 +340,8 @@ private fun OrbBlock(
             powerLevel = battery.percent,
             isCharging = battery.isCharging,
             accent = accent,
+            level = presence,
+            thinking = task.phase == VoicePhase.THINKING,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(verticalAlignment = Alignment.Bottom) {
@@ -378,6 +392,9 @@ private fun OrbBlock(
         RingNav(
             modules = HudModules.all,
             onOpen = onOpenModule,
+            // Held sideways, the dial turns with the hand: the dock becomes a wheel you read
+            // left-to-right instead of top-to-bottom.
+            rotationDegrees = if (landscape) 90f else 0f,
             badges = if (notificationCount > 0) {
                 mapOf(HudModules.NOTIFICATIONS to notificationCount.toString())
             } else {

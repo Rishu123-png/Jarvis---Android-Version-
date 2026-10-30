@@ -48,4 +48,29 @@ class WakePhraseTest {
     fun grammarOffersOnlyThePhraseAndTheUnknownToken() {
         assertEquals("[\"hey jarvis\", \"[unk]\"]", WakePhrase.GRAMMAR)
     }
+
+    @Test
+    fun thePhraseIsCutOffTheFrontOfTheCommand() {
+        assertEquals("open whatsapp", WakePhrase.strip("hey jarvis open whatsapp"))
+        // The rest of the sentence keeps its own case and spelling: only the phrase is removed.
+        assertEquals("Open WhatsApp", WakePhrase.strip("Hey, Jarvis! Open WhatsApp"))
+        assertEquals("open whatsapp", WakePhrase.strip("hey jarvis, open whatsapp"))
+        assertEquals("what time is it", WakePhrase.strip("jarvis what time is it"))
+        assertEquals("open whatsapp", WakePhrase.strip("  HEY   JARVIS   open whatsapp  "))
+    }
+
+    @Test
+    fun thePhraseIsOnlyCutWhenItIsAtTheFront() {
+        // Nothing is removed from a command that only mentions him.
+        assertEquals("open the jarvis notes", WakePhrase.strip("open the jarvis notes"))
+        assertEquals("tell jarvis to stop", WakePhrase.strip("tell jarvis to stop"))
+    }
+
+    @Test
+    fun anEmptyOrPhraseOnlyTranscriptHasNoCommand() {
+        assertEquals("", WakePhrase.strip(null))
+        assertEquals("", WakePhrase.strip("   "))
+        assertEquals("", WakePhrase.strip("hey jarvis"))
+        assertEquals("", WakePhrase.strip("Hey Jarvis."))
+    }
 }

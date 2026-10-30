@@ -1,3 +1,4 @@
+import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.ZipInputStream
 
@@ -80,11 +81,93 @@ val fetchVoskModel by tasks.registering {
     }
 }
 
+/*
+ * Shizuku travels inside the JARVIS APK.
+ *
+ * It is the one companion app JARVIS cannot do without: it lends the shell identity that flips Wi-Fi,
+ * Bluetooth, data and airplane mode. Making the operator find a second download was the last rough
+ * edge, so the release APK is fetched here and shipped inside ours.
+ *
+ * Same rules as the voice model: never committed, fetched into the build folder, and a build machine
+ * with no network still succeeds and warns — the app then downloads Shizuku itself when asked.
+ * The version and byte size are pinned, so a silently swapped asset is rejected rather than shipped.
+ */
+val shizukuVersion = "13.6.0"
+val shizukuApkBytes = 2_571_773L
+val shizukuUrl = "https://github.com/RikkaApps/Shizuku/releases/download/v" + shizukuVersion + "/" +
+    "shizuku-v" + shizukuVersion + ".r1086.2650830c-release.apk"
+/*
+ * CI passes -PrequireShizuku=true, so an APK that quietly shipped without Shizuku cannot be released.
+ * Local builds stay forgiving: no network, no download, the app fetches it on the phone instead.
+ */
+val requireShizuku = providers.gradleProperty("requireShizuku").orNull?.toBoolean() == true
+val shizukuAssetRoot = layout.buildDirectory.dir("generated/shizuku-assets").get().asFile
+val shizukuAssetFile = File(shizukuAssetRoot, "shizuku/shizuku.apk")
+
+val fetchShizuku by tasks.registering {
+    outputs.dir(shizukuAssetRoot)
+
+    doLast {
+        if (shizukuAssetFile.isFile && shizukuAssetFile.length() == shizukuApkBytes) return@doLast
+
+        val staged = layout.buildDirectory.file("shizuku/download.apk").get().asFile
+        try {
+            shizukuAssetFile.parentFile.mkdirs()
+            staged.parentFile.mkdirs()
+            logger.lifecycle("Fetching Shizuku $shizukuVersion for the APK ...")
+
+            fun openFollowingRedirects(start: String): HttpURLConnection {
+                var target = start
+                repeat(6) {
+                    val connection =
+                        (URL(target).openConnection() as HttpURLConnection).apply {
+                            connectTimeout = 20_000
+                            readTimeout = 120_000
+                            instanceFollowRedirects = false
+                            useCaches = false
+                            setRequestProperty("Accept", "application/octet-stream")
+                            setRequestProperty("User-Agent", "JARVIS-build")
+                        }
+                    val code = connection.responseCode
+                    if (code in 300..399) {
+                        target = connection.getHeaderField("Location")
+                            ?: error("redirect without a location")
+                    } else {
+                        check(code in 200..299) { "HTTP $code from $target" }
+                        return connection
+                    }
+                }
+                error("too many redirects")
+            }
+
+            val connection = openFollowingRedirects(shizukuUrl)
+            connection.inputStream.use { input ->
+                staged.outputStream().use { input.copyTo(it) }
+            }
+
+            check(staged.length() == shizukuApkBytes) {
+                "expected $shizukuApkBytes bytes, got ${staged.length()}"
+            }
+            staged.copyTo(shizukuAssetFile, overwrite = true)
+            logger.lifecycle("Shizuku $shizukuVersion bundled into the APK.")
+        } catch (e: Exception) {
+            if (requireShizuku) {
+                error("Shizuku had to be bundled for this build but was not: ${e.message}")
+            }
+            logger.warn(
+                "Shizuku NOT bundled (${e.message}). The app will download it when the operator asks.",
+            )
+            staged.delete()
+            shizukuAssetFile.delete()
+        }
+    }
+}
+
 // Everything that reads the assets folder (merge, generate, and lint's model writers) must run after
 // the fetch; declaring it here keeps Gradle's ordering checks satisfied.
 tasks.configureEach {
     if (name.contains("Assets", ignoreCase = true) || name.contains("lint", ignoreCase = true)) {
-        dependsOn(fetchVoskModel)
+        dependsOn(fetchVoskModel, fetchShizuku)
     }
 }
 
@@ -96,7 +179,7 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 27
+        versionCode = 32
         versionName = "1.0.0"
 
         vectorDrawables { useSupportLibrary = true }
@@ -221,5 +304,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
 }
 
-// The generated model is an asset source: it lives in the build folder, not in src/.
+// The generated model and the bundled Shizuku APK are asset sources: they live in the build folder,
+// never in src/.
 android.sourceSets.getByName("main").assets.srcDir(voskAssetRoot)
+android.sourceSets.getByName("main").assets.srcDir(shizukuAssetRoot)
