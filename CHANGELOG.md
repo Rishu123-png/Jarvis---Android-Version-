@@ -4,6 +4,25 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 32
+
+**"Hey Jarvis" now hears the rest of the sentence (same version).** The wake word used to be the
+whole story: the service handed the microphone to Vosk, whose grammar knows exactly one phrase, so
+"hey jarvis open whatsapp" decoded to "hey jarvis" and the command was thrown away before the app
+could ever see it. The service now reads the microphone itself.
+
+- **1.2 s pre-roll** — audio from just before the hit is kept, so the first word after the phrase is
+  not clipped.
+- **Captures until you stop speaking**, from loudness alone: a one-second pause ends the sentence, an
+  eight-second ceiling bounds it, and a mere cough gives up at once instead of holding the microphone.
+- **One breath, no tap:** the sentence is transcribed and planned immediately, and `hey jarvis` is
+  stripped from the transcript so it never becomes part of the request.
+- **A second wake while already listening no longer stops the session.** The handoff used to call
+  toggle, which *stopped* an open listening session — which is why saying it twice appeared to work.
+- **Tapped listening stops itself too:** pause for a second and it transcribes, instead of waiting
+  for a tap.
+- **New suites:** `WakeCaptureTest` (12 cases) and phrase-stripping cases. **versionCode 32.**
+
 ## 1.0.0 — versionCode 31
 
 **Presence, the sideways wheel, and the Vault (same version).** The three ideas worth taking from the

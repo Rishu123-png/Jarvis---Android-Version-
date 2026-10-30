@@ -10,6 +10,7 @@ import com.jarvis.assistant.automation.StepExecutor
 import com.jarvis.assistant.automation.WorkflowStep
 import com.jarvis.assistant.data.ConversationLog
 import com.jarvis.assistant.data.PendingConfirm
+import com.jarvis.assistant.wake.WakePhrase
 import com.jarvis.assistant.data.Lane
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +67,74 @@ object VoiceController {
             VoicePhase.LISTENING -> stopListening(app)
             VoicePhase.THINKING, VoicePhase.RUNNING -> cancel()
             else -> startListening(app)
+        }
+    }
+
+    /**
+     * The wake word fired and nothing came with it, so listen now.
+     *
+     * Deliberately not [toggle]: a wake is always an instruction to listen, and calling toggle in
+     * front of an already-listening session *stops* it — which is why saying the whole sentence a
+     * second time used to be what made it work.
+     */
+    fun startFromWake(context: Context) {
+        val app = context.applicationContext
+        if (_state.value.phase == VoicePhase.LISTENING) return
+        startListening(app)
+    }
+
+    /**
+     * The wake word fired and the sentence was already captured, "hey jarvis open whatsapp" in one
+     * breath. Nothing is recorded here: the audio goes straight to transcription, so the words are
+     * never asked for twice.
+     */
+    fun submitCaptured(context: Context, pcm: ByteArray) {
+        val app = context.applicationContext
+
+        // Without a speech endpoint the captured bytes cannot become words. Fall back to the normal
+        // listening session rather than silently dropping what was said.
+        if (!Whisper.ready(app)) {
+            startListening(app)
+            return
+        }
+
+        taskId += 1
+        val id = taskId
+        job?.cancel()
+        job = null
+        releaseEngines()
+        Contacts.invalidate()
+
+        _state.value = VoiceTask(
+            taskId = id,
+            phase = VoicePhase.THINKING,
+            subtitle = "TRANSCRIBING",
+            source = "WAKE",
+        )
+
+        job = scope.launch {
+            val result = try {
+                withContext(Dispatchers.IO) { Whisper.transcribe(app, pcm) }
+            } catch (t: Throwable) {
+                Whisper.Heard(error = "That did not work (${t.javaClass.simpleName}).")
+            }
+
+            if (id != taskId) return@launch
+
+            val text = result.text
+            if (text.isNullOrBlank()) {
+                // Heard the wake word but not the sentence. Listen for it instead of guessing.
+                startListening(app)
+                return@launch
+            }
+
+            // The audio starts just before the phrase ended, so its transcript begins with it.
+            val heard = WakePhrase.strip(text)
+            if (heard.isBlank()) {
+                startListening(app)
+                return@launch
+            }
+            runTurn(app, id, heard)
         }
     }
 
@@ -126,7 +195,14 @@ object VoiceController {
         }
 
         if (useWhisper) {
-            val recorder = MicRecorder()
+            // The operator should not have to tap to say they have finished: a pause ends it.
+            val recorder = MicRecorder(onQuiet = {
+                scope.launch {
+                    if (id == taskId && _state.value.phase == VoicePhase.LISTENING) {
+                        stopListening(context)
+                    }
+                }
+            })
             val problem = recorder.start()
             if (problem != null) {
                 _state.value = VoiceTask(

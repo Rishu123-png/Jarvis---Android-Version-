@@ -6,6 +6,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.ai.AiProvider
+import com.jarvis.assistant.wake.WakeCapture
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -20,7 +21,13 @@ import java.net.URL
  * owns the decision to record at all. This class only guarantees that a recording always ends: the
  * worker thread exits on [stop], on [cancel], or after [MAX_SECONDS], whichever comes first.
  */
-class MicRecorder {
+class MicRecorder(
+    /**
+     * Called once, on the recorder thread, when the operator has spoken and then stopped. The
+     * caller turns that into an ordinary stop, so a pause ends the turn without a tap.
+     */
+    private val onQuiet: (() -> Unit)? = null,
+) {
 
     private var record: AudioRecord? = null
     private var worker: Thread? = null
@@ -88,6 +95,7 @@ class MicRecorder {
         worker = Thread({
             val buffer = ByteArray(bufferSize)
             var total = 0
+            val quiet = if (onQuiet == null) null else WakeCapture.Tracker()
             while (running && total < SAMPLE_RATE * 2 * MAX_SECONDS) {
                 val read = try {
                     recorder.read(buffer, 0, buffer.size)
@@ -97,9 +105,19 @@ class MicRecorder {
                 if (read <= 0) break
                 synchronized(pcm) { pcm.write(buffer, 0, read) }
                 total += read
-                // The orb answers the room. Wrapped so the picture can never cost a recording.
+                // The orb answers the room, and the same measurement decides when the sentence
+                // ended. Wrapped so the picture can never cost a recording.
                 try {
-                    Presence.publishRms(Presence.rmsOf(buffer, read))
+                    val loudness = Presence.rmsOf(buffer, read)
+                    Presence.publishRms(loudness)
+                    val chunkMs = read * 1_000 / (SAMPLE_RATE * 2)
+                    if (quiet != null && quiet.feed(loudness, chunkMs) == WakeCapture.Decision.FINISH) {
+                        // Stop this loop, then let the owner run an ordinary stop. Returning here
+                        // means the thread is already on its way out when that join happens.
+                        running = false
+                        onQuiet?.invoke()
+                        return@Thread
+                    }
                 } catch (t: Throwable) {
                     // Loudness is decoration; the transcript is the point.
                 }
@@ -121,10 +139,13 @@ class MicRecorder {
             // Already stopped.
         }
         worker?.let { thread ->
-            try {
-                thread.join(600)
-            } catch (t: Throwable) {
-                // Interrupted; the daemon thread will exit on its own.
+            // Never join ourselves: the auto-stop callback arrives from this very thread.
+            if (thread !== Thread.currentThread()) {
+                try {
+                    thread.join(600)
+                } catch (t: Throwable) {
+                    // Interrupted; the daemon thread will exit on its own.
+                }
             }
         }
         try {
@@ -134,6 +155,12 @@ class MicRecorder {
         }
         record = null
         worker = null
+        // The microphone is shut: the orb should fall back to still rather than hold a peak.
+        try {
+            Presence.reset()
+        } catch (t: Throwable) {
+            // A picture cannot be allowed to fail a recording.
+        }
         val bytes = synchronized(pcm) { pcm.toByteArray() }
         synchronized(pcm) { pcm.reset() }
         return bytes

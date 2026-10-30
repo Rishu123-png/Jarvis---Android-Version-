@@ -268,9 +268,17 @@ Say **"Hey Jarvis"** and he opens listening. It is off until you turn it on in
 - **While it is on:** a foreground service holds the microphone. Android shows its microphone
   indicator and a notification the whole time, with a *TURN OFF* button. It listens only while
   switched on; turning it off stops the service.
-- **On a hit:** it releases the microphone, opens JARVIS listening, and re-arms after about 10
-  seconds. If the phone's own assistant is already holding the microphone, the notification says
-  "tap to talk" instead.
+- **On a hit, the sentence comes with it.** The service reads the microphone itself, so the audio
+  that finds the phrase is the same audio that becomes the command. It keeps **1.2 s from before**
+  the hit, then captures until you stop speaking — a one-second pause ends it, an eight-second
+  ceiling bounds it — and hands the whole thing to the app as one utterance. So
+  *"hey jarvis, open WhatsApp"* acts in a single breath, with no tap and no repeating yourself, and
+  `hey jarvis` is stripped out so it never becomes part of the request.
+- **If nothing follows the phrase** — you only said the wake word, or a door slammed — it gives up
+  at once, opens JARVIS listening, and re-arms after about 10 seconds. If the phone's own assistant
+  is already holding the microphone, the notification says "tap to talk" instead.
+- **Tapped listening ends itself too:** pause for a second and it transcribes, rather than waiting
+  for a second tap.
 - **After a reboot:** it resumes the first time you open JARVIS, not before. Android does not let an
   app start a microphone service from a boot broadcast.
 
@@ -609,6 +617,7 @@ no assistant.
 | Replace the lock screen | Removed from Android in 5.0. No API exists. |
 | Read your PIN, pattern or fingerprint | Only *pass* or *fail* is ever returned to an app. |
 | Send WhatsApp with zero taps when there is no live notification | App sandbox. His route is notification reply → `wa.me` link → in-app search. |
+| Wake word with no AI key | The captured sentence is turned into words through your provider's speech endpoint. With no key — or a provider that has none — JARVIS cannot transcribe the audio it captured, so it falls back to listening again rather than guessing. |
 | Always-on wake word | Android gives its efficient hardware path only to system apps. So "Hey Jarvis" is opt-in: a foreground service listens while you have it on, and costs battery while it does. He uses the assistant key when the wake word is off. |
 | Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
 | Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |

@@ -108,6 +108,7 @@ import com.jarvis.assistant.ui.theme.IceBlue
 import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.VoidBlack
 import com.jarvis.assistant.voice.VoiceController
+import com.jarvis.assistant.voice.WakeHandoff
 import com.jarvis.assistant.voice.VoiceSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -462,7 +463,20 @@ fun JarvisApp(
     LaunchedEffect(voiceArmed) {
         if (voiceArmed) {
             onVoiceConsumed()
-            if (!locked) VoiceController.toggle(context)
+            if (locked) {
+                // Nothing may run behind the lock, and a recording must not sit around waiting.
+                WakeHandoff.clear()
+            } else {
+                // A wake word usually arrives with the sentence attached ("hey jarvis open
+                // whatsapp"). When it does, that audio is used exactly once and transcribed;
+                // when it does not, he listens as before.
+                val captured = WakeHandoff.take()
+                if (captured != null) {
+                    VoiceController.submitCaptured(context, captured)
+                } else {
+                    VoiceController.startFromWake(context)
+                }
+            }
         }
     }
 
