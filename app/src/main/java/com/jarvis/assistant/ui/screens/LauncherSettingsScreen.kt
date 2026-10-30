@@ -1,5 +1,16 @@
 package com.jarvis.assistant.ui.screens
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.core.content.ContextCompat
+import com.jarvis.assistant.wake.WakeWord
+import com.jarvis.assistant.wake.WakeWordModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import com.jarvis.assistant.ui.theme.PanelNavy
 import androidx.compose.foundation.layout.Box
@@ -43,6 +54,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.jarvis.assistant.BuildConfig
 import com.jarvis.assistant.device.LauncherStatus
 import com.jarvis.assistant.shell.ShizukuShell
+import com.jarvis.assistant.voice.AssistantRole
 import com.jarvis.assistant.ui.components.HudChip
 import com.jarvis.assistant.ui.components.HudDivider
 import com.jarvis.assistant.ui.components.HudPanel
@@ -90,11 +102,37 @@ fun LauncherSettingsScreen(
 
     var isHome by remember { mutableStateOf(LauncherStatus.isDefaultLauncher(context)) }
 
+    // The assistant seat. Nothing is requested here until the button is pressed: the role is the
+    // operator's to give, and a phone that quietly claimed it would be the opposite of trustworthy.
+    var assistantState by remember { mutableStateOf(AssistantRole.state(context)) }
+    val assistantLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        // The result code is not reliable across OEMs; re-read the truth from RoleManager instead.
+        assistantState = AssistantRole.state(context)
+    }
+
+    // "Hey Jarvis". Off until the operator turns it on; the model downloads once, on that first press.
+    val wake by WakeWord.status.collectAsState()
+    var wakeOn by remember { mutableStateOf(WakeWord.isEnabled(context)) }
+    val scope = rememberCoroutineScope()
+    val wakeMicLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            scope.launch { enableWake(context) { wakeOn = it } }
+        } else {
+            WakeWord.publish(WakeWord.Phase.FAILED, "The microphone permission is needed for the wake word.")
+        }
+    }
+
     // Re-check whenever the screen comes back to the foreground (e.g. after the system dialog).
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 isHome = LauncherStatus.isDefaultLauncher(context)
+                assistantState = AssistantRole.state(context)
+                wakeOn = WakeWord.isEnabled(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -302,6 +340,115 @@ fun LauncherSettingsScreen(
             )
         }
 
+        HudPanel(
+            label = "ASSISTANT BUTTON",
+            accent = if (assistantState == AssistantRole.State.HELD) StatusGreen else Amber,
+        ) {
+            ReadoutRow(
+                label = "ASSISTANT ROLE",
+                value = AssistantRole.label(assistantState),
+                valueColor = if (assistantState == AssistantRole.State.HELD) StatusGreen else TextSecondary,
+            )
+            ReadoutRow(label = "WAKE WORD", value = "NONE \u00B7 NOTHING LISTENS IN THE BACKGROUND")
+            ReadoutRow(label = "MICROPHONE", value = "ONLY WHILE LISTENING", valueColor = StatusGreen)
+            Spacer(Modifier.height(10.dp))
+            when (assistantState) {
+                AssistantRole.State.HELD -> ActionButton(
+                    label = "MANAGE ASSISTANT ROLE",
+                    icon = Icons.Outlined.Settings,
+                    accent = IceBlue,
+                    filled = false,
+                    onClick = {
+                        AssistantRole.request(context)?.let { assistantLauncher.launch(it) }
+                            ?: openDefaultApps(context)
+                    },
+                )
+
+                AssistantRole.State.AVAILABLE -> ActionButton(
+                    label = "MAKE JARVIS YOUR ASSISTANT",
+                    icon = Icons.Outlined.Tune,
+                    accent = Amber,
+                    filled = true,
+                    onClick = {
+                        AssistantRole.request(context)?.let { assistantLauncher.launch(it) }
+                            ?: openDefaultApps(context)
+                    },
+                )
+
+                AssistantRole.State.UNSUPPORTED -> ActionButton(
+                    label = "OPEN DEFAULT APPS",
+                    icon = Icons.Outlined.OpenInNew,
+                    accent = IceBlue,
+                    filled = false,
+                    onClick = { openDefaultApps(context) },
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Hold the assistant key and JARVIS opens already listening \u2014 " +
+                    "no word to say, no microphone held open, nothing running while the phone sits " +
+                    "idle. " + AssistantRole.gestureNote(android.os.Build.MANUFACTURER),
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted,
+            )
+        }
+
+        HudPanel(label = "HEY JARVIS", accent = if (wakeOn) StatusGreen else Amber) {
+            ReadoutRow(
+                label = "WAKE WORD",
+                value = when (wake.phase) {
+                    WakeWord.Phase.LISTENING -> "LISTENING FOR \"HEY JARVIS\""
+                    WakeWord.Phase.HEARD -> "HEARD YOU"
+                    WakeWord.Phase.PAUSED -> "PAUSED · BACK SHORTLY"
+                    WakeWord.Phase.DOWNLOADING -> "DOWNLOADING · ${wake.percent}%"
+                    WakeWord.Phase.NEEDS_MODEL -> "NEEDS THE VOICE MODEL"
+                    WakeWord.Phase.FAILED -> "STOPPED"
+                    WakeWord.Phase.OFF -> if (wakeOn) "STARTING" else "OFF"
+                },
+                valueColor = if (wakeOn) StatusGreen else TextSecondary,
+            )
+            ReadoutRow(
+                label = "VOICE MODEL",
+                value = when {
+                    WakeWordModel.isInstalled(context) -> "INSTALLED · OFFLINE"
+                    WakeWordModel.bundled(context) -> "IN THIS APP · READY TO INSTALL"
+                    else -> "DOWNLOADS ONCE, ~40 MB"
+                },
+            )
+            ReadoutRow(label = "ENGINE", value = "VOSK · NO ACCOUNT · NO KEY")
+            Spacer(Modifier.height(10.dp))
+            ActionButton(
+                label = if (wakeOn) "TURN OFF HEY JARVIS" else "TURN ON HEY JARVIS",
+                icon = Icons.Outlined.NotificationsActive,
+                accent = if (wakeOn) IceBlue else Amber,
+                filled = !wakeOn,
+                onClick = {
+                    if (wakeOn) {
+                        WakeWord.disable(context)
+                        wakeOn = false
+                    } else if (ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.RECORD_AUDIO,
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        scope.launch { enableWake(context) { wakeOn = it } }
+                    } else {
+                        wakeMicLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = wake.detail.ifBlank {
+                    "Say \"Hey Jarvis\" and he opens listening. While it is on, Android shows the " +
+                        "microphone indicator and a notification. It uses battery the whole time it " +
+                        "listens — my estimate is 1–3% an hour, but measure it on your phone."
+                },
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted,
+            )
+        }
+
         HudPanel(label = "QUIET MODE", accent = if (dndAccess) StatusGreen else Amber) {
             ReadoutRow(
                 label = "INTERRUPTIONS",
@@ -349,8 +496,10 @@ fun LauncherSettingsScreen(
             Spacer(Modifier.height(8.dp))
             Text(
                 text = shizuku.detail.ifBlank {
-                    "Optional adb-level shell for routine steps. Nothing binds until a routine or " +
-                        "the terminal asks for it."
+                    "The Shizuku app travels inside this one, so there is nothing to go and find. " +
+                        "Install it here, open it, and let it start over wireless debugging; then " +
+                        "authorise JARVIS. Nothing binds until a routine, a switch or the terminal " +
+                        "asks for it."
                 },
                 style = HudType.terminal.copy(fontSize = 10.sp),
                 color = TextSecondary,
@@ -361,7 +510,7 @@ fun LauncherSettingsScreen(
                     ShizukuShell.Status.READY -> "CONNECTED · MANAGE IN SHIZUKU"
                     ShizukuShell.Status.PERMISSION_NEEDED -> "AUTHORISE JARVIS"
                     ShizukuShell.Status.NOT_RUNNING -> "START SHIZUKU"
-                    ShizukuShell.Status.NOT_INSTALLED -> "GET SHIZUKU"
+                    ShizukuShell.Status.NOT_INSTALLED -> "INSTALL SHIZUKU"
                 },
                 icon = Icons.Outlined.Tune,
                 accent = if (shizuku.isReady) StatusGreen else ElectricCyan,
@@ -423,6 +572,40 @@ fun LauncherSettingsScreen(
                 color = TextMuted,
             )
         }
+    }
+}
+
+/**
+ * Turns the wake word on: downloads the model if it is missing (reporting progress), then starts the
+ * listener. Every failure is published to the panel as a plain sentence, never swallowed.
+ */
+private suspend fun enableWake(context: android.content.Context, onOn: (Boolean) -> Unit) {
+    if (!WakeWordModel.isInstalled(context)) {
+        WakeWord.publish(WakeWord.Phase.DOWNLOADING, "Preparing the offline voice model", 0)
+        val problem = withContext(Dispatchers.IO) {
+            WakeWordModel.install(context) { percent ->
+                WakeWord.publish(WakeWord.Phase.DOWNLOADING, "Preparing the offline voice model", percent)
+            }
+        }
+        if (problem != null) {
+            WakeWord.publish(WakeWord.Phase.FAILED, problem)
+            onOn(false)
+            return
+        }
+    }
+    WakeWord.enable(context)
+    onOn(true)
+}
+
+/** Where to go when this phone has no role dialog: the default-apps list still has the choice. */
+private fun openDefaultApps(context: android.content.Context) {
+    val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (t: Throwable) {
+        // Some ROMs strip that screen; the gesture note above already tells the operator where the
+        // setting lives in that case.
     }
 }
 

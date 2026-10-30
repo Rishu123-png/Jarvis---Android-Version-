@@ -389,10 +389,12 @@ object Creator {
     }
 
     /**
-     * When to post, from the operator's own analytics rather than a blog post.
+     * When to post, from the operator's own numbers rather than a blog post.
      *
-     * Nulls are honest: if the account has not posted enough to have a pattern, he says nothing
-     * instead of suggesting "9 AM because the internet said so".
+     * Nulls are honest: with nothing to read, he says nothing instead of suggesting "9 AM because
+     * the internet said so". That is the state of this build — the account connections were removed
+     * on purpose, so no caller feeds this today; the shape is kept because it is what a timing line
+     * has to look like when real numbers exist.
      */
     fun bestWindowLine(day: String?, hour: Int?, lang: Lang): String? {
         if (day.isNullOrBlank() && hour == null) return null

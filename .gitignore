@@ -23,3 +23,9 @@ Thumbs.db
 # Secrets (API keys for later phases live here, not in the repo)
 secrets.properties
 .env
+
+# Offline voice model, fetched into the APK at build time. ~40 MB: never commit it.
+app/src/main/assets/model-en-us/
+
+# Drive attachments pulled in for a look; never part of the app.
+google_drive/

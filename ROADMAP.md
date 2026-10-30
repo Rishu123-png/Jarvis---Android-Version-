@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **1.0.0 (versionCode 21)**.
+Last updated with **1.0.0 (versionCode 24)**.
 
 ---
 
@@ -20,14 +20,21 @@ Last updated with **1.0.0 (versionCode 21)**.
 | Automation: 37 action types (33 actions + 4 control-flow), 12 conditions, 10 triggers, VERIFY, AI authoring, run history, foreground watcher | Live |
 | Intelligence: bring-your-own AI key, three wire formats, model discovery | Live |
 | Terminal: ~22 commands, offline where possible | Live |
-| Instagram creator analytics, views-first + AI briefing | Live |
-| Connections: Instagram OAuth, Google Drive + Gmail (read-only) | Live |
+| ~~Instagram creator analytics~~ · ~~Connections (Instagram OAuth, Google Drive + Gmail)~~ | Removed |
 | Privileged shell via Shizuku (optional, adb-level, no root) | Live |
 | Voice: tap-to-speak orb, Whisper via your key, device recognizer fallback, spoken replies | Live |
 | Voice commands: contacts, calls, WhatsApp messages, apps, device control, alarms, timers | Live |
 | Memory: last 50 commands, contact nicknames, app aliases (on device) | Live |
 | Knowledge shelf: keyless lookups (Wikipedia + dictionary), on-device summariser, ask-first dial, cards that answer offline | Live |
 | Sight: one on-demand photo, decode-time subsampling, answered by the configured model, refuses to guess | Live |
+| Dial navigation: eleven module keys on the reactor ring, micro-readings, crosshairs, the day ruler | Live |
+| Crew arbiter: four lanes, one device lock, QUEUED instead of silence; ACTIVITY board with real history | Live |
+| Sky: keyless weather + air quality (Open-Meteo), cached, spoken in three languages, honest failures | Live |
+| Long-press shortcuts: Speak, Knowledge, Activity | Live |
+| Assistant seat: hold the assistant key and he opens listening (`ROLE_ASSISTANT`, nothing idling) | Live |
+| "Hey Jarvis": offline Vosk keyphrase, opt-in, ~40 MB model packed in the APK, foreground microphone service | Live (verify on device) |
+| Memory: last 20 exchanges sent as real messages, boss and builder in every prompt, lower male-leaning voice | Live |
+| NEEDS YOU card and NEXT UP (three events) fed by alerts, calendar and battery | Live |
 | Continuity: whole memory exported to one JSON file, imported additively, AI key excluded | Live |
 | Focus home: top bar + orb only, full dashboard behind one button | Live |
 | Chained voice tasks: 8-step plans, waits, CameraX capture, open newest photo | Live |
@@ -95,7 +102,8 @@ notification, `Download/JARVIS`), translate through the operator's key.
 
 ### Deliberately out of scope
 
-- **Always-on wake word** — battery, privacy, and the mic held open behind the operator's back.
+- **Always-on wake word without the operator's switch** — "Hey Jarvis" exists, but only as an opt-in
+  the operator turns on and can see (notification, microphone indicator). It never starts by itself.
 - **A JARVIS backend** — the app is the product; no server, no account, no sync.
 - **Telegram / MQTT bridges** — they need an account and a server token.
 - **Auto-sending SMS or calls** (SOS, call guard) — needs SMS permission and cannot be tested safely.

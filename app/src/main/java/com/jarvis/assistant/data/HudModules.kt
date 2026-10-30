@@ -46,8 +46,6 @@ object HudModules {
     const val CONTROLS = "controls"
     const val VOICE = "voice"
     const val AUTOMATION = "automation"
-    const val INSTAGRAM = "instagram"
-    const val CONNECT = "connect"
     const val KNOWLEDGE = "knowledge"
 
     val all: List<HudModule> = listOf(
@@ -113,22 +111,6 @@ object HudModules {
             caption = "Routine control",
             icon = Icons.Outlined.AutoAwesome,
             accent = AlertRed,
-            isLive = true,
-        ),
-        HudModule(
-            id = INSTAGRAM,
-            title = "INSTAGRAM",
-            caption = "Creator analytics",
-            icon = Icons.Outlined.PhotoCamera,
-            accent = IceBlue,
-            isLive = true,
-        ),
-        HudModule(
-            id = CONNECT,
-            title = "CONNECTIONS",
-            caption = "Accounts · Drive · Gmail",
-            icon = Icons.Outlined.Link,
-            accent = IceBlue,
             isLive = true,
         ),
         HudModule(

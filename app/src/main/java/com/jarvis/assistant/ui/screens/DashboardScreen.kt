@@ -47,22 +47,30 @@ import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.data.BootSequence
 import com.jarvis.assistant.device.DeviceInfo
 import com.jarvis.assistant.data.HudModule
+import com.jarvis.assistant.data.HudGeometry
+import com.jarvis.assistant.data.NeedsYou
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
 import com.jarvis.assistant.device.StorageStatus
 import com.jarvis.assistant.device.SystemStatus
+import com.jarvis.assistant.device.Weather
 import com.jarvis.assistant.ui.components.AppDock
 import com.jarvis.assistant.ui.components.ArcReactor
 import com.jarvis.assistant.ui.components.BlinkingCursor
+import com.jarvis.assistant.ui.components.DayRuler
 import com.jarvis.assistant.ui.components.ClockSnapshot
 import com.jarvis.assistant.ui.components.HudChip
 import com.jarvis.assistant.ui.components.HudPanel
 import com.jarvis.assistant.ui.components.HudTile
+import com.jarvis.assistant.ui.components.MicroReading
+import com.jarvis.assistant.ui.components.MicroStrip
 import com.jarvis.assistant.ui.components.PulseDot
+import com.jarvis.assistant.ui.components.RingNav
 import com.jarvis.assistant.ui.components.SectionHeader
 import com.jarvis.assistant.ui.components.TelemetryStat
 import com.jarvis.assistant.ui.components.Typewriter
 import com.jarvis.assistant.ui.theme.AlertRed
+import com.jarvis.assistant.ui.theme.Amber
 import com.jarvis.assistant.ui.theme.ChipShape
 import com.jarvis.assistant.ui.theme.CyanDeep
 import com.jarvis.assistant.ui.theme.ElectricCyan
@@ -97,6 +105,18 @@ fun DashboardScreen(
     onAddWater: () -> Unit,
     /** The next calendar event, as "Standup · 4:00 PM", or null. */
     nextEvent: String?,
+    /** Today's events, already reduced to blocks on the day ruler. */
+    dayBlocks: List<HudGeometry.DayBlock>,
+    /** False when calendar access is off, so the ruler says so instead of drawing an empty day. */
+    hasCalendar: Boolean,
+    /** What is waiting on the operator — at most three rows, empty when nothing is. */
+    needs: List<NeedsYou.Row>,
+    /** The next few events, soonest first. */
+    nextUp: List<NeedsYou.AgendaRow>,
+    /** The sky, or null while it is still being read. */
+    sky: Weather.Sky?,
+    /** Why there is no sky, when there is none worth showing. */
+    skyNote: String?,
     isDockCustom: Boolean,
     onLaunchApp: (InstalledApp) -> Unit,
     onEditDock: (slot: Int) -> Unit,
@@ -104,6 +124,7 @@ fun DashboardScreen(
     onOpenSettings: () -> Unit,
     onOpenModule: (HudModule) -> Unit,
     onOpenTerminal: () -> Unit,
+    onOpenActivity: () -> Unit,
 ) {
     var statusNoteIndex by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
@@ -133,7 +154,229 @@ fun DashboardScreen(
                 clock = clock,
                 status = status,
                 statusNote = BootSequence.statusNotes[statusNoteIndex],
+                notificationCount = notificationCount,
+                onOpenModule = onOpenModule,
             )
+        }
+
+        item(key = "micro") {
+            MicroStrip(
+                readings = buildList {
+                    add(
+                        MicroReading(
+                            "BAT",
+                            "${status.battery.percent}%",
+                            if (status.battery.isCharging) StatusGreen else IceBlue,
+                        ),
+                    )
+                    add(MicroReading("MEM", "${status.memory.percent}%"))
+                    add(MicroReading("STO", "${storage.percentUsed}%"))
+                    add(
+                        MicroReading(
+                            "LINK",
+                            status.network.transport,
+                            if (status.network.connected) ElectricCyan else AlertRed,
+                        ),
+                    )
+                    add(
+                        MicroReading(
+                            "LIVE",
+                            "${HudModules.all.count { it.isLive }}/${HudModules.all.size}",
+                        ),
+                    )
+                },
+                leadingDot = StatusGreen,
+            )
+        }
+
+        if (needs.isNotEmpty()) {
+            item(key = "needs") {
+                HudPanel(
+                    label = "NEEDS YOU",
+                    accent = Amber,
+                    trailing = { HudChip(text = "${needs.size}", accent = Amber) },
+                ) {
+                    needs.forEachIndexed { index, row ->
+                        if (index > 0) {
+                            Spacer(Modifier.height(7.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Amber.copy(alpha = 0.14f)),
+                            )
+                            Spacer(Modifier.height(7.dp))
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PulseDot(
+                                color = when (row.kind) {
+                                    NeedsYou.Kind.EVENT -> IceBlue
+                                    NeedsYou.Kind.BATTERY -> AlertRed
+                                    NeedsYou.Kind.MESSAGES -> ElectricCyan
+                                    NeedsYou.Kind.ACCESS -> Amber
+                                },
+                                diameter = 4,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = row.title,
+                                    style = HudType.valueSmall,
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (row.detail.isNotBlank()) {
+                                    Text(
+                                        text = row.detail,
+                                        style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.sp),
+                                        color = TextMuted,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (sky != null) {
+            item(key = "sky") {
+                HudPanel(
+                    label = "SKY",
+                    accent = IceBlue,
+                    trailing = {
+                        HudChip(
+                            text = if (sky.fresh) "LIVE" else "STALE",
+                            accent = if (sky.fresh) StatusGreen else Amber,
+                        )
+                    },
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = sky.headline,
+                            style = HudType.value.copy(fontSize = 20.sp, letterSpacing = 1.5.sp),
+                            color = TextPrimary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = sky.range,
+                                style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.2.sp),
+                                color = IceBlue,
+                            )
+                            if (sky.aqi >= 0) {
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = "AIR ${sky.aqi} · \${sky.air.label.uppercase(Locale.US)}",
+                                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.sp),
+                                    color = when (sky.air) {
+                                        com.jarvis.assistant.data.WeatherRules.Air.GOOD -> StatusGreen
+                                        com.jarvis.assistant.data.WeatherRules.Air.MODERATE -> IceBlue
+                                        com.jarvis.assistant.data.WeatherRules.Air.UNKNOWN -> TextMuted
+                                        else -> AlertRed
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    MicroStrip(
+                        readings = buildList {
+                            if (sky.humidity >= 0) add(MicroReading("HUM", "\${sky.humidity}%"))
+                            if (sky.windKph > 0) {
+                                add(MicroReading("WIND", "\${Math.round(sky.windKph)} km/h"))
+                            }
+                            if (sky.isWet) add(MicroReading("TAKE", "UMBRELLA", Amber))
+                        },
+                    )
+                }
+            }
+        } else if (skyNote != null) {
+            item(key = "sky") {
+                HudPanel(label = "SKY", accent = TextMuted) {
+                    Text(text = skyNote, style = HudType.valueSmall, color = TextMuted)
+                }
+            }
+        }
+
+        item(key = "day") {
+            HudPanel(
+                label = "THE DAY",
+                accent = IceBlue,
+                trailing = { HudChip(text = clock.label, accent = IceBlue) },
+            ) {
+                DayRuler(
+                    blocks = dayBlocks,
+                    nowFraction = HudGeometry.dayFraction(
+                        millis = clock.millis,
+                        dayStart = HudGeometry.startOfDay(
+                            clock.millis,
+                            java.util.TimeZone.getDefault().getOffset(clock.millis),
+                        ),
+                    ),
+                    hasCalendar = hasCalendar,
+                )
+
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(ElectricCyan.copy(alpha = 0.08f), ChipShape)
+                        .border(1.dp, ElectricCyan.copy(alpha = 0.28f), ChipShape)
+                        .clickable(onClick = onOpenActivity)
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PulseDot(color = StatusGreen, diameter = 4)
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        text = "VIEW ACTIVITY",
+                        style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.4.sp),
+                        color = ElectricCyan,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "WHAT HE IS DOING",
+                        style = HudType.label.copy(fontSize = 7.sp, letterSpacing = 1.sp),
+                        color = TextMuted,
+                    )
+                }
+
+                if (nextUp.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "NEXT UP",
+                        style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.6.sp),
+                        color = IceBlue.copy(alpha = 0.85f),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    nextUp.forEach { event ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = event.title,
+                                style = HudType.valueSmall,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = event.whenLabel,
+                                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.1.sp),
+                                color = TextSecondary,
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         item(key = "stats") {
@@ -412,17 +655,20 @@ private fun ReactorBlock(
     clock: ClockSnapshot,
     status: SystemStatus,
     statusNote: String,
+    notificationCount: Int,
+    onOpenModule: (HudModule) -> Unit,
 ) {
     val battery = status.battery
     BoxWithConstraints(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
-        val diameter: Dp = minOf(maxWidth * 0.86f, 320.dp)
+        val diameter: Dp = minOf(maxWidth * 0.98f, 336.dp)
 
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(modifier = Modifier.size(diameter), contentAlignment = Alignment.Center) {
             ArcReactor(
-                diameter = diameter,
+                diameter = diameter * 0.80f,
                 powerLevel = battery.percent,
                 isCharging = battery.isCharging,
                 accent = ElectricCyan,
@@ -463,6 +709,17 @@ private fun ReactorBlock(
                         )
                     }
                 }
+            }
+
+            RingNav(
+                modules = HudModules.all,
+                onOpen = onOpenModule,
+                badges = if (notificationCount > 0) {
+                    mapOf(HudModules.NOTIFICATIONS to notificationCount.toString())
+                } else {
+                    emptyMap()
+                },
+            )
             }
 
             Spacer(Modifier.height(10.dp))

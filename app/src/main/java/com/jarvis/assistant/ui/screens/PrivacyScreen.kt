@@ -96,6 +96,13 @@ fun PrivacyScreen(
     rememberedPeople: List<Brain.Person>,
     rememberedFacts: List<Brain.Fact>,
     rememberedTurns: Int,
+    conversationCount: Int,
+    conversationBytes: Long,
+    recordingPaused: Boolean,
+    habitLines: List<String>,
+    onToggleRecording: (Boolean) -> Unit,
+    onClearConversations: () -> Unit,
+    onOpenVault: () -> Unit,
     onForgetMemory: () -> Unit,
     roadRoutingEnabled: Boolean,
     onToggleRoadRouting: (Boolean) -> Unit,
@@ -652,9 +659,9 @@ fun PrivacyScreen(
             },
         ) {
             Text(
-                text = "Kept on this phone only, inside JARVIS's own storage. Nothing is uploaded, " +
-                    "and there is no account to sign out of. Say “my sister is Khushi” and it is " +
-                    "added here; wipe it whenever you like.",
+                text = "Every conversation is saved on this phone, in JARVIS's own storage, and nothing is uploaded " +
+                    "from it. The last few exchanges go to the AI with each request so he can follow the thread; " +
+                    "that is all that leaves the phone. Say “my sister is Khushi” and it is added here too.",
                 style = HudType.valueSmall,
                 color = TextMuted,
             )
@@ -705,7 +712,53 @@ fun PrivacyScreen(
             )
 
             Spacer(Modifier.height(10.dp))
+            Text(
+                text = "CONVERSATIONS",
+                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.6.sp),
+                color = ElectricCyan,
+            )
+            Text(
+                text = if (conversationCount == 0) {
+                    "No conversation saved yet."
+                } else {
+                    "$conversationCount exchanges saved · " + formatBytes(conversationBytes)
+                },
+                style = HudType.valueSmall,
+                color = TextPrimary,
+            )
+            Text(
+                text = if (recordingPaused) {
+                    "Recording is paused. New conversations are not saved until you resume."
+                } else {
+                    "Recording is on. Every exchange is kept until you clear it."
+                },
+                style = HudType.valueSmall,
+                color = if (recordingPaused) Amber else TextMuted,
+            )
+
+            if (habitLines.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "HABITS NOTICED",
+                    style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.6.sp),
+                    color = ElectricCyan,
+                )
+                habitLines.forEach { line ->
+                    Text(text = "· $line", style = HudType.valueSmall, color = TextPrimary)
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey(if (recordingPaused) "RESUME RECORDING" else "PAUSE RECORDING") {
+                    onToggleRecording(!recordingPaused)
+                }
+                KeypadKey("CLEAR CONVERSATIONS") { onClearConversations() }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey("VAULT") { onOpenVault() }
                 KeypadKey("FORGET EVERYTHING") { onForgetMemory() }
             }
         }
@@ -898,3 +951,10 @@ private fun nextWindow(current: Long): Long =
     else current + 3_000L
 
 private fun nextWindowSeconds(current: Long): Long = nextWindow(current) / 1000L
+
+/** A size a person can read at a glance: "512 KB", "12.4 MB". */
+private fun formatBytes(bytes: Long): String = when {
+    bytes < 1024L -> "$bytes B"
+    bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
+    else -> String.format(java.util.Locale.US, "%.1f MB", bytes / 1048576.0)
+}

@@ -87,7 +87,8 @@ jobs:
       - name: Build debug + release APKs
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --console=plain assembleDebug assembleRelease assembleDebugAndroidTest 2>&1 | tee -a build.log
+          ./gradlew --no-daemon --console=plain -PrequireShizuku=true \
+            assembleDebug assembleRelease assembleDebugAndroidTest 2>&1 | tee -a build.log
 
       - name: Verify APK signatures and manifest (launcher intent filters)
         run: |
@@ -105,6 +106,14 @@ jobs:
             "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$apk" 2>/dev/null \
               | grep -iE "android.intent.category.(HOME|LAUNCHER|DEFAULT)" | head -6 | tee -a "$OUT"
             echo '```' >> "$OUT"
+
+            # Shizuku must be inside the shipped APK: it is what the system switches need.
+            SHIZUKU=$(unzip -l "$apk" | grep -c "assets/shizuku/shizuku.apk")
+            if [ "$SHIZUKU" != "1" ]; then
+              echo "::error::Shizuku is missing from $apk"
+              exit 1
+            fi
+            echo "Shizuku bundled: $(unzip -l "$apk" | awk '/assets\/shizuku\/shizuku.apk/ {print $1}') bytes" | tee -a "$OUT"
           done
 
       - name: Unit test report
@@ -142,14 +151,17 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "CODE=$CODE" >> "$GITHUB_ENV"
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/jarvis-$VERSION.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/jarvis-$VERSION-debug.apk"
+          # versionName stays 1.0.0 for every build, so the version code is the only thing that
+          # tells two APKs apart. Without it every release would offer a file called
+          # jarvis-1.0.0.apk and nobody could say which one was newer.
+          cp app/build/outputs/apk/release/app-release.apk "dist/jarvis-$VERSION-b$CODE.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/jarvis-$VERSION-b$CODE-debug.apk"
           ls -lh dist
           echo "## APK names" >> "$GITHUB_STEP_SUMMARY"
           echo "| File | Version | code |" >> "$GITHUB_STEP_SUMMARY"
           echo "| --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| jarvis-$VERSION.apk | $VERSION | $CODE |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| jarvis-$VERSION-debug.apk | $VERSION-debug | $CODE |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| jarvis-$VERSION-b$CODE.apk | $VERSION | $CODE |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| jarvis-$VERSION-b$CODE-debug.apk | $VERSION-debug | $CODE |" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -172,9 +184,35 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          name: "JARVIS ${{ env.VERSION }} · build ${{ env.CODE }}"
+          body: |
+            **JARVIS 1.0.0 · versionCode ${{ env.CODE }}.**
+
+            The version number stays 1.0.0 for every build; the build number is what moves. Install
+            this over an older JARVIS — the signing key is the same, so it upgrades in place.
+
+            `jarvis-${{ env.VERSION }}-b${{ env.CODE }}.apk` is the release build.
+            `...-debug.apk` is the same app with debugging enabled.
+
+            What this build adds, honestly:
+
+            - **"Hey Jarvis" hears the whole sentence.** Say *"hey Jarvis, open WhatsApp"* in one
+              breath and he does it, with no tap and no repeating yourself. Say just the wake word
+              and he listens for the command as before. He stops listening by himself when you stop
+              speaking.
+            - **The full phone:** the same actions the app has — apps, taps and typing on screen,
+              Wi-Fi, Bluetooth, mobile data, airplane mode, hotspot, brightness, rotation, messages,
+              calls, shell through Shizuku — all reachable by voice.
+            - **Shizuku ships inside this APK.** *Install Shizuku* in Launcher settings opens
+              Android's own install screen.
+            - **Memory, presence, the sideways wheel and the Vault** are all included.
+
+            Not verified on a device: whether the switches flip on your ROM, how the orb feels, and
+            whether the wake word catches a fast sentence. Please report what happens.
+
+            This build is cut from the feature branch, **before** it was merged into `main`.
           files: |
             dist/jarvis-*.apk
-          generate_release_notes: true
 
 
       # Surfaces the compiler output on the commit so failures are readable without

@@ -6,9 +6,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!--
-      Network access is used for exactly one thing: sending a request to the AI provider whose key
-      the operator stored in Settings. There is no JARVIS backend and no analytics. If no key is
-      configured, no request is ever made.
+      Network access is used for two things. Sending a request to the AI provider whose key the
+      operator stored in Settings — if no key is configured, no request is ever made. And, once,
+      downloading the offline voice model for "Hey Jarvis" when the operator first turns it on.
+      There is no JARVIS backend and no analytics.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -48,6 +49,13 @@
       directly; without it JARVIS opens the dialer with the number filled in and says so.
     -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!--
+      "Hey Jarvis". Android 14 requires a microphone foreground service to declare this permission.
+      It is only ever used while the operator has turned the wake word on, and the service shows a
+      visible notification the whole time it listens. Off by default; nothing listens at install.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
 
@@ -115,6 +123,16 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!--
+      Installing Shizuku.
+
+      The Shizuku APK travels inside this APK, because it is the one app JARVIS needs to flip the
+      switches Android reserves for `adb`. Installing another app always shows the system's own
+      confirmation — no app may do it silently — so this permission only lets that dialog open.
+      Required on Android 8+, where it is also what the "Install unknown apps" toggle is for.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!--
       Shizuku (optional).
 
       `moe.shizuku.manager.permission.API_V23` and the `<meta-data>` marker below are contributed by
@@ -173,6 +191,10 @@
             android:theme="@style/Theme.Jarvis"
             android:windowSoftInputMode="adjustResize"
             tools:ignore="LockedOrientationActivity">
+            <!-- Long-press shortcuts: speak, the knowledge shelf, the activity board. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -184,7 +206,75 @@
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+
+            <!--
+              The assistant entry point. Some OEMs launch the activity directly instead of opening a
+              VoiceInteractionSession; MainActivity treats this action exactly like the voice extra,
+              so both roads end in the same listening surface.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
+
+        <!--
+          The assistant seat.
+
+          Holding the assistant role is what turns the phone's own assist gesture — press and hold
+          Home, the side key, whatever the OEM mapped — into "JARVIS, listening". The system starts
+          these; nothing here runs at idle, holds the microphone, or keeps a thread alive.
+
+          Both services are bound by the system only, behind BIND_VOICE_INTERACTION, and the one that
+          receives the gesture (JarvisSession) hands over to MainActivity and closes itself. If the
+          role is revoked, these are simply never bound again.
+        -->
+        <service
+            android:name=".voice.JarvisInteractionService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/voice_interaction" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".voice.JarvisSessionService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionSessionService" />
+            </intent-filter>
+        </service>
+
+        <!--
+          Declared because Android's assistant metadata refuses to parse without it. It answers
+          "no speech input" and never opens the microphone; see the class for why.
+        -->
+        <!--
+          "Hey Jarvis" listener. Started only when the operator turns the wake word on, and only from
+          a foreground moment (the settings screen or opening JARVIS). Declared with the microphone
+          type so Android shows its indicator and allows the mic while the screen is off.
+        -->
+        <service
+            android:name=".wake.WakeWordService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <service
+            android:name=".voice.JarvisRecognitionService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_SPEECH_RECOGNITION_SERVICE">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+        </service>
 
         <!--
           Notification listener.
@@ -220,6 +310,15 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Operator-armed automation triggers" />
         </service>
+
+        <!-- Answers the package-installer session that installs the bundled Shizuku APK. -->
+        <receiver
+            android:name=".device.ShizukuInstallReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.jarvis.assistant.INSTALL_SHIZUKU" />
+            </intent-filter>
+        </receiver>
 
         <!-- One-shot time triggers. Not exported: only the AlarmManager fires this. -->
         <receiver

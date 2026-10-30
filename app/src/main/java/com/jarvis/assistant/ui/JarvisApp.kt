@@ -3,9 +3,9 @@ package com.jarvis.assistant.ui
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.CancellationSignal
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,6 +41,7 @@ import com.jarvis.assistant.device.HealthLog
 import com.jarvis.assistant.device.LockGate
 import com.jarvis.assistant.device.Nudges
 import com.jarvis.assistant.device.NotifyBrain
+import com.jarvis.assistant.device.Weather
 import com.jarvis.assistant.device.Whereabouts
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -54,7 +55,10 @@ import com.jarvis.assistant.automation.RunState
 import com.jarvis.assistant.automation.Workflow
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.data.AppRepository
+import com.jarvis.assistant.data.ConversationLog
 import com.jarvis.assistant.data.DockPrefs
+import com.jarvis.assistant.data.HudGeometry
+import com.jarvis.assistant.data.NeedsYou
 import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.data.InstalledApp
 import com.jarvis.assistant.device.BiometricPolicy
@@ -67,6 +71,7 @@ import com.jarvis.assistant.device.LauncherStatus
 import com.jarvis.assistant.device.NotificationAccess
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
+import com.jarvis.assistant.device.ShizukuInstaller
 import com.jarvis.assistant.device.readStorage
 import com.jarvis.assistant.device.rememberDeviceInfo
 import com.jarvis.assistant.device.rememberSystemStatus
@@ -76,10 +81,9 @@ import com.jarvis.assistant.ui.components.HudBackground
 import com.jarvis.assistant.ui.components.rememberClock
 import com.jarvis.assistant.ui.components.rememberIsResumed
 import com.jarvis.assistant.ui.screens.AiSettingsScreen
-import com.jarvis.assistant.ui.screens.ConnectorsScreen
-import com.jarvis.assistant.ui.screens.InstagramScreen
 import com.jarvis.assistant.ui.screens.AppDrawerScreen
 import com.jarvis.assistant.ui.screens.AutomationEditorScreen
+import com.jarvis.assistant.ui.screens.ActivityScreen
 import com.jarvis.assistant.ui.screens.AutomationScreen
 import com.jarvis.assistant.ui.screens.ComposeScreen
 import com.jarvis.assistant.ui.screens.ControlsScreen
@@ -93,6 +97,7 @@ import com.jarvis.assistant.ui.screens.ModuleScaffold
 import com.jarvis.assistant.ui.screens.NetworkScreen
 import com.jarvis.assistant.ui.screens.NotificationsScreen
 import com.jarvis.assistant.ui.screens.PrivacyScreen
+import com.jarvis.assistant.ui.screens.VaultScreen
 import com.jarvis.assistant.ui.screens.PowerScreen
 import com.jarvis.assistant.ui.screens.LockScreen
 import com.jarvis.assistant.ui.screens.TerminalScreen
@@ -105,7 +110,7 @@ import com.jarvis.assistant.ui.theme.VoidBlack
 import com.jarvis.assistant.voice.Conversation
 import com.jarvis.assistant.voice.Feelings
 import com.jarvis.assistant.voice.VoiceController
-import com.jarvis.assistant.voice.VoiceGender
+import com.jarvis.assistant.voice.WakeHandoff
 import com.jarvis.assistant.voice.VoiceSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -124,6 +129,12 @@ private const val ROUTE_ROUTINE = "routine"
 private const val ROUTE_AI = "ai"
 private const val ROUTE_COMPOSE = "compose"
 private const val ROUTE_ADVANCED = "advanced"
+private const val ROUTE_ACTIVITY = "activity"
+private const val ROUTE_KNOWLEDGE = "knowledge"
+private const val ROUTE_VAULT = "vault"
+
+/** Routes a shortcut or an intent extra may ask for. Anything else is ignored. */
+private val KNOWN_ROUTES = setOf(ROUTE_HOME, ROUTE_DASHBOARD, ROUTE_KNOWLEDGE, ROUTE_ACTIVITY)
 
 /** True when JARVIS may post its own notifications (always true below Android 13). */
 private fun canPostNotifications(context: android.content.Context): Boolean =
@@ -148,6 +159,9 @@ private fun canPostNotifications(context: android.content.Context): Boolean =
 fun JarvisApp(
     voiceArmed: Boolean = false,
     onVoiceConsumed: () -> Unit = {},
+    /** A surface to open on launch — set by a launcher shortcut. */
+    startRoute: String? = null,
+    onRouteConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -185,11 +199,23 @@ fun JarvisApp(
     var rememberedPeople by remember { mutableStateOf<List<Brain.Person>>(emptyList()) }
     var rememberedFacts by remember { mutableStateOf<List<Brain.Fact>>(emptyList()) }
     var rememberedTurns by remember { mutableIntStateOf(0) }
+    // The conversation log is counted off the main thread, once, when the screen opens. Nothing polls.
+    var conversationCount by remember { mutableIntStateOf(0) }
+    var conversationBytes by remember { mutableLongStateOf(0L) }
+    var recordingPaused by remember { mutableStateOf(false) }
+    var habitLines by remember { mutableStateOf<List<String>>(emptyList()) }
     LaunchedEffect(route) {
         if (route == ROUTE_ADVANCED) {
             rememberedPeople = Brain.people(context)
             rememberedFacts = Brain.facts(context)
             rememberedTurns = Brain.thread(context).size
+            recordingPaused = ConversationLog.isPaused(context)
+            val log = withContext(Dispatchers.IO) {
+                Triple(ConversationLog.count(context), ConversationLog.sizeBytes(context), ConversationLog.habitLines(context))
+            }
+            conversationCount = log.first
+            conversationBytes = log.second
+            habitLines = log.third
         }
     }
 
@@ -197,6 +223,12 @@ fun JarvisApp(
     var stepsToday by remember { mutableStateOf<Int?>(null) }
     var waterToday by remember { mutableIntStateOf(0) }
     var nextEvent by remember { mutableStateOf<String?>(null) }
+    var dayBlocks by remember { mutableStateOf<List<HudGeometry.DayBlock>>(emptyList()) }
+    var hasCalendar by remember { mutableStateOf(false) }
+    var nextUp by remember { mutableStateOf<List<NeedsYou.AgendaRow>>(emptyList()) }
+    var nextEventMillis by remember { mutableLongStateOf(0L) }
+    var sky by remember { mutableStateOf<Weather.Sky?>(null) }
+    var skyNote by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(route) {
         if (route == ROUTE_DASHBOARD) {
             stepsToday = HealthLog.stepsToday(context)
@@ -208,6 +240,65 @@ fun JarvisApp(
                 }
             } catch (t: Throwable) {
                 null
+            }
+
+            // The day ruler wants the whole day, not the next event, and it wants it as fractions
+            // so the drawing code never has to know about time zones.
+            hasCalendar = CalendarBridge.canRead(context)
+            dayBlocks = try {
+                val zone = java.time.ZoneId.systemDefault()
+                val startOfDay = java.time.LocalDateTime.now(zone).toLocalDate()
+                    .atStartOfDay(zone).toInstant().toEpochMilli()
+                CalendarBridge.today(context, limit = 20)
+                    .orEmpty()
+                    .filterNot { it.allDay }
+                    .map { HudGeometry.Span(it.startMillis, it.endMillis) }
+                    .let { spans -> HudGeometry.dayBlocks(spans, dayStart = startOfDay) }
+            } catch (t: Throwable) {
+                emptyList()
+            }
+
+            // NEXT UP and the NEEDS YOU card read the same three events; asking the calendar twice
+            // for the same list would be wasteful and could disagree with itself a second apart.
+            val agenda = try {
+                CalendarBridge.upcoming(context, days = 1, limit = 4).orEmpty()
+            } catch (t: Throwable) {
+                emptyList()
+            }
+            nextEventMillis = agenda.firstOrNull()?.startMillis ?: 0L
+            nextUp = agenda.take(3).map { event ->
+                NeedsYou.AgendaRow(
+                    title = event.title,
+                    whenLabel = if (event.allDay) "all day" else CalendarBridge.clockOf(event.startMillis),
+                    allDay = event.allDay,
+                )
+            }
+
+            // The sky is cached for half an hour inside Weather, so this is one request per half
+            // hour at most — and none at all when the cache is warm.
+            when (val outcome = try {
+                Weather.current(context)
+            } catch (t: Throwable) {
+                Weather.Outcome.Unreachable("the sky service did not answer")
+            }) {
+                is Weather.Outcome.Ok -> {
+                    sky = outcome.sky
+                    skyNote = null
+                }
+
+                is Weather.Outcome.NoLocation -> {
+                    sky = null
+                    skyNote = if (outcome.reason.contains("permission")) {
+                        "Location is off, so there is no weather to show. Allow it in Advanced."
+                    } else {
+                        "No location yet. Open the map once and the sky appears here."
+                    }
+                }
+
+                is Weather.Outcome.Unreachable -> {
+                    sky = null
+                    skyNote = "No weather right now — ${outcome.reason}."
+                }
             }
         }
     }
@@ -244,6 +335,33 @@ fun JarvisApp(
     var isHomeApp by remember { mutableStateOf(LauncherStatus.isDefaultLauncher(context)) }
     var hasNotificationAccess by remember { mutableStateOf(NotificationAccess.isGranted(context)) }
     val notifications by NotificationRepository.notifications.collectAsState()
+
+    // What is waiting on the operator. Recomputed only when the inputs actually change — a new
+    // notification, the next event moving, or the battery stepping — never on a timer.
+    // The card speaks the language the operator last used, like everything else he says.
+    val needsLang = remember { com.jarvis.assistant.voice.SpokenLanguage.last(context) }
+    val needs = remember(notifications, nextEventMillis, status.battery.percent, needsLang) {
+        val messageItems = notifications.filter { item ->
+            NotifyBrain.classify(item.packageName, item.appLabel, item.title, item.text, false).kind ==
+                com.jarvis.assistant.device.NotificationKind.MESSAGE
+        }
+        NeedsYou.rows(
+            NeedsYou.Facts(
+                unreadMessages = messageItems.size,
+                senders = messageItems
+                    .sortedByDescending { it.postedAt }
+                    .map { it.title.ifBlank { it.appLabel } }
+                    .filter { it.isNotBlank() },
+                alertsAvailable = NotificationRepository.hasAccess(context),
+                nextEventTitle = nextEvent,
+                nextEventMillis = nextEventMillis,
+                batteryPercent = status.battery.percent,
+                charging = status.battery.isCharging,
+            ),
+            lang = needsLang,
+        )
+    }
+
 
     // ---- controls ----
     var torchOn by remember { mutableStateOf(false) }
@@ -352,7 +470,20 @@ fun JarvisApp(
     LaunchedEffect(voiceArmed) {
         if (voiceArmed) {
             onVoiceConsumed()
-            if (!locked) VoiceController.toggle(context)
+            if (locked) {
+                // Nothing may run behind the lock, and a recording must not sit around waiting.
+                WakeHandoff.clear()
+            } else {
+                // A wake word usually arrives with the sentence attached ("hey jarvis open
+                // whatsapp"). When it does, that audio is used exactly once and transcribed;
+                // when it does not, he listens as before.
+                val captured = WakeHandoff.take()
+                if (captured != null) {
+                    VoiceController.submitCaptured(context, captured)
+                } else {
+                    VoiceController.startFromWake(context)
+                }
+            }
         }
     }
 
@@ -466,19 +597,29 @@ fun JarvisApp(
                 if (intent != null) LauncherStatus.openSystemScreen(context, intent)
             }
 
+            // The Shizuku APK ships inside this one, so this installs it instead of sending the
+            // operator to a browser. Android still shows its own confirmation: one tap.
             ShizukuShell.Status.NOT_INSTALLED -> {
-                try {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/"))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                } catch (t: Throwable) {
-                    // No browser installed; the status row already says what is missing.
+                scope.launch {
+                    val outcome = withContext(Dispatchers.IO) { ShizukuInstaller.install(context) }
+                    if (outcome is ShizukuInstaller.Outcome.Failed) {
+                        Toast.makeText(context, outcome.reason, Toast.LENGTH_LONG).show()
+                    }
                 }
             }
 
             ShizukuShell.Status.READY -> Unit
         }
+    }
+
+    // A shortcut asked for a specific surface. Only a known route is honoured, so a stale extra
+    // from an older build cannot land on a screen that no longer exists.
+    LaunchedEffect(startRoute) {
+        val wanted = startRoute ?: return@LaunchedEffect
+        if (wanted in KNOWN_ROUTES) {
+            route = wanted
+        }
+        onRouteConsumed()
     }
 
     BackHandler(enabled = route != ROUTE_HOME) {
@@ -513,6 +654,9 @@ fun JarvisApp(
                     onOpenModules = { route = ROUTE_DASHBOARD },
                     onOpenDrawer = { route = ROUTE_DRAWER },
                     onOpenSettings = { route = ROUTE_SETTINGS },
+                    onOpenModule = { module ->
+                        route = if (module.id == HudModules.VOICE) ROUTE_HOME else module.id
+                    },
                 )
 
                 ROUTE_DASHBOARD -> DashboardScreen(
@@ -523,6 +667,12 @@ fun JarvisApp(
                         waterToday = HealthLog.waterToday(context)
                     },
                     nextEvent = nextEvent,
+                    dayBlocks = dayBlocks,
+                    hasCalendar = hasCalendar,
+                    needs = needs,
+                    nextUp = nextUp,
+                    sky = sky,
+                    skyNote = skyNote,
                     clock = clock,
                     status = status,
                     storage = storage,
@@ -543,6 +693,7 @@ fun JarvisApp(
                         route = if (module.id == HudModules.VOICE) ROUTE_HOME else module.id
                     },
                     onOpenTerminal = { route = ROUTE_TERMINAL },
+                    onOpenActivity = { route = ROUTE_ACTIVITY },
                 )
 
                 ROUTE_TERMINAL -> TerminalScreen(
@@ -693,15 +844,39 @@ fun JarvisApp(
                     rememberedPeople = rememberedPeople,
                     rememberedFacts = rememberedFacts,
                     rememberedTurns = rememberedTurns,
+                    conversationCount = conversationCount,
+                    conversationBytes = conversationBytes,
+                    recordingPaused = recordingPaused,
+                    habitLines = habitLines,
+                    onToggleRecording = { paused ->
+                        ConversationLog.setPaused(context, paused)
+                        recordingPaused = paused
+                    },
+                    onClearConversations = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { ConversationLog.clear(context) }
+                            conversationCount = 0
+                            conversationBytes = 0L
+                            habitLines = emptyList()
+                        }
+                    },
+                    onOpenVault = { route = ROUTE_VAULT },
                     onForgetMemory = {
-                        Brain.forget(context)
-                        // The bond is a memory of a person too, so one key clears all of it.
-                        Feelings.forget(context)
-                        feelingsOn = Feelings.isEnabled(context)
-                        bond = Feelings.bond(context)
-                        rememberedPeople = emptyList()
-                        rememberedFacts = emptyList()
-                        rememberedTurns = 0
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                Brain.forget(context)
+                                // The bond is a memory of a person too, so one key clears all of it.
+                                Feelings.forget(context)
+                            }
+                            feelingsOn = Feelings.isEnabled(context)
+                            bond = Feelings.bond(context)
+                            rememberedPeople = emptyList()
+                            rememberedFacts = emptyList()
+                            rememberedTurns = 0
+                            conversationCount = 0
+                            conversationBytes = 0L
+                            habitLines = emptyList()
+                        }
                     },
                     lockNoticeEnabled = lockNoticeEnabled,
                     onToggleLockNotice = { enable ->
@@ -825,14 +1000,6 @@ fun JarvisApp(
                     )
                 }
 
-                HudModules.INSTAGRAM -> InstagramScreen(
-                    onBack = { route = ROUTE_DASHBOARD },
-                )
-
-                HudModules.CONNECT -> ConnectorsScreen(
-                    onBack = { route = ROUTE_DASHBOARD },
-                )
-
                 HudModules.KNOWLEDGE -> KnowledgeScreen(
                     onBack = { route = ROUTE_DASHBOARD },
                 )
@@ -846,6 +1013,9 @@ fun JarvisApp(
                     onOpenModules = { route = ROUTE_DASHBOARD },
                     onOpenDrawer = { route = ROUTE_DRAWER },
                     onOpenSettings = { route = ROUTE_SETTINGS },
+                    onOpenModule = { module ->
+                        route = if (module.id == HudModules.VOICE) ROUTE_HOME else module.id
+                    },
                 )
 
                 HudModules.AUTOMATION -> AutomationScreen(
@@ -935,6 +1105,8 @@ fun JarvisApp(
                     onBack = { route = ROUTE_DASHBOARD },
                 )
 
+                ROUTE_ACTIVITY -> ActivityScreen(onBack = { route = ROUTE_DASHBOARD })
+
                 ROUTE_COMPOSE -> ComposeScreen(
                     aiConfigured = aiConfig != null,
                     onSave = { planned ->
@@ -987,6 +1159,14 @@ fun JarvisApp(
                     }
                 }
 
+                ROUTE_VAULT -> VaultScreen(
+                    stepsToday = stepsToday,
+                    waterToday = waterToday,
+                    conversationCount = conversationCount,
+                    conversationBytes = conversationBytes,
+                    onBack = { route = ROUTE_ADVANCED },
+                )
+
                 else -> DashboardScreen(
                     clock = clock,
                     status = status,
@@ -1003,6 +1183,12 @@ fun JarvisApp(
                         waterToday = HealthLog.waterToday(context)
                     },
                     nextEvent = nextEvent,
+                    dayBlocks = dayBlocks,
+                    hasCalendar = hasCalendar,
+                    needs = needs,
+                    nextUp = nextUp,
+                    sky = sky,
+                    skyNote = skyNote,
                     isDockCustom = isDockCustom,
                     onLaunchApp = launchApp,
                     onEditDock = { slot -> dockEditSlot = slot; route = ROUTE_DOCK },
@@ -1010,6 +1196,7 @@ fun JarvisApp(
                     onOpenSettings = { route = ROUTE_SETTINGS },
                     onOpenModule = { module -> route = module.id },
                     onOpenTerminal = { route = ROUTE_TERMINAL },
+                    onOpenActivity = { route = ROUTE_ACTIVITY },
                 )
             }
         }

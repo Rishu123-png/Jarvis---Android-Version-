@@ -3,6 +3,7 @@ package com.jarvis.assistant.ui.screens
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -42,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -49,10 +51,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.jarvis.assistant.device.SystemStatus
+import com.jarvis.assistant.data.HudModule
+import com.jarvis.assistant.data.HudModules
 import com.jarvis.assistant.ui.components.ArcReactor
 import com.jarvis.assistant.ui.components.ClockSnapshot
 import com.jarvis.assistant.ui.components.HudChip
+import com.jarvis.assistant.ui.components.MicroReading
+import com.jarvis.assistant.ui.components.MicroStrip
 import com.jarvis.assistant.ui.components.PulseDot
+import com.jarvis.assistant.ui.components.RingNav
 import com.jarvis.assistant.ui.components.VoiceTaskCard
 import com.jarvis.assistant.ui.theme.AlertRed
 import com.jarvis.assistant.ui.theme.Amber
@@ -65,6 +72,7 @@ import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextPrimary
 import com.jarvis.assistant.voice.Contacts
+import com.jarvis.assistant.voice.Presence
 import com.jarvis.assistant.voice.VoiceController
 import com.jarvis.assistant.voice.VoicePhase
 import com.jarvis.assistant.voice.VoiceTask
@@ -87,9 +95,13 @@ fun HomeScreen(
     onOpenModules: () -> Unit,
     onOpenDrawer: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenModule: (HudModule) -> Unit,
 ) {
     val context = LocalContext.current
     val task by VoiceController.state.collectAsState()
+    // The real loudness of the room while the microphone is open; zero at every other moment.
+    val presence by Presence.level.collectAsState()
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     var contactsGranted by remember { mutableStateOf(granted(context, Manifest.permission.READ_CONTACTS)) }
     var callsGranted by remember { mutableStateOf(granted(context, Manifest.permission.CALL_PHONE)) }
@@ -143,10 +155,33 @@ fun HomeScreen(
 
             Spacer(Modifier.weight(1f))
 
-            OrbBlock(clock = clock, status = status, task = task, onTap = { tapOrb() })
+            OrbBlock(
+                clock = clock,
+                status = status,
+                task = task,
+                notificationCount = notificationCount,
+                presence = presence,
+                landscape = landscape,
+                onTap = { tapOrb() },
+                onOpenModule = onOpenModule,
+            )
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(12.dp))
             PhaseHint(task)
+
+            Spacer(Modifier.height(10.dp))
+            MicroStrip(
+                readings = buildList {
+                    add(MicroReading("BAT", "${status.battery.percent}%",
+                        if (status.battery.isCharging) StatusGreen else IceBlue))
+                    add(MicroReading("MEM", "${status.memory.percent}%"))
+                    add(MicroReading("LINK", status.network.transport,
+                        if (status.network.connected) ElectricCyan else AlertRed))
+                    add(MicroReading("MOD", "${HudModules.all.count { it.isLive }}",
+                        IceBlue))
+                },
+                leadingDot = if (task.phase == VoicePhase.LISTENING) Amber else StatusGreen,
+            )
 
             Spacer(Modifier.weight(0.7f))
 
@@ -269,7 +304,11 @@ private fun OrbBlock(
     clock: ClockSnapshot,
     status: SystemStatus,
     task: VoiceTask,
+    notificationCount: Int,
+    presence: Float,
+    landscape: Boolean,
     onTap: () -> Unit,
+    onOpenModule: (HudModule) -> Unit,
 ) {
     val accent = when (task.phase) {
         VoicePhase.LISTENING -> Amber
@@ -284,18 +323,25 @@ private fun OrbBlock(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
-        val diameter: Dp = minOf(maxWidth * 0.82f, 330.dp)
+        // The dial is the hero now: the reactor shrinks to eighty per cent of it and the modules
+        // take the ring, so opening one is a single gesture from the home screen.
+        // Sideways the screen is short, so the dial gives up its height and the rest of the home
+        // screen stays visible. Portrait is unchanged.
+        val diameter: Dp = minOf(maxWidth * 0.94f, if (landscape) 236.dp else 344.dp)
 
+        Box(modifier = Modifier.size(diameter), contentAlignment = Alignment.Center) {
         ArcReactor(
             modifier = Modifier.clickable(
                 interactionSource = interaction,
                 indication = null,
                 onClick = onTap,
             ),
-            diameter = diameter,
+            diameter = diameter * 0.80f,
             powerLevel = battery.percent,
             isCharging = battery.isCharging,
             accent = accent,
+            level = presence,
+            thinking = task.phase == VoicePhase.THINKING,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(verticalAlignment = Alignment.Bottom) {
@@ -339,6 +385,22 @@ private fun OrbBlock(
                     )
                 }
             }
+        }
+
+        // Drawn after the reactor, so these ten touch targets sit on top of it. They cover only the
+        // ring, which leaves the centre — the microphone — untouched.
+        RingNav(
+            modules = HudModules.all,
+            onOpen = onOpenModule,
+            // Held sideways, the dial turns with the hand: the dock becomes a wheel you read
+            // left-to-right instead of top-to-bottom.
+            rotationDegrees = if (landscape) 90f else 0f,
+            badges = if (notificationCount > 0) {
+                mapOf(HudModules.NOTIFICATIONS to notificationCount.toString())
+            } else {
+                emptyMap()
+            },
+        )
         }
     }
 }

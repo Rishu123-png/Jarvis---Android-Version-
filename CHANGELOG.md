@@ -4,121 +4,192 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
-## 1.0.0 — versionCode 25
+## 1.0.0 — versionCode 33
 
-**He knows how a caption works.** Say *"reel ka caption banao about phone editing"* and he writes one
-on the rules that actually decide whether it lands: the hook fits inside the ~125 characters that show
-before "more", the caption stays under 2,200, hashtags are a handful of specific ones rather than a
-wall of generic ones, there is exactly one call to action, and nothing in it reads as
-"follow for follow". The draft is **copied to the clipboard** and shown on the card, so posting is
-one paste away.
+Four things land together in this build, all on top of 32 and all following the same rule: he
+proposes, he never applies.
 
-He also checks work he did not write: every caption — his own, or a model's — goes through the same
-linter first, and the card shows what would be cut off, what would be down-ranked and what is missing.
-`Creator.RULES` writes the platform knowledge down in one place (watch time over likes, sends and
-saves over likes, captions are searchable, watermarks cost reach, the first hour matters, consistency
-beats bursts), and the model is handed the same list when it drafts, so the two agree.
+**He stays in the conversation.** One sentence used to be the whole session. Now, with conversation
+mode on (**Advanced → Conversation**), the ear stays open after a finished turn: he says what he did,
+asks a question shaped by it — *"Boss, kisko message karna hai?"* after a chat app — and takes the next
+sentence as a normal command. Bounded in four directions: a per-sentence window (9 s, 4–20 adjustable),
+a turn budget (6, up to 12), exit words (*bas*, *theek hai*, *thank you*), and silence, which closes the
+window quietly instead of showing a failure. On the provider route recording stops after 900 ms of
+trailing quiet, and a silent window is never transcribed.
 
-**What he will not do, still.** There is no publishing path: Instagram does not let an ordinary app
-post on someone's behalf, and the unofficial route can get an account restricted — so he hands the
-text over and says so out loud instead of pretending. Work inside another app's own screens (clearing
-a workspace in a browser, pulling a trending topic out of an editor) is reported as *"I can point you
-there, I will not claim I did it"*. When the account is connected, the best time to post comes from
-the operator's own analytics, and from silence when there is not enough data to have one.
+**A male voice, chosen not inherited.** Most phones default to a bright female voice. A male voice is
+picked from the engine's own list for the spoken language; when the phone has none, pitch drops to
+0.78 rather than the wrong voice being used. **Advanced → JARVIS Voice** switches it.
 
-**versionCode 25**, 28 suites.
+**Feelings, from readings and not from invention.** Tired, low, angry, anxious, happy, excited, warm —
+read from the operator's own words in English, Hindi and Hinglish. A feeling word inside a command
+never swallows the command (`"tired hoon, alarm laga do"` still sets the alarm) while a strong feeling
+survives one (`"bahut gussa hai, message bhej do"` is heard **and** sent). Days together, streak and
+turn count are real arithmetic over real timestamps, cleared by the same *forget everything* key. His
+register reaches the voice: concern is spoken slower and softer, layered over the chosen voice. Care
+is only offered from a real reading — a battery at 8%, a water log at zero, past midnight — so he
+cannot invent a reason to be kind.
 
-
-
-**He can read the web, one page at a time.** Say *"padho https://…"* or *"read this link"* and he
-fetches that page, keeps only the prose, and answers from it — naming the site, and saying so plainly
-when the page has nothing readable in it (a page drawn by JavaScript, or a paywall) instead of
-summarising from nothing. The reader is deliberately suspicious: **https only**, loopback and private
-ranges refused so a spoken sentence can never probe your own wifi, every request bounded by timeouts
-and a hard byte cap, and no JavaScript executed. Pure extraction is covered by `WebReadTest`.
-
-**He learns, but only with your permission.** Every sentence he genuinely could not act on is written
-down on the phone. Ask *"what can't you do"* and he reads the shortlist back, worst first. Say
-*"seekho …"* — or just answer the question he asks — and he turns your description into a routine
-using the same planner that can only pick actions the phone already has, then saves it **switched
-off** in AUTOMATION. He cannot enable it, cannot run it, and cannot hide that he added it. The pattern
-is *propose, never apply*.
-
-**The internet question, written down.** `ROADMAP §2b` now states exactly what is already online
-(Wikipedia, a dictionary, one page at a time, your own model key, your own connectors), the three
-honest ways to reach him from another device (Tailscale first, a dumb Cloudflare pipe second, nothing
-third), and why a hosted JARVIS backend is out of scope permanently. **versionCode 24**, 26 suites.
-
-
-
-**He answers the person before the request.** A command router can be correct and still feel cold:
-"Torch on." is true, and it is also what a switch says. Three things now sit between the sentence and
-the reply, and all three are readings rather than inventions:
-
-* **How you sound.** Tired, low, angry, anxious, happy, excited, warm — read from your own words in
-  English, Hindi and Hinglish. A feeling word inside a command never swallows the command: *"tired
-  hoon, alarm laga do"* still sets the alarm, while *"bahut gussa hai, message bhej do"* is heard as
-  anger **and** sends the message. "khush nahi hoon" is not happiness, and the everyday fillers
-  (*accha*, *theek hai*, *haan*) are not emotions.
-* **How long you two have been talking.** First day, days together, streak, total turns — real
-  arithmetic over real timestamps, on the phone, cleared by the same one key as the rest of his memory.
-* **His register.** A heavy feeling gets a careful reply, tiredness a quiet one, a good mood a light
-  one, an old bond a warm one. The register reaches the voice too: concern is spoken slower and
-  softer, playfulness a touch quicker, all layered on top of the chosen voice rather than replacing it.
-
-When he is the one finishing a task on a hard day, one short sentence follows it instead of a step
-count. Care is only ever offered from a real reading — a battery at 8%, a water log at zero, past
-midnight — so he cannot be caught inventing a reason to be kind, and a signal the phone cannot read
-produces silence rather than a guess. A feeling heard earlier is asked about **once**, and only if it
-is at least two hours old, so it reads as memory and not as nagging.
-
-**Advanced → Feelings** shows days together and the streak, and has a quiet mode that keeps every
-command working while dropping the warmth. **versionCode 23**, 24 suites.
-
-
-
-**He stays in the conversation.** One sentence used to be the whole session: say *"open whatsapp"*,
-he opens it, says "done", and the microphone closes — so the obvious next sentence (*"message Divik
-hi, on my way"*) needed the orb again, or the wake phrase again, like starting over. Now, when
-conversation mode is on (**Advanced → Conversation**, on by default), the ear stays open after a
-finished turn: he says what he did, asks a question shaped by it — *"Boss, kisko message karna hai?"*
-after a chat app, *"aur kuch yaad rakhna hai?"* after an alarm — and takes whatever is said next as a
-normal command. It is bounded in four directions, because a microphone with no end is a bug and not a
-feature: a per-sentence window (9 s by default, 4–20 s), a turn budget (6, up to 12), words that end
-it immediately (*bas*, *theek hai*, *thank you*, *stop karo*), and silence, which closes the window
-quietly instead of showing a failure. On the provider route recording also stops as soon as the
-operator has been quiet for 900 ms, and a silent window is never transcribed at all. Tapping the card
-means "that is all".
-
-**A male voice.** Most phones default to a bright female voice, so the voice is now chosen instead
-of inherited: a male voice in the spoken language is preferred, and when the phone has none, the
-pitch drops to 0.78 instead of the wrong voice being used. **Advanced → JARVIS Voice** switches
-between male and female.
-
-**Hinglish, spoken and answered.** Hinglish means Hindi in Roman letters with English mixed in, the
-way the operator actually talks — and it now says so to the model explicitly, so a Hinglish sentence
-is answered in Hinglish and never in Devanagari or formal Hindi. The conversation prompts are written
-in all three registers.
+**The internet, honestly, and captions on real rules.** *"padho https://…"* reads one page and answers
+from it, naming the site: https only, loopback and private ranges refused so a spoken sentence can
+never probe your own wifi, no JavaScript, and an empty page is reported as empty. *"what can't you
+do"* reads back the shortlist of things he failed at; *"seekho …"* turns the operator's description
+into a routine through `AiPlanner` — which may only use actions that already exist — saved
+**disabled**, so learning is always a proposal. *"reel ka caption banao about X"* writes a caption
+whose hook fits the ~125 characters before "more", with 3–8 specific hashtags and one call to action,
+lints it, and **copies it to the clipboard**; posting stays the operator's, because Instagram has no
+public API for an ordinary app and the unofficial route risks the account.
 
 **Two privacy holes closed.** `allowBackup` was true, which let Android copy every `jarvis_*`
-preferences file — people, facts, health, the PIN digest, connector tokens — to Google Drive. It is
-now false, with backup and device-transfer rules that exclude everything as well, because Android 12
-ignores the attribute during device-to-device transfer. And the PIN now has a lockout: five wrong
-guesses cost thirty seconds, doubling each round up to five minutes, with the count left on screen.
+preferences file — people, facts, health, the PIN digest — to Drive; it is now false, with backup and
+device-transfer rules excluding everything (Android 12 ignores the attribute during D2D transfer). The
+PIN gains a lockout: five wrong guesses cost 30 s, doubling per round, up to five minutes.
 
-**versionCode 22**, 23 suites.
+**Merged on top of 28–32, not beside it.** This build is the union: the conversation record with its
+habits and export (28), Shizuku system controls (29, 30), Presence and the sideways wheel (31) and
+"Hey Jarvis" reading the whole sentence (32) all land here too. One consequence worth naming: 32 removed
+the Instagram module and the account connections, so the caption's timing line now stays silent —
+there are no numbers to read, and a blog post's guess dressed as data would be worse than no advice.
 
-Also in this release: the follow-up window polls the microphone off the main thread and only
-measures the last two seconds of it, and the voice list is enumerated off the main thread as well —
-holding the ear open must never cost the launcher a frame.
+**versionCode 33**, 42 suites.
 
+---
 
+## 1.0.0 — versionCode 32
+
+**"Hey Jarvis" now hears the rest of the sentence (same version).** The wake word used to be the
+whole story: the service handed the microphone to Vosk, whose grammar knows exactly one phrase, so
+"hey jarvis open whatsapp" decoded to "hey jarvis" and the command was thrown away before the app
+could ever see it. The service now reads the microphone itself.
+
+- **1.2 s pre-roll** — audio from just before the hit is kept, so the first word after the phrase is
+  not clipped.
+- **Captures until you stop speaking**, from loudness alone: a one-second pause ends the sentence, an
+  eight-second ceiling bounds it, and a mere cough gives up at once instead of holding the microphone.
+- **One breath, no tap:** the sentence is transcribed and planned immediately, and `hey jarvis` is
+  stripped from the transcript so it never becomes part of the request.
+- **A second wake while already listening no longer stops the session.** The handoff used to call
+  toggle, which *stopped* an open listening session — which is why saying it twice appeared to work.
+- **Tapped listening stops itself too:** pause for a second and it transcribes, instead of waiting
+  for a tap.
+- **New suites:** `WakeCaptureTest` (12 cases) and phrase-stripping cases. **versionCode 32.**
+
+## 1.0.0 — versionCode 31
+
+**Presence, the sideways wheel, and the Vault (same version).** The three ideas worth taking from the
+OSO concept reel, built rather than rendered:
+
+- **Presence.** The microphone buffer's real loudness is published to the orb ~20 times a second, so
+  it lifts with a voice and settles in a pause; a fast arc appears only while he is thinking. No
+  timers, and the signal is measured, not invented.
+- **The sideways wheel.** In landscape the module ring rotates 90° and the disc shrinks, so the dock
+  reads as a wheel in the hand. Portrait is untouched.
+- **The Vault.** A fingerprint-locked drawer holding health today, the conversation archive with its
+  export, and private notes. It uses the phone's own biometric prompt, says so honestly when no
+  biometric is enrolled, and never claims to encrypt what it does not.
+- New pure-logic suites: `PresenceTest`, `VaultTest`. **versionCode 31.**
+
+## 1.0.0 — versionCode 30
+
+**Shizuku travels with the app (same version).** The companion app that gives JARVIS its `adb`-level
+shell identity — and therefore the ability to actually flip Wi-Fi, Bluetooth, data and airplane mode —
+is now fetched at build time and packed inside the JARVIS APK (pinned to 13.6.0, Apache-2.0, from
+RikkaApps' official release, checked by exact byte size). *Install Shizuku* in Launcher settings opens
+Android's own one-tap install screen instead of a browser. A build made without network simply ships
+without it, and the same button downloads it on the phone. The licence travels with it in
+`assets/shizuku/LICENSE.txt`. Adds `REQUEST_INSTALL_PACKAGES`, which is why this APK is for
+sideloading rather than Google Play. **versionCode 30.**
+
+## 1.0.0 — versionCode 29
+
+**Full control (same version).** Said plainly, it should be done, so:
+
+- **System switches.** `wifi off`, `bluetooth on`, `mobile data off`, `airplane mode on`,
+  `hotspot on`, `brightness 40`, `rotation lock on` are new actions. Android forbids ordinary apps
+  from flipping Wi-Fi, Bluetooth and data, and never allowed airplane or hotspot: through Shizuku he
+  runs the `adb`-level command himself, so the switch really changes. Without Shizuku he opens the
+  panel with the switch in front of you and says so — he never claims a switch he did not flip.
+  Brightness and rotation also work with the app's own system-settings permission.
+- **Longer tasks.** Plans may hold 24 steps instead of 8; the screen agent that taps through an
+  unfamiliar app may take 20 actions instead of 6, with a four-minute ceiling as well.
+- **Act, do not offer.** The prompt now forbids "I can do that" and "shall I": a sentence that asks
+  for something on the phone returns steps, including wishes ("it is dark in here").
+- **Shell for voice.** The privileged tier is available to spoken commands, as asked — real power,
+  running as `adb`. `reboot`, `pm clear`, uninstalling and wiping are asked about first.
+- **One yes.** Calls, messages, replies, saving a contact and adding an event wait for one short
+  question, in the language spoken. The plan is stored exactly as planned, expires in 90 seconds, and
+  any other answer discards it. Everything else runs on the first word.
+- **Tests:** new suites for the switches, the confirmation rule, the stored question, and the
+  conversation log. **versionCode 29.**
+
+## 1.0.0 — versionCode 28
+
+**Memory that keeps every conversation (same version).** Every exchange is appended to a file on the
+phone, so the record survives restarts. The next reply reads only the newest 256 KB, so a long history
+does not slow him down. He counts the requests you make by time of day and, once one has come three
+times, treats it as a habit in the prompt. Privacy shows how many conversations are saved, their size,
+and lets you pause recording or clear them. *Forget everything* and the archive export both include the
+full record; restore merges it without duplicates. The full record never leaves the phone; only the last
+20 exchanges go with each AI request. **versionCode 28.**
+
+## 1.0.0 — versionCode 24
 
 **The version number restarts here.** From this release on, JARVIS is **1.0.0** and stays there in
 every build; `versionCode` is what increases. The earlier 2.x names were internal scaffolding, and a
 family member released to family should not be called 2.4.
 
 Everything below is new in this release.
+
+**Memory, identity, voice, and the model in the APK (same version).** The last 20 exchanges now go to the
+model as real earlier messages, so the conversation has a thread; the phone keeps 40 turns. Every model
+call begins with who he is: JARVIS, the operator is his boss, built by Rishu Jaswar. The voice uses a
+lower pitch and steady pace, and a male voice when the phone has one. The "Hey Jarvis" model is packed
+into the APK at build time, so installing needs no download; a build that cannot fetch it falls back to
+downloading on first use. **versionCode 27.**
+
+**"Hey Jarvis" (same version).** Opt-in, offline, no account: Vosk listens for the phrase through a
+grammar of exactly two alternatives, so ordinary speech does not wake him. The model (~40 MB) downloads
+once on first use and is checked by its contents. While on, a foreground microphone service shows the
+system indicator and a *TURN OFF* button. On a hit it opens JARVIS listening and re-arms after ~10 s.
+Battery cost is an estimate until measured on a device. **Removed:** the Instagram module and its
+analytics, the Connections screen, and the Instagram and Google Drive / Gmail logins. Their stored
+tokens are deleted on first launch. Both are in git history if you ever want them back.
+**versionCode 26**.
+
+**The assistant button (same version).** Hold the assistant key and he opens already listening. This
+is Android's own assistant role (`ROLE_ASSISTANT`), not a wake word: the system starts a
+`VoiceInteractionSession`, the session hands over to the app with the voice extra the bubble and the
+widget already use, and closes itself. The two services that make the role possible are empty by
+design, and `JarvisRecognitionService` exists only because Android's metadata refuses to parse
+without it — it answers "no speech input" and never touches the microphone. Advanced shows the
+true state (held / not set / not offered by this phone) and the per-manufacturer instructions for
+finding the gesture on HyperOS, ColorOS, One UI, Funtouch and Moto. Nothing listens in the
+background, nothing new idles. **versionCode 25**, 27 suites.
+
+**The sky, the language fix and the shortcuts (same version).** Weather and air quality from
+Open-Meteo — keyless, no account, cached for half an hour, with a SKY panel on the dashboard and a
+spoken answer in the language the question was asked in. Every failure states its own reason: no
+location permission, no fix, no network, or a reading old enough to be labelled STALE. Unknown air
+quality is never rendered as clean air. The **NEEDS YOU** card now speaks Hindi and Hinglish like
+everything else — it was English-only, which was my mistake, not a decision. And the launcher icon
+now has **long-press shortcuts**: Speak, Knowledge, Activity. **versionCode 24**, 26 suites.
+
+**The crew, and what is waiting (same version).** Four lanes — DEVICE, ROUTINES, RESEARCH, ALERTS —
+with one arbiter: anything that touches the screen takes a single shared lock, so a spoken command and
+a routine can never fight over the window, and the one that waits says **QUEUED** rather than doing
+nothing. The read-only lanes run alongside everything. A new **ACTIVITY** screen (under the day
+ruler) shows the lanes live plus the real history — routine runs with the trigger that fired them,
+the knowledge shelf, and this session's work. No avatars, no invented task counts.
+Also: a **NEEDS YOU** card on the dashboard — at most three rows, empty when nothing is waiting,
+ordered by what happens next, and it says *"alert access is off"* rather than showing a confident
+zero — and **NEXT UP** now lists three events instead of one. **versionCode 23**, 25 suites.
+
+**The dial (same version).** The reactor is the navigation now: eleven module keys around the ring,
+labelled along the arc and flipped on the lower half so nothing reads upside down, each with its own
+46 dp touch target — the centre of the dial stays the microphone because the ring does not cover it.
+A micro-reading strip (`BAT · MEM · STO · LINK · LIVE`), crosshairs and cardinal ticks on the dial,
+and a day ruler across the whole day with a cursor at now. All of it is drawing: no service, no
+worker, no new dependency, nothing runs when the screen is off. **versionCode 22**, 23 suites.
 
 **The eyes and the suitcase (same version).** He can look at something — *"look at this"*, *"read
 this"*, *"yeh kya hai"* — take one frame with his own capture surface, shrink it by subsampling at

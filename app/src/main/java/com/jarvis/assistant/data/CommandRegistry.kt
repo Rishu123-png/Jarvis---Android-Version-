@@ -4,7 +4,6 @@ import android.content.Context
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.automation.AutomationEngine
 import com.jarvis.assistant.automation.AutomationStore
-import com.jarvis.assistant.connect.ConnectorStore
 import com.jarvis.assistant.device.DndControl
 import com.jarvis.assistant.device.NotificationRepository
 import com.jarvis.assistant.device.QuickControls
@@ -12,8 +11,6 @@ import com.jarvis.assistant.device.readBattery
 import com.jarvis.assistant.device.readNetwork
 import com.jarvis.assistant.device.readStorage
 import com.jarvis.assistant.shell.ShizukuShell
-import com.jarvis.assistant.social.InstagramAnalytics
-import com.jarvis.assistant.social.InstagramStore
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -85,8 +82,6 @@ object CommandRegistry {
             "stop" -> Response(stopLines())
             "modules" -> Response(moduleLines())
             "ai" -> Response(aiLines(app))
-            "insta", "instagram" -> Response(instaLines(app))
-            "connect", "connections" -> Response(connectLines(app))
             "time" -> Response(
                 listOf(
                     "LOCAL TIME",
@@ -113,6 +108,7 @@ object CommandRegistry {
 
         return """
             You are JARVIS, an on-device assistant inside an Android HUD app.
+            The person at this terminal is your boss, the operator. You were built by ${com.jarvis.assistant.voice.Persona.BUILDER}.
             You are talking to the phone's owner through a small terminal panel on their screen.
 
             Style: plain text only. No markdown, no asterisks, no code fences, no emoji.
@@ -159,8 +155,6 @@ object CommandRegistry {
         add("  stop                halt the running routine")
         add("  modules             HUD modules")
         add("  ai                  intelligence status")
-        add("  insta                instagram creator summary")
-        add("  connect             linked accounts and services")
         add("  time                clock")
         add("  clear               wipe this session")
         add("Unrecognised input goes to the AI core when a key is configured.")
@@ -415,78 +409,6 @@ object CommandRegistry {
         HudModules.all.forEach { module ->
             add("  ${module.title.padEnd(12)} ${if (module.isLive) "LIVE" else "STAGED"}")
         }
-    }
-
-    /**
-     * Instagram summary from the cached sync — deliberately offline. A terminal command should
-     * answer instantly; the module's REFRESH is the place that spends requests against Meta.
-     */
-    private fun instaLines(context: Context): List<String> {
-        if (!InstagramStore.isConnected(context)) {
-            return listOf(
-                "INSTAGRAM :: NOT LINKED",
-                "open HUD > INSTAGRAM to paste an access token",
-            )
-        }
-        val snapshot = InstagramStore.cachedSnapshot(context)
-            ?: return listOf(
-                "INSTAGRAM :: LINKED · no reading yet",
-                "open the INSTAGRAM module and tap SYNC NOW",
-            )
-        val stats = InstagramAnalytics.compute(snapshot, InstagramStore.growth(context))
-        val minutes = ((System.currentTimeMillis() - snapshot.fetchedAt) / 60_000L).coerceAtLeast(0L)
-        return listOf(
-            "INSTAGRAM :: ${snapshot.profile.handle} · ${snapshot.profile.followers} followers",
-            "  POSTS   ${stats.postCount} analysed · ${stats.averageEngagement.toInt()} avg interactions",
-            "  RATE    " + String.format(Locale.US, "%.2f%%", stats.engagementRate),
-            "  BEST    " + (
-                stats.bestFormat?.let { format ->
-                    format.format + " · " + String.format(Locale.US, "%.2f%%", format.averageRate)
-                } ?: "—"
-                ),
-            "  TIMING  " + (
-                stats.bestDay?.let { day ->
-                    day + (stats.bestHour?.let { String.format(Locale.US, " %02d:00", it) } ?: "")
-                } ?: "not enough posts"
-                ),
-            "  GROWTH  " + (
-                stats.followerDelta?.let { delta -> (if (delta >= 0) "+" else "") + delta + " since first sync" }
-                    ?: "first reading"
-                ),
-            "  SYNCED  " + when {
-                minutes < 1 -> "just now"
-                minutes < 60 -> "$minutes min ago"
-                minutes < 1_440 -> "${minutes / 60} h ago"
-                else -> "${minutes / 1_440} d ago"
-            },
-        )
-    }
-
-    /** Linked-account status. Offline, like every other terminal command. */
-    private fun connectLines(context: Context): List<String> {
-        val instagram = InstagramStore.isConnected(context)
-        val instagramSetup = ConnectorStore.instagramApp(context).isSet
-        val google = ConnectorStore.googleSession(context)
-        val googleSetup = ConnectorStore.googleClient(context).isSet
-
-        val instagramState = when {
-            instagram -> "LINKED · " + (InstagramStore.cachedSnapshot(context)?.profile?.handle ?: "reading pending")
-            instagramSetup -> "READY · open CONNECTIONS to log in"
-            else -> "NOT SET UP"
-        }
-        val googleState = when {
-            google.connected -> "LINKED · " + google.email.ifBlank { "authorised" }
-            googleSetup -> "READY · open CONNECTIONS to log in"
-            else -> "NOT SET UP"
-        }
-        return listOf(
-            "CONNECTIONS",
-            "  INSTAGRAM   $instagramState",
-            "  GOOGLE      $googleState",
-            "  WHATSAPP    NOT AVAILABLE · no API for personal chats",
-            "  SHELL       " + ShizukuShell.describe(),
-            "open HUD > CONNECTIONS to link an account",
-        )
     }
 
     private fun aiLines(context: Context): List<String> {

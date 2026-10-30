@@ -145,8 +145,20 @@ object Archive {
         return out
     }
 
-    /** The file contents, ready to be shared. */
-    fun export(context: Context): String = encode(snapshot(context))
+    /** The conversation log travels as one text value, merged back in on restore. */
+    private const val CONVERSATION_BUCKET = "conversation_log"
+
+    /** The file contents, ready to be shared. The full conversation log is included. */
+    fun export(context: Context): String {
+        val buckets = snapshot(context).toMutableMap()
+        val log = try {
+            ConversationLog.exportText(context)
+        } catch (t: Throwable) {
+            ""
+        }
+        if (log.isNotBlank()) buckets[CONVERSATION_BUCKET] = mapOf("jsonl" to log)
+        return encode(buckets)
+    }
 
     /**
      * Writes the archive into `Download/JARVIS` and hands back its uri.
@@ -195,6 +207,12 @@ object Archive {
         var keys = 0
         for ((bucket, values) in decoded) {
             if (bucket in EXCLUDED) continue
+            if (bucket == CONVERSATION_BUCKET) {
+                val text = values["jsonl"] as? String
+                if (text != null) keys += ConversationLog.merge(context, text)
+                buckets++
+                continue
+            }
             val prefs = context.applicationContext
                 .getSharedPreferences(bucket, Context.MODE_PRIVATE)
             val editor = prefs.edit()

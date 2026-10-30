@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-28%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-42%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -88,7 +88,15 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [What he actually is](#what-he-actually-is)
 - [The brain](#the-brain)
 - [The curiosity](#the-curiosity)
+- [The sky](#the-sky)
+- [The assistant button](#the-assistant-button)
+- [Hey Jarvis](#hey-jarvis)
+- [Staying in the conversation](#staying-in-the-conversation)
+- [The crew](#the-crew)
+- [The dial](#the-dial)
 - [The eyes](#the-eyes)
+- [Full control](#full-control)
+- [Presence, the sideways wheel, and the Vault](#presence-the-sideways-wheel-and-the-vault)
 - [What he can do](#what-he-can-do)
 - [The lock, honestly](#the-lock-honestly)
 - [Install the APK](#install-the-apk)
@@ -210,6 +218,179 @@ works with nothing configured at all, and the part that makes the next identical
 
 ---
 
+## The sky
+
+Weather and air quality, from a source that asks for nothing: Open-Meteo, no key, no account, no
+sign-up. It only needs a coordinate, which the phone already has for distance and navigation.
+
+| | |
+| --- | --- |
+| **On the dashboard** | A SKY panel: temperature, condition, today's high and low, humidity, wind, and the air-quality band with the advice that goes with it |
+| **Out loud** | *"mausam kaisa hai"*, *"will it rain"*, *"air quality"* — answered in the language you asked in |
+| **Cached for half an hour** | So the panel costs one request per half hour at most, and nothing at all when warm. A spoken question skips the cache, because it deserves a live reading |
+| **Honest when it cannot** | No location permission, no fix, no network — the panel says which, instead of showing a friendly 24°C that is not real. A stale reading is labelled **STALE**, and *unknown air* is never shown as *good air* |
+
+---
+
+## The assistant button
+
+Hold the assistant key — Home, the side key, whatever your phone calls it — and JARVIS opens
+already listening. No phrase to say, no microphone held open, nothing running while the phone sits
+in your pocket.
+
+That is the whole of it, and it is deliberate. The seat is Android's own assistant role
+(`ROLE_ASSISTANT`): the system starts a `VoiceInteractionSession`, the session hands straight to the
+app with the same voice extra the bubble and the widget use, and closes itself. There is no
+listener, no thread, no wake word and no model — the two services that exist to make the role
+possible are empty by design, and one of them (`JarvisRecognitionService`) exists only because
+Android's assistant metadata refuses to parse without it. It answers *"no speech input"* and never
+opens the microphone.
+
+Advanced → **ASSISTANT BUTTON** shows the real state — *held by JARVIS*, *not set*, or *not offered
+by this phone* — and the button opens Android's own dialog. It also tells you where the gesture is
+hidden on your brand: HyperOS, ColorOS, One UI, Funtouch and Moto each bury it somewhere different,
+and a wrong instruction is worse than none.
+
+The gesture costs nothing when you don't use it. For a hands-free start there is also **"Hey
+Jarvis"** (below), which is opt-in and does cost battery while it is on.
+
+## Hey Jarvis
+
+Say **"Hey Jarvis"** and he opens listening. It is off until you turn it on in
+**Advanced → HEY JARVIS**.
+
+- **Engine:** [Vosk](https://alphacephei.com/vosk/), offline, Apache 2.0. No account, no access key,
+  no cloud. The recogniser is given a grammar of exactly two alternatives — the phrase and the
+  engine's "unknown" token — so ordinary speech does not wake him.
+- **The model** (`vosk-model-small-en-us-0.15`, ~40 MB) is packed into the APK at build time, so
+  installing the app is enough: turning the wake word on copies it to private storage, offline, in
+  seconds. If a build could not fetch it, the app downloads it the first time you turn the wake word
+  on, and says so. It is checked by its contents before use.
+- **While it is on:** a foreground service holds the microphone. Android shows its microphone
+  indicator and a notification the whole time, with a *TURN OFF* button. It listens only while
+  switched on; turning it off stops the service.
+- **On a hit, the sentence comes with it.** The service reads the microphone itself, so the audio
+  that finds the phrase is the same audio that becomes the command. It keeps **1.2 s from before**
+  the hit, then captures until you stop speaking — a one-second pause ends it, an eight-second
+  ceiling bounds it — and hands the whole thing to the app as one utterance. So
+  *"hey jarvis, open WhatsApp"* acts in a single breath, with no tap and no repeating yourself, and
+  `hey jarvis` is stripped out so it never becomes part of the request.
+- **If nothing follows the phrase** — you only said the wake word, or a door slammed — it gives up
+  at once, opens JARVIS listening, and re-arms after about 10 seconds. If the phone's own assistant
+  is already holding the microphone, the notification says "tap to talk" instead.
+- **Tapped listening ends itself too:** pause for a second and it transcribes, rather than waiting
+  for a second tap.
+- **After a reboot:** it resumes the first time you open JARVIS, not before. Android does not let an
+  app start a microphone service from a boot broadcast.
+
+**The honest cost.** Listening uses battery the whole time it is on. The figure of 1–3% an hour is
+an estimate, not a measurement; measure it on your own phone before you rely on it. Turn it off
+when you don't need it.
+
+## Staying in the conversation
+
+One sentence used to be the whole session: say it, hear the answer, say *"hey jarvis"* again. With
+**Advanced → Conversation** on, the ear stays open after a finished turn instead.
+
+- **He answers, then asks.** The question is shaped by what just happened — after a chat app opens,
+  *"Boss, kisko message karna hai?"*. The next sentence is taken as a normal command, with no wake
+  word and no tap.
+- **Bounded in four directions.** A per-sentence window of 9 seconds (4–20, adjustable), a turn
+  budget of 6 (up to 12), exit words (*bas*, *theek hai*, *chalo bye*, *thank you*, *so jao*), and
+  silence — which closes the window quietly instead of showing a failure. On the provider route
+  recording stops after 900 ms of trailing quiet, and a silent window is never sent anywhere.
+- **A male voice, chosen rather than inherited.** Most phones default to a bright female voice. A
+  male voice is picked from the engine's own list for the spoken language; when the phone has none,
+  pitch drops to 0.78 instead of the wrong voice being used. **Advanced → JARVIS Voice** switches it.
+- **Feelings, read and not invented.** Tired, low, angry, anxious, happy, excited, warm — read from
+  your own words in English, Hindi and Hinglish. A feeling word inside a command never swallows the
+  command (*"tired hoon, alarm laga do"* still sets the alarm). Days together, streak and turn count
+  are arithmetic over real timestamps, and *Forget everything* clears them. Care is only offered from
+  a real reading — a battery at 8%, a water log at zero, past midnight — never out of nowhere. His
+  register reaches the voice: concern is spoken slower and softer.
+- **The internet, one page at a time.** *"padho https://…"* fetches that page, answers from it and
+  names the site. https only, loopback and private ranges refused, no JavaScript, and an empty page is
+  reported as empty rather than summarised. This reads one page on request; it is not a search engine.
+- **He can be taught, and learning is a proposal.** *"what can't you do"* reads back what he failed
+  at; *"seekho …"* turns your description into a routine built only from actions that already exist,
+  saved **disabled** so you can read it before it ever runs.
+- **Captions on the platform's real rules.** *"reel ka caption banao about X"* writes a hook that fits
+  the ~125 characters before *more*, 3–8 specific hashtags and one call to action, lints it and
+  **copies it to the clipboard**. Posting stays yours: Instagram has no public API for an ordinary
+  app, and the timing line stays silent because this build has no account connections to read numbers
+  from — a guess dressed as data is worse than no advice.
+
+## Memory and who he is
+
+- **Every conversation is kept.** Each exchange is appended to a file in the app's private storage
+  (one line per exchange). The Privacy screen shows how many are saved and how large the file is, and
+  lets you pause recording or clear the conversations. Clearing or *Forget everything* removes them.
+- **Talk memory across restarts:** the last 20 exchanges from that record go back to the model as real
+  earlier messages, so \"and then?\" and \"why?\" have a subject, even after the app restarts.
+- **Habits:** he counts what you ask for, by time of day (morning, afternoon, evening, night). Once a
+  request has come three times, it is mentioned to the model as a habit, so he can anticipate it gently.
+  Habits are counters, not a model: nothing is inferred beyond how often something was asked.
+- **What leaves the phone:** only the last 20 exchanges, with each AI request. The full record stays
+  on the phone. Export (Privacy → Export) includes the full record, and restore adds back any lines
+  that are not already there.
+- **Facts and people** are still learned from plain statements such as \"my sister is Khushi\".
+- **Reading stays cheap:** the next reply reads only the newest 256 KB of the record, so a long history
+  does not slow him down. Nothing polls for memory.
+- **Identity:** every model call starts with: he is JARVIS, the operator is his boss, and Rishu
+  Jaswar built him. He never names a provider, model or key.
+- **Voice:** a lower pitch and steady pace on every phone. Where the installed voices include a
+  male one, he uses it. Android does not say which voice is male, so the pitch does most of the work.
+
+## The crew
+
+One brain, four lanes, one arbiter — and it is not the thing the concept renders show.
+
+There is one screen, one microphone and one voice on a phone. Two "agents" acting at once would both
+read the same window and both tap it, and two model calls would cost twice the wait for half the
+sense. So the rule is narrower and true:
+
+| Lane | What it is | May run alongside others? |
+| --- | --- | --- |
+| **DEVICE** | Spoken commands, screen tasks, the camera | no — it holds the phone |
+| **ROUTINES** | Your trigger-driven workflows | no — same lock as DEVICE |
+| **RESEARCH** | Look-ups and the knowledge shelf | yes |
+| **ALERTS** | What is waiting in the shade | yes |
+
+Anything that touches the screen takes **one shared lock**. The second thing to want it says
+**QUEUED** instead of silently doing nothing. The read-only lanes never wait, because a look-up does
+not fight anybody for the display.
+
+`ACTIVITY` (under the day ruler) shows all four lanes live, then the real history: what each routine
+did and what trigger fired it, what is on the knowledge shelf, and every piece of work this session.
+
+**No avatars. No invented task counts. No percentage bars.** A number on that screen came from a run
+that happened, because a number on that screen is a claim.
+
+---
+
+## The dial
+
+The reactor is the navigation now, not a picture of one.
+
+Every module sits on a ring around it — eleven labelled keys, rotated along the arc, flipped on the
+lower half so nothing is ever read upside down. Tap one and it opens. The centre of the dial is the
+microphone and nothing else, because the ring is built from eleven real touch targets rather than one
+clever full-screen hit test; the orb keeps its tap by construction, not by luck.
+
+Around it, the instrument furniture that makes a HUD feel alive rather than decorated:
+
+| | |
+| --- | --- |
+| **Micro-readings** | A strip of the smallest numbers on the screen — `BAT 84 · MEM 61 · STO 44 · LINK · LIVE 11/11`. Every value is measured. A reading that is not available is dropped, never filled in with something plausible. |
+| **Crosshairs** | One hairline pass through the dial and four cardinal ticks. Cheapest way to make a circle read as an instrument. |
+| **The day ruler** | The whole day as one bar: your events as blocks, six-hour marks, and a cursor at now. The dashboard used to answer "what is next", which is the least useful form of the question at four in the afternoon. |
+
+**What it costs:** nothing measurable. The ring canvas reads no animation state, so it paints when
+the module list changes and not per frame; label text is measured once per list, not inside `onDraw`.
+No service, no worker, no new dependency — it is drawing, and it stops when the screen is off.
+
+---
+
 ## The eyes
 
 He can look at something and tell you about it — on demand, never in the background.
@@ -228,6 +409,75 @@ asked. A menu, a sign, a medicine strip, a bill, a page of homework, a plant tha
 
 ---
 
+## Presence, the sideways wheel, and the Vault
+
+Three ideas taken from the OSO concept reel, each built the honest way.
+
+**He reacts to the room.** The reactor used to spin on a fixed loop, which reads as a screensaver.
+Now the recorder publishes the real loudness of the microphone buffer about twenty times a second,
+and the orb answers it: it lifts and brightens with a voice, falls slowly in a pause, and carries a
+short fast arc only while he is thinking. Nothing polls, and the measurement is not invented — it is
+the same PCM that becomes the transcript. A quiet room really is a still orb.
+
+**Held sideways, the dial turns.** Portrait is unchanged. In landscape the ring rotates ninety degrees
+and the disc gives up height, so the dock becomes a wheel you read left-to-right the way a phone is
+held in two hands — the reel's signature move, with no new dependencies.
+
+**The Vault.** A locked drawer in Advanced: health today, the conversation archive with its export,
+and private notes. It opens only after the phone's own fingerprint or face prompt says yes — JARVIS
+never sees the scan, only the answer. If no fingerprint is enrolled it says so plainly and lets you
+in, because pretending a gate exists would be the one dishonest thing here. The notes live in the
+app's private storage: a locked drawer in a locked room, not a safe.
+
+---
+
+## Full control
+
+The ask was plain: whatever is said should be done. Three things stood between the app and that, and
+all three are gone.
+
+**Shizuku comes inside the APK.** Shizuku is the companion app that lends JARVIS the `adb` shell
+identity, and it is the one thing the switches below need. Asking you to find a second download and
+install it was the last rough edge, so the release APK now carries it: the build fetches the pinned
+release (13.6.0, Apache-2.0, from RikkaApps' official GitHub release) and packs it inside the JARVIS
+APK. One button — *Install Shizuku* in Launcher settings — opens Android's own install screen with one
+tap to confirm. If a build had no network when it was made, there is no bundled copy and the same
+button downloads it on the phone instead. Either way you then open Shizuku once, start it over
+wireless debugging, and authorise JARVIS.
+
+Android never lets one app install another silently, and that is deliberate: the confirmation screen
+is the system's, not JARVIS's. This is also why the APK is for sideloading, not Google Play, whose
+policy forbids `REQUEST_INSTALL_PACKAGES` for an app like this.
+
+**The switches Android keeps to itself.** `wifi off`, `bluetooth on`, `mobile data off`,
+`airplane mode on`, `hotspot on`, `brightness 40`, `rotation lock on`. Android stopped letting
+ordinary apps flip Wi-Fi, Bluetooth and mobile data years ago — `svc wifi` is `adb`'s verb, not an
+app's — and airplane mode and hotspot were never available. With **Shizuku** connected he runs those
+commands himself, so the switch is genuinely off. Without it he opens the system panel with the
+switch in front of you and says exactly that. He never claims a switch he did not flip. Brightness
+and rotation need no shell at all once the app may write system settings.
+
+**Long tasks finish.** A plan may now hold 24 steps instead of 8, and the screen agent that taps
+through an app he has never seen may take 20 actions instead of 6 — with a four-minute ceiling as
+well, so nothing can sit inside one app forever. Every action still appears on the card as it
+happens and the whole run can be stopped.
+
+**He acts instead of offering.** The rule he is given is now explicit: never "I can do that", never
+"shall I", never a description of the steps he would take — return the steps. A sentence phrased as
+a wish ("it is dark in here") counts as a request.
+
+**Shell, as asked.** Voice may now use the privileged tier for what no action covers: a vendor
+setting, a permission toggle, an app's hidden state. This is real power — it runs with `adb`'s
+identity. Commands that cannot be undone (`reboot`, `pm clear`, uninstalling, wiping) are asked
+about first.
+
+**The one yes.** Calling somebody, sending a message, replying, saving a contact or adding an event
+waits for one short question, in the language you spoke. The plan is stored exactly as it was
+planned, so the yes runs what you heard rather than a second guess; the question expires after 90
+seconds, and any other answer throws it away. Everything else on the phone runs on the first word.
+
+---
+
 ## What he can do
 
 <table>
@@ -239,6 +489,21 @@ asked. A menu, a sign, a medicine strip, a bill, a page of homework, a plant tha
 
 System intents, skin-specific packages and fuzzy labels — so it works on ColorOS, MIUI, One UI and
 stock alike.</td></tr>
+
+<tr><td><b>System switches</b></td><td>
+
+`wifi off` · `bluetooth on` · `airplane mode on` · `mobile data off` · `hotspot on` ·
+`brightness 40` · `rotation lock on`
+
+Through Shizuku the switch really flips. Without Shizuku the panel opens with the switch in front of
+you, and he says so instead of pretending.</td></tr>
+
+<tr><td><b>The assistant key</b></td><td>
+
+Hold the assistant key and he is listening. The hole in the "what he cannot do" list about wake
+words is answered by Android's own assistant role instead of a microphone left open.
+
+</td></tr>
 
 <tr><td><b>Talk to people</b></td><td>
 
@@ -336,7 +601,9 @@ The APK lives on the **Releases** page, not in the repository:
 https://github.com/Rishu123-png/Jarvis---Android-Version-/releases/latest
 ```
 
-Pick **`jarvis-1.0.0.apk`** → download → open it on the phone → allow *Install unknown apps* once.
+Pick the newest **`jarvis-1.0.0-b<build>.apk`** → download → open it on the phone → allow
+*Install unknown apps* once. The build number is the `versionCode`; the version name stays 1.0.0 for
+ever build, so the build number is how you tell one APK from another.
 
 That is the file to share. Anyone who opens that link can install it without a GitHub account.
 
@@ -344,10 +611,10 @@ That is the file to share. Anyone who opens that link can install it without a G
 
 | Location | Path |
 |---|---|
-| GitHub Actions run | **Artifacts** → `jarvis-release-apk` → `jarvis-1.0.0.apk` |
+| GitHub Actions run | **Artifacts** → `jarvis-release-apk` → `jarvis-1.0.0-b32.apk` |
 | Build machine | `app/build/outputs/apk/release/app-release.apk` |
-| CI copy | `dist/jarvis-1.0.0.apk` |
-| GitHub Release | attach `jarvis-1.0.0.apk` to tag `v1.0.0` |
+| CI copy | `dist/jarvis-1.0.0-b32.apk` |
+| GitHub Release | attach `jarvis-1.0.0-b32.apk` to tag `v1.0.0-build32` |
 
 ### First run
 
@@ -369,7 +636,7 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 22 JVM suites
+./gradlew :app:testDebugUnitTest    # 42 JVM suites
 ```
 
 Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
@@ -386,11 +653,16 @@ no assistant.
 | Replace the lock screen | Removed from Android in 5.0. No API exists. |
 | Read your PIN, pattern or fingerprint | Only *pass* or *fail* is ever returned to an app. |
 | Send WhatsApp with zero taps when there is no live notification | App sandbox. His route is notification reply → `wa.me` link → in-app search. |
-| Always-on wake word | Would drain the battery and hold the microphone permanently. He listens when tapped. |
+| Wake word with no AI key | The captured sentence is turned into words through your provider's speech endpoint. With no key — or a provider that has none — JARVIS cannot transcribe the audio it captured, so it falls back to listening again rather than guessing. |
+| Always-on wake word | Android gives its efficient hardware path only to system apps. So "Hey Jarvis" is opt-in: a foreground service listens while you have it on, and costs battery while it does. He uses the assistant key when the wake word is off. |
 | Run without your AI key for free-form conversation | Small-talk works offline; a real conversation needs a model you own. |
 | Publish a website or run a server | Out of scope by design. He is the brain on your phone, not a hosting company. |
+| Wi-Fi, Bluetooth, data, airplane mode or hotspot without Shizuku | Android reserves those switches for `adb`'s identity. With Shizuku connected he flips them himself; without it he opens the panel and one tap finishes it. |
+| Install Shizuku without a tap | Android requires the system's own confirmation for any app install. JARVIS opens that screen; your tap finishes it. |
+| Keep the bundled Shizuku up to date by itself | The copy inside the APK is pinned to one version. A newer Shizuku comes when a newer JARVIS does. |
+| Undo a destructive shell command | The privileged tier runs as `adb`: a wipe is a wipe. That is why `reboot`, `pm clear`, uninstalling and wiping are asked about before they run. |
 
-**Verified by CI:** compilation, 22 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 42 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -403,14 +675,13 @@ app/src/main/java/com/jarvis/assistant/
 ├── MainActivity.kt               single activity, Compose host
 ├── ai/                           your key, any provider, JSON + free conversation
 ├── automation/                   the engine: 19 actions, conditions, triggers, screen agent
-├── connect/                      Instagram, Google Drive + Gmail (read-only), OAuth
 ├── data/                         PhraseBook (~400 phrasings) · Units · When · command line
 ├── device/                       the phone itself: files, gallery, location, health, calendar,
 │                                 contacts, notifications, voice notes, lock, biometrics
 ├── shell/                        Shizuku user service (optional, adb-level, no root)
-├── social/                       Instagram analytics
 ├── ui/                           Home · Dashboard · Lock · Privacy · Terminal · Voice
-└── voice/                        Brain (memory) · IntentRouter · Language · Persona · FollowUp
+├── voice/                        Brain (memory) · IntentRouter · Language · Persona · FollowUp
+└── wake/                         "Hey Jarvis": Vosk grammar, one-time model download, service
 ```
 
 **The turn, end to end:**
@@ -447,7 +718,7 @@ app/src/main/java/com/jarvis/assistant/
 | | |
 |---|---|
 | **Backend** | None. There is no JARVIS server, no account, no sync. |
-| **Network** | Only: your own AI key's provider, one optional router for road distance, a connector you set up, or a URL you asked for. |
+| **Network** | Only: your own AI key's provider, one optional router for road distance, a one-time voice-model download when you turn on Hey Jarvis, or a URL you asked for. |
 | **Memory** | A preferences file on this phone. Read it in Advanced; wipe it with one key. |
 | **Keys** | Android Keystore (`AES/GCM`). Never in this repository. |
 | **Notifications** | Held in memory only, dropped when the listener disconnects. |
@@ -460,7 +731,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-22 JVM suites, run before every APK in CI.
+42 JVM suites, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|
@@ -489,12 +760,14 @@ capability, what it unlocks, and what breaks without it.
 # 2. green CI on main
 gh run list --limit 1
 
-# 3. tag it — CI attaches the APK to the release automatically
-git tag v1.0.0 && git push origin v1.0.0
+# 3. tag it — CI attaches the APK to the release automatically.
+#    The tag carries the build number, because versionName is always 1.0.0.
+git tag v1.0.0-build32 && git push origin v1.0.0-build32
 ```
 
-Then edit the draft release, paste the notes from [CHANGELOG.md](CHANGELOG.md), and the download link
-above works for everyone.
+CI writes the release title and the APK file names from `versionName` and `versionCode`, so they can
+never disagree with the build. Edit the notes afterwards if you want to say more than the workflow
+does; the download link above works for everyone either way.
 
 ---
 
