@@ -112,12 +112,17 @@ object ShizukuInstaller {
         }
     }
 
-    fun pendingIntent(context: Context) = android.app.PendingIntent.getBroadcast(
-        context,
-        0,
-        Intent(context, ShizukuInstallReceiver::class.java).setAction(ACTION_INSTALL),
-        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
-    )
+    /**
+     * Where the package installer reports back. [PackageInstaller.Session.commit] takes an
+     * IntentSender, so the pending intent is unwrapped once here rather than at every call site.
+     */
+    fun intentSender(context: Context): android.content.IntentSender =
+        android.app.PendingIntent.getBroadcast(
+            context,
+            0,
+            Intent(context, ShizukuInstallReceiver::class.java).setAction(ACTION_INSTALL),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+        ).intentSender
 
     /**
      * Brings Shizuku to the phone: bundled copy first, download second, system installer always.
@@ -177,7 +182,7 @@ object ShizukuInstaller {
                 write(output)
                 session.fsync(output)
             }
-            session.commit(pendingIntent(context))
+            session.commit(intentSender(context))
         }
         Outcome.InstallerOpened
     } catch (t: Throwable) {
