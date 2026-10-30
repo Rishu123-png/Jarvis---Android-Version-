@@ -84,25 +84,6 @@ jobs:
           set -o pipefail
           ./gradlew --no-daemon --console=plain testDebugUnitTest 2>&1 | tee build.log
 
-      # Temporary, and deliberately loud: the Actions log download is unavailable on this account
-      # (egress limit), so the first lines Gradle complains about are surfaced as annotations and as
-      # a commit comment, which can both be read without the log bundle.
-      - name: Diagnose failure
-        if: failure()
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set +e
-          echo "== build.log present:"; ls -l build.log 2>/dev/null || echo "no build.log"
-          HEAD=$(grep -nE "^(e: |FAILED|> Task .*FAILED|There were failing tests|[A-Za-z0-9_.]+Test > )" build.log 2>/dev/null | head -25)
-          [ -z "$HEAD" ] && HEAD=$(tail -n 40 build.log 2>/dev/null)
-          echo "$HEAD"
-          ONE=$(echo "$HEAD" | tr '\n' '|' | cut -c1-1200)
-          echo "::error::$ONE"
-          gh api -X POST "repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
-            -f body="$(printf '### JARVIS unit-test failure\n\n\`\`\`\n%s\n\`\`\`\n' "$HEAD")" || true
-
       - name: Build debug + release APKs
         run: |
           set -o pipefail
