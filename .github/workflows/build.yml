@@ -91,7 +91,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          HEAD=$(grep -nE "^(e: |FAILED|> Task .*FAILED|There were failing tests|[A-Za-z0-9_.]+Test > )" build.log 2>/dev/null | head -30)
+          HEAD=$(grep -nE "^(e: |FAILED|> Task .*FAILED|There were failing tests|[A-Za-z0-9_.]+Test > )|Assertion|expected:|but was|java.lang" build.log 2>/dev/null | head -40)
           [ -z "$HEAD" ] && HEAD=$(tail -n 60 build.log 2>/dev/null)
           echo "$HEAD"
           ONE=$(echo "$HEAD" | tr '\n' '|' | cut -c1-1200)
