@@ -30,6 +30,15 @@ class LanguageTest {
     }
 
     @Test
+    fun storedLanguageIdsKeepHindiAndHinglishDistinct() {
+        assertEquals(Lang.HINGLISH, Lang.fromStoredId("hinglish"))
+        assertEquals(Lang.HINGLISH, Lang.fromStoredId("HINGLISH"))
+        // Old installs stored locale tags; hi-IN remains a backward-compatible Hindi value.
+        assertEquals(Lang.HI, Lang.fromStoredId("hi-IN"))
+        assertEquals("en-IN", Lang.HINGLISH.recognizerTag)
+    }
+
+    @Test
     fun repliesExistInEveryTemplatedLanguage() {
         val english = Language.say(Lang.EN, "steps", 4200)
         val hindi = Language.say(Lang.HI, "steps", 4200)

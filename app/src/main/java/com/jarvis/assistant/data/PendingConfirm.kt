@@ -5,12 +5,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * The one step that waits for a yes.
+ * An action plan waiting for a yes.
  *
- * Calling someone, sending a message, saving a contact, adding an event, or running a command that
- * cannot be undone are the only things JARVIS does not do on the first word. He asks once, stores
- * the plan here, and the next sentence decides. Anything other than a yes throws the plan away, so
- * a different question afterwards is never answered with last turn's action.
+ * Calls, messages, writes, destructive commands, and screen-agent tasks wait for an explicit yes.
+ * JARVIS asks once, stores the full plan and original request here, and the next sentence decides.
+ * Anything other than a yes throws the plan away, so a later confirmation cannot fire an old action.
  *
  * The window is short on purpose: a yes given a minute later is an answer to something else.
  */
@@ -26,6 +25,8 @@ object PendingConfirm {
         val say: String,
         val steps: List<Step>,
         val screenGoal: String? = null,
+        /** Original command, retained so confirmation does not overwrite history with just "yes". */
+        val heard: String = "",
         val at: Long = System.currentTimeMillis(),
     ) {
         val isFresh: Boolean get() = System.currentTimeMillis() - at < WINDOW_MS
@@ -63,6 +64,7 @@ object PendingConfirm {
         put("t", pending.title)
         put("s", pending.subtitle)
         put("say", pending.say)
+        put("heard", pending.heard)
         put("at", pending.at)
         if (pending.screenGoal != null) put("goal", pending.screenGoal)
         put("steps", JSONArray().apply {
@@ -101,6 +103,7 @@ object PendingConfirm {
                     say = json.optString("say"),
                     steps = steps,
                     screenGoal = goal,
+                    heard = json.optString("heard"),
                     at = json.optLong("at", 0L),
                 )
             }

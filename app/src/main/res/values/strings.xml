@@ -3,7 +3,7 @@
     <string name="app_name">JARVIS</string>
     <string name="app_tagline">Just A Rather Very Intelligent System</string>
 
-    <string name="accessibility_service_description">JARVIS automation uses this access for two things only: performing navigation gestures (back, home, recents, notification shade, lock screen) and pressing a button whose label you typed yourself in a routine you created. It never reads your screen in the background, never records what you type, and never sends anything off the device. You can revoke it at any time in this screen.</string>
+    <string name="accessibility_service_description">JARVIS uses this access only when you ask it to read or act on the active screen. It can read visible labels, use on-device OCR when needed, type requested text, and press controls. It does not read screen content in the background. A direct read-screen request is spoken on-device. In AUTO or WHISPER mode, visible screen text used by a screen-agent task is sent to your configured AI provider; DEVICE and OFFLINE modes block those tasks. You can revoke access at any time in this screen.</string>
 
     <string name="widget_description">JARVIS clock — tap to speak</string>
     <string name="shortcut_voice_short">Speak</string>

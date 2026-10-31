@@ -2,6 +2,7 @@ package com.jarvis.assistant.voice
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -24,6 +25,8 @@ class LocalSpeech(
     private val preferOffline: Boolean = false,
     /** BCP-47 tag for the recognizer, or null to let the phone decide. */
     private val languageTag: String? = null,
+    /** When true, fail closed unless Android provides its dedicated on-device recognizer. */
+    private val requireOffline: Boolean = false,
 ) {
 
     private val appContext = context.applicationContext
@@ -41,12 +44,20 @@ class LocalSpeech(
     fun start() {
         main.post {
             if (finished) return@post
+            if (requireOffline && !offlineRecognitionAvailable(appContext)) {
+                finish(Outcome(error = "This phone has no dedicated offline speech model; choose DEVICE or install one."))
+                return@post
+            }
             if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
                 finish(Outcome(error = "This device has no speech recognizer."))
                 return@post
             }
             val created = try {
-                SpeechRecognizer.createSpeechRecognizer(appContext)
+                if (requireOffline) {
+                    SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
+                } else {
+                    SpeechRecognizer.createSpeechRecognizer(appContext)
+                }
             } catch (t: Throwable) {
                 null
             }
@@ -143,6 +154,18 @@ class LocalSpeech(
             }
         }
         if (silent) outcome.complete(Outcome(error = null)) else outcome.complete(result)
+    }
+
+    companion object {
+        /** API 31+ exposes a dedicated on-device recognizer; older APIs cannot promise offline speech. */
+        fun offlineRecognitionAvailable(context: Context): Boolean {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
+            return try {
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(context.applicationContext)
+            } catch (t: Throwable) {
+                false
+            }
+        }
     }
 
     private fun describe(code: Int): String = when (code) {

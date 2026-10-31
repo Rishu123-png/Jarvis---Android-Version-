@@ -31,6 +31,12 @@ class VoiceParsingTest {
     }
 
     @Test
+    fun normalise_preservesDevanagariAndConvertsUnicodeDigits() {
+        assertEquals("गैलरी खोलो", VoiceParsing.normalise("गैलरी खोलो"))
+        assertEquals("वॉल्यूम 50", VoiceParsing.normalise("वॉल्यूम ५०"))
+    }
+
+    @Test
     fun flatten_rewritesChainedChatPhrasing() {
         val flat = VoiceParsing.flatten("open chat with divik and say hi")
         assertEquals("chat with divik say hi", flat)
@@ -71,6 +77,15 @@ class VoiceParsingTest {
     }
 
     @Test
+    fun message_devanagariContactAndTextAreKept() {
+        val clean = VoiceParsing.normalise("राहुल को व्हाट्सएप पर संदेश भेजो कि मैं देर से आऊँगा")
+        val parsed = VoiceParsing.parseMessage(clean)
+        assertEquals("whatsapp", parsed?.first)
+        assertEquals("राहुल", parsed?.second)
+        assertEquals("मैं देर से आऊँगा", parsed?.third)
+    }
+
+    @Test
     fun message_nameOnlyOpensTheChatWithoutText() {
         val parsed = VoiceParsing.parseMessage("whatsapp divik")
         assertEquals("divik", parsed?.second)
@@ -84,6 +99,13 @@ class VoiceParsingTest {
         assertNull(VoiceParsing.parseMessage("volume 40"))
     }
 
+    @Test
+    fun callTarget_supportsDevanagariAndHinglish() {
+        assertEquals("राहुल", VoiceParsing.parseCallTarget("राहुल को कॉल करो"))
+        assertEquals("Amit", VoiceParsing.parseCallTarget("Amit ko call karo"))
+        assertEquals("dad", VoiceParsing.parseCallTarget("call dad"))
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Device commands
     // ---------------------------------------------------------------------------------------------
@@ -92,6 +114,8 @@ class VoiceParsingTest {
     fun volume_readsAndClamps() {
         assertEquals(40, VoiceParsing.parseVolume("volume 40"))
         assertEquals(100, VoiceParsing.parseVolume("set volume to 130"))
+        assertEquals(55, VoiceParsing.parseVolume("वॉल्यूम 55"))
+        assertEquals(50, VoiceParsing.parseVolume(VoiceParsing.normalise("वॉल्यूम ५०")))
         assertNull(VoiceParsing.parseVolume("volume up"))
     }
 
@@ -100,6 +124,7 @@ class VoiceParsingTest {
         assertEquals("07:30", VoiceParsing.parseAlarm("alarm 7:30"))
         assertEquals("18:30", VoiceParsing.parseAlarm("alarm 6 30 pm"))
         assertEquals("00:15", VoiceParsing.parseAlarm("alarm 12 15 am"))
+        assertEquals("19:00", VoiceParsing.parseAlarm("अलार्म रात 7 बजे"))
         assertNull(VoiceParsing.parseAlarm("alarm 25:00"))
     }
 
@@ -108,6 +133,9 @@ class VoiceParsingTest {
         assertEquals(600, VoiceParsing.parseTimerSeconds("timer 10 minutes"))
         assertEquals(45, VoiceParsing.parseTimerSeconds("timer 45 sec"))
         assertEquals(7200, VoiceParsing.parseTimerSeconds("timer 2 hours"))
+        assertEquals(600, VoiceParsing.parseTimerSeconds("टाइमर 10 मिनट"))
+        assertEquals(600, VoiceParsing.parseTimerSeconds(VoiceParsing.normalise("टाइमर १० मिनट")))
+        assertEquals(7200, VoiceParsing.parseTimerSeconds("टाइमर 2 घंटे"))
         assertNull(VoiceParsing.parseTimerSeconds("timer please"))
     }
 
@@ -152,6 +180,14 @@ class VoiceParsingTest {
     }
 
     @Test
+    fun reminder_hindiRelativeTimeKeepsTheReminderText() {
+        val ask = VoiceParsing.parseReminder("मुझे 10 मिनट में दवा लेने की याद दिलाना")
+        assertEquals(600L, ask?.inSeconds)
+        assertNull(ask?.atClock)
+        assertEquals("दवा लेने", ask?.text)
+    }
+
+    @Test
     fun reminder_absoluteTime() {
         val ask = VoiceParsing.parseReminder("remind me at 6:30 to leave for the station")
         assertNull(ask?.inSeconds)
@@ -177,5 +213,6 @@ class VoiceParsingTest {
     fun normaliseName_matchesAddressBookSpelling() {
         assertEquals("divik sharma", VoiceParsing.normaliseName("Divik  Sharma!"))
         assertTrue(VoiceParsing.normaliseName("  DAD ").isNotEmpty())
+        assertEquals("आमिर खान", VoiceParsing.normaliseName("आमिर खान"))
     }
 }

@@ -69,6 +69,8 @@ data class VoicePlan(
     val spoken: String? = null,
     /** True when the operator has already said yes to the step that needed asking. */
     val confirmed: Boolean = false,
+    /** Original instruction when this plan resumes after a confirmation-only "yes". */
+    val sourceHeard: String? = null,
 )
 
 /**
@@ -76,12 +78,12 @@ data class VoicePlan(
  *
  * Two paths, in this order:
  *
- *  1. **AI** — used whenever a key is stored. The operator never sees a command list; the model
- *     reads the raw words (typos, mixed language, half-finished sentences included) and picks from
- *     the capabilities the phone actually has. Anything the model invents is dropped.
- *  2. **Local** — a small, silent parser used when no key is stored, when the network is down, or
- *     when the model answers with nonsense. It covers the handful of phrasings people really use
- *     ("call dad", "open whatsapp", "torch on").
+ *  1. **AI** — used only on AUTO/WHISPER routes when a key is stored. It reads the words and
+ *     context intentionally included in the prompt, then picks from the capabilities the phone has.
+ *     Anything the model invents is dropped.
+ *  2. **Local** — used on DEVICE/OFFLINE routes without an AI-provider request, and as a fallback
+ *     when no key exists or a model answer is unusable. It covers common English, Hinglish and Hindi
+ *     commands.
  *
  * Nothing here executes anything. [VoiceController] runs the steps and shows them on the card.
  */
@@ -130,7 +132,9 @@ object IntentRouter {
         !it.blocks && it != ActionType.WEBHOOK
     }
 
-    fun aiReady(context: Context): Boolean = AiKeyStore.config(context) != null
+    /** Cloud planning is disabled for DEVICE/OFFLINE, even when a provider key is stored. */
+    fun aiReady(context: Context): Boolean =
+        VoiceSettings.route(context).allowsCloudPlanner && AiKeyStore.config(context) != null
 
     suspend fun plan(context: Context, heard: String, previous: String? = null): VoicePlan {
         val spoken = heard.trim()
@@ -182,6 +186,7 @@ object IntentRouter {
                         else -> "Cancelled."
                     },
                     source = "LOCAL",
+                    sourceHeard = waiting.heard.takeIf { it.isNotBlank() },
                 )
             }
             PendingConfirm.clear(context)
@@ -288,6 +293,7 @@ object IntentRouter {
                 steps = emptyList(),
                 say = "That one is no longer possible. Say it again.",
                 source = "LOCAL",
+                sourceHeard = waiting.heard.takeIf { it.isNotBlank() },
             )
         }
         return VoicePlan(
@@ -298,6 +304,7 @@ object IntentRouter {
             source = "VOICE",
             screenGoal = waiting.screenGoal,
             confirmed = true,
+            sourceHeard = waiting.heard.takeIf { it.isNotBlank() },
         )
     }
 
@@ -484,6 +491,13 @@ object IntentRouter {
               {"action": "$VIRTUAL_SCREEN", "param": "<the goal in plain words>"}. That loop taps one
               control at a time and reports what it sees. Never guess presses for an app you cannot see.
             - To message someone use $VIRTUAL_SEND. Never invent a number either.
+            - Calls, messages, contact/calendar writes and destructive actions must use their explicit
+              action ids; never hide them inside a generic screen_task. The app asks for approval before
+              these actions and before any screen_task runs.
+            - A screen_task may read visible labels/OCR from the foreground app and send that text with
+              this request to the configured provider. Use it only for a task the operator explicitly
+              asked for; never inspect passwords, one-time codes, financial details, or unrelated screens.
+            - Never say an action is finished before the phone reports that it succeeded.
             - To open an app use open_app with a package name from the installed list.
             - The operator's speech may be sloppy, abbreviated or mixed with Hindi words. Infer intent.
             - Answer in the SAME language the operator used. If they speak Hindi or Hinglish, write
@@ -660,7 +674,12 @@ object IntentRouter {
                 NotifyBrain.findReplyTarget(who) != null
 
             if (!reachable && text.isNotBlank()) {
-                val screenReady = AccessibilityStatus.isServiceEnabled(context)
+                // ScreenAgent needs cloud planning for its observe/decide loop. Never create a
+                // screen task in a local-only route or without a configured cloud model.
+                val screenAccessEnabled = AccessibilityStatus.isServiceEnabled(context)
+                val cloudRoute = VoiceSettings.route(context).allowsCloudPlanner
+                val providerKeyConfigured = AiKeyStore.config(context) != null
+                val screenReady = screenAccessEnabled && cloudRoute && providerKeyConfigured
                 return if (screenReady) {
                     VoicePlan(
                         title = "FIND ${upper(who, 16)}",
@@ -673,7 +692,7 @@ object IntentRouter {
                             ),
                         ),
                         say = "I have no number for $who, so I am searching inside the app.",
-                        source = "LOCAL",
+                        source = "AI",
                         screenGoal = "search for $who, open the chat, type \"$text\" and press send",
                     )
                 } else {
@@ -681,8 +700,12 @@ object IntentRouter {
                         title = "NO NUMBER",
                         subtitle = "MESSAGE",
                         steps = emptyList(),
-                        say = "I have no number for $who. Save them in contacts, or turn on " +
-                            "screen access in Advanced and I will search inside the app myself.",
+                        say = when {
+                            !cloudRoute -> "I have no number for $who. Save them in contacts, or choose AUTO/WHISPER for screen search."
+                            !providerKeyConfigured -> "I have no number for $who. Save them in contacts, or configure a provider key for screen search."
+                            !screenAccessEnabled -> "I have no number for $who. Save them in contacts, or turn on screen access in Advanced."
+                            else -> "I could not start screen search for $who. Save them in contacts or try again."
+                        },
                         source = "LOCAL",
                     )
                 }
@@ -697,9 +720,8 @@ object IntentRouter {
         }
 
         // ---- calling ----------------------------------------------------------------------------
-        Regex("^(?:call|phone|dial|ring)\\s+(?:to\\s+)?(.+)$").find(clean)?.let { match ->
-            val who = match.groupValues[1].trim()
-            if (who.isNotBlank() && who !in setOf("me", "back")) {
+        VoiceParsing.parseCallTarget(clean)?.let { who ->
+            if (who.isNotBlank() && who !in setOf("me", "back", "मुझे")) {
                 return said(
                     "CALL",
                     "calling",
@@ -766,6 +788,14 @@ object IntentRouter {
                 .substringBeforeLast(" in ", "")
                 .trim()
             val target = match.groupValues[2].trim()
+            if (!aiReady(context)) {
+                val reason = if (!VoiceSettings.route(context).allowsCloudPlanner) {
+                    "Translation needs an online voice route. Choose AUTO or WHISPER to send it to your configured provider."
+                } else {
+                    "Translation needs a configured AI provider key. Add one in Settings, then try again."
+                }
+                return answer("TRANSLATION UNAVAILABLE", reason, subtitle = "CLOUD FEATURE")
+            }
             return answer(
                 "TRANSLATE",
                 "Translating to $target.",
@@ -867,7 +897,8 @@ object IntentRouter {
         when (hit?.intent) {
             PhraseIntent.TORCH -> {
                 val off = clean.contains("off") || clean.contains("band") ||
-                    clean.contains("close") || clean.contains("bujha")
+                    clean.contains("close") || clean.contains("bujha") ||
+                    clean.contains("बंद") || clean.contains("बुझा")
                 val action = if (off) ActionType.TORCH_OFF else ActionType.TORCH_ON
                 return said(
                     if (off) "TORCH OFF" else "TORCH ON",
@@ -878,7 +909,7 @@ object IntentRouter {
 
             PhraseIntent.DND -> {
                 val off = clean.contains("off") || clean.contains("disable") ||
-                    clean.contains("band") || clean.contains("chalu")
+                    clean.contains("band") || clean.contains("chalu") || clean.contains("बंद")
                 val param = if (off) "off" else "silent"
                 return said(
                     if (off) "DND OFF" else "DND ON",
@@ -1217,8 +1248,8 @@ object IntentRouter {
                     return said("CALENDAR", "calendar_permission", subtitle = "CALENDAR")
                 }
                 val mode = when {
-                    clean.contains("next") || clean.contains("agla") -> "next"
-                    clean.contains("week") || clean.contains("hafte") -> "week"
+                    clean.contains("next") || clean.contains("agla") || clean.contains("अगली") -> "next"
+                    clean.contains("week") || clean.contains("hafte") || clean.contains("हफ्ते") -> "week"
                     else -> "today"
                 }
                 val events = when (mode) {
@@ -1680,15 +1711,26 @@ object IntentRouter {
     }
 
     private fun openTargetOf(clean: String): String? {
-        val pattern = Regex("^(?:open|launch|start|run|khol|kholo|khol do|open up)\\s+(.+)$")
-        val raw = pattern.find(clean)?.groupValues?.getOrNull(1)?.trim() ?: return null
+        val prefix = Regex("^(?:open|launch|start|run|khol|kholo|khol do|open up|खोलो|खोल दो|खोलिए)\\s+(.+)$")
+        val suffix = Regex("^(.+?)\\s+(?:खोलो|खोल दो|खोलिए)$")
+        val raw = (prefix.find(clean)?.groupValues?.getOrNull(1)
+            ?: suffix.find(clean)?.groupValues?.getOrNull(1))?.trim() ?: return null
         val target = raw
             .removePrefix("the ")
             .removePrefix("my ")
             .removeSuffix(" app")
             .removeSuffix(" please")
             .trim()
-        return target.ifBlank { null }
+        return when (target) {
+            "व्हाट्सएप", "व्हाट्सऐप" -> "whatsapp"
+            "टेलीग्राम" -> "telegram"
+            "इंस्टाग्राम" -> "instagram"
+            "यूट्यूब" -> "youtube"
+            "गूगल मैप्स", "गूगल मैप" -> "maps"
+            "सेटिंग", "सेटिंग्स" -> "settings"
+            "कैमरा" -> "camera"
+            else -> target.ifBlank { null }
+        }
     }
 
     private fun filesQueryOf(clean: String): String? {

@@ -31,8 +31,9 @@ import java.util.Locale
  *  - **facts** — the small permanent things: a name, a city, a birthday, a dislike;
  *  - **impressions** — what he has noticed: who messaged recently, how the day is going.
  *
- * Nothing here goes anywhere. It is written to one preferences file, it is never uploaded, and
- * [forget] wipes it.
+ * The stored source of truth stays in app-private preferences and [forget] wipes it. On AUTO/WHISPER,
+ * selected context can be included in the configured provider's planning prompt; DEVICE/OFFLINE never
+ * call that planner. The Privacy screen describes this route-dependent sharing.
  */
 object Brain {
 

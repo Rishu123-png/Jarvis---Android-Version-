@@ -51,6 +51,12 @@ enum class Lang(
 
     val locale: Locale get() = Locale.forLanguageTag(tag)
 
+    /** A stable per-language preference key; unlike [tag], it distinguishes Hindi from Hinglish. */
+    val storedId: String get() = name.lowercase(Locale.US)
+
+    /** The recognition locale; Hinglish uses Roman-script Indian English recognition on purpose. */
+    val recognizerTag: String get() = if (this == HINGLISH) "en-IN" else tag
+
     /** The language a canned reply will actually be spoken in. */
     val replyLang: Lang
         get() = when {
@@ -63,6 +69,11 @@ enum class Lang(
     companion object {
         fun fromTag(tag: String?): Lang =
             entries.firstOrNull { it.tag.equals(tag, ignoreCase = true) } ?: EN
+
+        /** Reads the new stable ids and the old locale tags retained by earlier app versions. */
+        fun fromStoredId(value: String?): Lang =
+            entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+                ?: fromTag(value)
     }
 }
 
@@ -364,7 +375,7 @@ object SpokenLanguage {
 
     fun remember(context: Context, lang: Lang) {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY, lang.tag).apply()
+            .edit().putString(KEY, lang.storedId).apply()
     }
 
     /**
@@ -381,11 +392,11 @@ object SpokenLanguage {
         val raw = context.applicationContext
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY, null) ?: return null
-        val lang = Lang.fromTag(raw)
-        return if (lang == Lang.HINGLISH) "en-IN" else lang.tag
+        val lang = Lang.fromStoredId(raw)
+        return lang.recognizerTag
     }
 
-    fun last(context: Context): Lang = Lang.fromTag(
+    fun last(context: Context): Lang = Lang.fromStoredId(
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY, null),
     )

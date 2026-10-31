@@ -319,8 +319,10 @@ fun PrivacyScreen(
         // ---------------------------------------------------------------- speech engine
         HudPanel(label = "SPEECH ENGINE", accent = ElectricCyan) {
             Text(
-                text = "Which ear JARVIS uses. Whisper runs on your provider with your key; the device " +
-                    "recognizer stays on the phone, and its offline mode asks for an on-device model.",
+                text = "AUTO/WHISPER can send audio, recognized text, selected memory and screen-task text " +
+                    "to your configured AI provider. DEVICE uses the phone recognizer and local parser; " +
+                    "Android may still use its own network service. OFFLINE requires a dedicated on-device " +
+                    "recognizer and keeps planning local. Explicit web, research, weather or location requests may still use network.",
                 style = HudType.valueSmall,
                 color = TextMuted,
             )

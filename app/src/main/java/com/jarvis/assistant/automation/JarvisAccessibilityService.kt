@@ -20,19 +20,17 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Accessibility service used **only** for two narrow automation primitives:
+ * Accessibility service used only when explicitly requested for phone automation:
  *
  *  1. **System gestures** — back, home, recents, notification shade, quick settings, lock screen.
- *  2. **Press a labelled control** — a single tap-equivalent on a node whose text or description
- *     exactly matches what the operator typed, in the currently active window.
+ *  2. **Screen tasks** — read labels from the foreground window, type requested text into a focused
+ *     field, or press a visible control while a confirmed task is running.
  *
- * Both are gated: the service does nothing at all until the user enables it in system settings, and
- * [pressByText] additionally requires the separate "press on screen" tier to be switched on inside
- * JARVIS, plus per-step confirmation before every use.
- *
- * Deliberately out of scope: reading screen content in the background, scraping text, monitoring
- * typing, gesture dispatch, or navigating arbitrary UI trees. If a routine needs those, it needs a
- * real app integration instead.
+ * It does nothing until enabled in system settings. The accessibility event callback remains empty:
+ * screen content is read on demand, never continuously in the background. Local "read screen" speaks
+ * labels on-device. Screen-agent tasks are blocked in DEVICE/OFFLINE routes and need explicit voice
+ * confirmation before the first action. In AUTO or WHISPER, labels/OCR used for a screen task are sent
+ * to the configured AI provider to choose actions.
  */
 class JarvisAccessibilityService : AccessibilityService() {
 

@@ -111,16 +111,26 @@ object VoiceController {
 
     /**
      * The wake word fired and the sentence was already captured, "hey jarvis open whatsapp" in one
-     * breath. Nothing is recorded here: the audio goes straight to transcription, so the words are
-     * never asked for twice.
+     * breath. Cloud-enabled speech routes transcribe it directly. DEVICE/OFFLINE never upload these
+     * bytes; Android's live recognizer cannot consume this PCM, so the operator is prompted to repeat.
      */
     fun submitCaptured(context: Context, pcm: ByteArray) {
         val app = context.applicationContext
+        val route = VoiceSettings.route(app)
+        val whisperReady = Whisper.ready(app)
 
-        // Without a speech endpoint the captured bytes cannot become words. Fall back to the normal
-        // listening session rather than silently dropping what was said.
-        if (!Whisper.ready(app)) {
-            startListening(app)
+        // Captured wake audio may leave the phone only on an explicitly cloud-enabled route.
+        // DEVICE/OFFLINE reopen the microphone for a repeat instead of uploading the PCM.
+        if (!route.allowsProviderTranscription) {
+            startListening(app, "Wake audio stays on-device. Say the command again.")
+            return
+        }
+        if (route == SpeechRoute.WHISPER && !whisperReady) {
+            note(app, "Whisper needs a configured provider with a supported speech endpoint.", "WHISPER")
+            return
+        }
+        if (!whisperReady) {
+            startListening(app, "Wake audio was not transcribed. Say the command again.")
             return
         }
 
@@ -205,7 +215,7 @@ object VoiceController {
     // Listening
     // ---------------------------------------------------------------------------------------------
 
-    private fun startListening(context: Context) {
+    private fun startListening(context: Context, notice: String? = null) {
         taskId += 1
         val id = taskId
         conversationTurns = 0
@@ -226,18 +236,48 @@ object VoiceController {
         }
 
         val route = VoiceSettings.route(context)
-        val useWhisper = when (route) {
-            SpeechRoute.WHISPER -> Whisper.ready(context)
-            SpeechRoute.DEVICE, SpeechRoute.OFFLINE -> false
-            SpeechRoute.AUTO -> Whisper.ready(context)
+        val whisperReady = Whisper.ready(context)
+        if (route == SpeechRoute.WHISPER && !whisperReady) {
+            _state.value = VoiceTask(
+                taskId = id,
+                phase = VoicePhase.FAILED,
+                title = "WHISPER",
+                error = "Whisper needs a configured provider with a supported speech endpoint.",
+                reply = "Add a compatible provider key or choose AUTO/DEVICE.",
+            )
+            return
         }
+        if (route == SpeechRoute.OFFLINE && !LocalSpeech.offlineRecognitionAvailable(context)) {
+            _state.value = VoiceTask(
+                taskId = id,
+                phase = VoicePhase.FAILED,
+                title = "OFFLINE SPEECH",
+                error = "This phone has no dedicated offline speech model.",
+                reply = "Choose DEVICE or install an offline speech model.",
+            )
+            return
+        }
+        val useWhisper = route.allowsProviderTranscription && whisperReady
 
         if (useWhisper) {
             // The operator should not have to tap to say they have finished: a pause ends it.
-            val recorder = MicRecorder(onQuiet = {
+            val recorder = MicRecorder(onAutoStop = { reason ->
                 scope.launch {
-                    if (id == taskId && _state.value.phase == VoicePhase.LISTENING) {
-                        stopListening(context)
+                    if (id != taskId || _state.value.phase != VoicePhase.LISTENING) return@launch
+                    when (reason) {
+                        MicRecorder.EndReason.SPEECH_FINISHED -> stopListening(context)
+                        MicRecorder.EndReason.NO_SPEECH,
+                        MicRecorder.EndReason.READ_ERROR -> {
+                            val active = mic
+                            mic = null
+                            if (active != null) withContext(Dispatchers.IO) { active.cancel() }
+                            val (title, message) = when (reason) {
+                                MicRecorder.EndReason.NO_SPEECH -> "NO SPEECH" to "I did not hear a command. Tap and try again."
+                                MicRecorder.EndReason.READ_ERROR -> "MICROPHONE" to "The microphone stream stopped unexpectedly."
+                                MicRecorder.EndReason.SPEECH_FINISHED -> "VOICE" to "Recording finished."
+                            }
+                            fail(id, title, message)
+                        }
                     }
                 }
             })
@@ -256,22 +296,27 @@ object VoiceController {
             _state.value = VoiceTask(
                 taskId = id,
                 phase = VoicePhase.LISTENING,
-                subtitle = "TAP TO STOP",
-                source = "WHISPER",
+                title = if (notice.isNullOrBlank()) "" else "WAKE AUDIO",
+                subtitle = if (notice.isNullOrBlank()) "TAP TO STOP" else "SAY COMMAND AGAIN",
+                reply = notice.orEmpty(),
+                source = VoiceSettings.activeEngine(context),
             )
         } else {
             val session = LocalSpeech(
                 context,
                 preferOffline = route == SpeechRoute.OFFLINE,
                 languageTag = SpokenLanguage.recognizerTag(context),
+                requireOffline = route == SpeechRoute.OFFLINE,
             )
             session.start()
             local = session
             _state.value = VoiceTask(
                 taskId = id,
                 phase = VoicePhase.LISTENING,
-                subtitle = "TAP TO STOP",
-                source = if (route == SpeechRoute.OFFLINE) "DEVICE · OFFLINE" else "DEVICE",
+                title = if (notice.isNullOrBlank()) "" else "WAKE AUDIO",
+                subtitle = if (notice.isNullOrBlank()) "TAP TO STOP" else "SAY COMMAND AGAIN",
+                reply = notice.orEmpty(),
+                source = VoiceSettings.activeEngine(context),
             )
         }
     }
@@ -389,61 +434,41 @@ object VoiceController {
             phase = if (plan.steps.isEmpty() && !hasScreenTask) VoicePhase.DONE else VoicePhase.RUNNING,
         )
 
-        runCatching {
-            VoiceMemory.remember(context, heard, plan.title)
-            FollowUp.remember(
-                context,
-                FollowUp.Turn(
-                    heard = heard,
-                    title = plan.title,
-                    said = plan.say,
-                    slot = plan.steps.firstOrNull()?.param.orEmpty(),
-                ),
-            )
-            // The thread is what makes the next sentence make sense, and `absorb` is what turns a
-            // plain sentence into a memory ("my sister is Khushi", "I live in Delhi").
-            Brain.remember(
-                context,
-                Brain.Turn(
-                    heard = heard,
-                    reply = plan.say,
-                    kind = if (plan.steps.isEmpty()) Brain.Kind.CHAT else Brain.Kind.COMMAND,
-                    title = plan.title,
-                ),
-            )
-            Brain.absorb(context, heard)
-            // The full record of the conversation, and the relationship it belongs to. Both are
-            // written off the main thread: they are short appends, but the reply is already on
-            // screen, so nothing waits for them.
-            withContext(Dispatchers.IO) {
-                ConversationLog.append(
-                    context = context,
-                    heard = heard,
-                    reply = plan.say,
-                    title = plan.title,
-                    command = plan.steps.isNotEmpty(),
-                )
-            }
-            // One finished turn is one line in the relationship: turn count, streak, and the
-            // feeling heard in it, so the next greeting can ask about it once.
-            Feelings.recordTurn(context, affect)
-        }
-        lastHeard = heard
-        val spokenLang = Language.detect(heard)
+        val recordHeard = plan.sourceHeard?.takeIf { it.isNotBlank() } ?: heard
+        val isCommand = plan.steps.isNotEmpty() || hasScreenTask || plan.sourceHeard != null
+        lastHeard = recordHeard
+        val spokenLang = Language.detect(recordHeard)
         SpokenLanguage.remember(context, spokenLang)
         val spokenLanguage = spokenLang.tag
 
         if (plan.steps.isEmpty() && !hasScreenTask) {
-            continueOrDismiss(context, id, plan.spoken ?: plan.say, spokenLang, plan.title, tone)
+            val answer = plan.spoken ?: plan.say
+            rememberTurn(
+                context = context,
+                heard = recordHeard,
+                title = plan.title,
+                reply = answer,
+                command = isCommand,
+                rememberForRepeat = false,
+                affect = affect,
+            )
+            continueOrDismiss(context, id, answer, spokenLang, plan.title, tone)
             return
         }
 
-        // The one step that waits for a yes. Asked once, and the plan is stored exactly as it was
-        // planned, so the answer runs what the operator heard rather than a fresh guess. Everything
-        // else on the phone runs on the first word.
+        // Every screen goal may type, submit or send; it is never covered by a harmless OPEN_APP
+        // step. Gate the whole plan before it touches the phone.
         val askable = if (plan.confirmed) null else ConfirmPolicy.firstAskable(plan.steps)
-        if (askable != null) {
-            val question = ConfirmPolicy.question(askable, spokenLang)
+        val needsScreenConfirmation = !plan.confirmed &&
+            ConfirmPolicy.needsScreenConfirmation(plan.screenGoal)
+        if (askable != null || needsScreenConfirmation) {
+            val question = when {
+                askable != null && needsScreenConfirmation ->
+                    ConfirmPolicy.question(askable, spokenLang) + " " +
+                        ConfirmPolicy.screenTaskQuestion(plan.screenGoal.orEmpty(), spokenLang)
+                askable != null -> ConfirmPolicy.question(askable, spokenLang)
+                else -> ConfirmPolicy.screenTaskQuestion(plan.screenGoal.orEmpty(), spokenLang)
+            }
             PendingConfirm.ask(
                 context,
                 PendingConfirm.Pending(
@@ -453,6 +478,7 @@ object VoiceController {
                     say = plan.say,
                     steps = plan.steps.map { PendingConfirm.Step(it.action.id, it.param, it.label) },
                     screenGoal = plan.screenGoal,
+                    heard = recordHeard,
                 ),
             )
             _state.value = _state.value.copy(
@@ -485,9 +511,30 @@ object VoiceController {
             }
             val said = plan.spoken ?: plan.say
             val answer = if (tail.isNullOrBlank()) said else "${said.trim()} $tail"
+            rememberTurn(
+                context = context,
+                heard = recordHeard,
+                title = plan.title,
+                reply = answer,
+                command = isCommand,
+                rememberForRepeat = isCommand,
+                affect = affect,
+                slot = plan.steps.firstOrNull()?.param.orEmpty().ifBlank { plan.screenGoal.orEmpty() },
+            )
             _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = answer, error = null)
             continueOrDismiss(context, id, answer, spokenLang, plan.title, tone)
         } else {
+            // Keep an honest failure in context, but never teach repeat/follow-up memory that this
+            // command succeeded.
+            rememberTurn(
+                context = context,
+                heard = recordHeard,
+                title = plan.title,
+                reply = failure,
+                command = isCommand,
+                rememberForRepeat = false,
+                affect = affect,
+            )
             // A failure ends the session: holding the ear open after something broke would invite
             // a second doomed attempt without explaining the first.
             conversationTurns = 0
@@ -505,6 +552,52 @@ object VoiceController {
     // ---------------------------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------------------------
+
+    /** Records outcomes only after the turn is actually answered, approved, and executed. */
+    private suspend fun rememberTurn(
+        context: Context,
+        heard: String,
+        title: String,
+        reply: String,
+        command: Boolean,
+        rememberForRepeat: Boolean,
+        affect: Feelings.Affect,
+        slot: String = "",
+    ) {
+        try {
+            if (rememberForRepeat) {
+                VoiceMemory.remember(context, heard, title)
+                FollowUp.remember(
+                    context,
+                    FollowUp.Turn(heard = heard, title = title, said = reply, slot = slot),
+                )
+            }
+            Brain.remember(
+                context,
+                Brain.Turn(
+                    heard = heard,
+                    reply = reply,
+                    kind = if (command) Brain.Kind.COMMAND else Brain.Kind.CHAT,
+                    title = title,
+                ),
+            )
+            if (!command || rememberForRepeat) Brain.absorb(context, heard)
+            withContext(Dispatchers.IO) {
+                ConversationLog.append(
+                    context = context,
+                    heard = heard,
+                    reply = reply,
+                    title = title,
+                    command = command,
+                )
+            }
+            Feelings.recordTurn(context, affect)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (t: Throwable) {
+            // Memory is best-effort and must never turn a completed phone action into a failure.
+        }
+    }
 
     /**
      * The fixed steps, then the screen-aware loop if the request needed one.
@@ -684,21 +777,22 @@ object VoiceController {
      */
     private suspend fun captureFollowUp(context: Context, windowMs: Long): String? {
         val route = VoiceSettings.route(context)
-        val useWhisper = when (route) {
-            SpeechRoute.WHISPER -> Whisper.ready(context)
-            SpeechRoute.DEVICE, SpeechRoute.OFFLINE -> false
-            SpeechRoute.AUTO -> Whisper.ready(context)
-        }
+        val whisperReady = Whisper.ready(context)
+        if (route == SpeechRoute.WHISPER && !whisperReady) return null
+        val useWhisper = route.allowsProviderTranscription && whisperReady
         return if (useWhisper) captureWithWhisper(context, windowMs)
         else captureWithDevice(context, windowMs)
     }
 
     /** The device recognizer ends on its own silence, which is exactly what a window needs. */
     private suspend fun captureWithDevice(context: Context, windowMs: Long): String? {
+        val route = VoiceSettings.route(context)
+        if (route == SpeechRoute.OFFLINE && !LocalSpeech.offlineRecognitionAvailable(context)) return null
         val session = LocalSpeech(
             context,
-            preferOffline = VoiceSettings.preferOffline(context),
+            preferOffline = route == SpeechRoute.OFFLINE,
             languageTag = SpokenLanguage.recognizerTag(context),
+            requireOffline = route == SpeechRoute.OFFLINE,
         )
         session.start()
         local = session

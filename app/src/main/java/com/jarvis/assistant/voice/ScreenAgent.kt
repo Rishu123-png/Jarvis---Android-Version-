@@ -3,7 +3,6 @@ package com.jarvis.assistant.voice
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import com.jarvis.assistant.ai.AiClient
-import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.ai.AiMessage
 import com.jarvis.assistant.ai.AiResult
 import com.jarvis.assistant.automation.AccessibilityStatus
@@ -63,6 +62,11 @@ object ScreenAgent {
         goal: String,
         onEvent: (Event) -> Unit,
     ): String? {
+        // Reading screen text and asking the planner what to press are cloud operations. Fail closed
+        // before inspecting the accessibility tree or OCR when the selected route is local-only.
+        if (!VoiceSettings.route(context).allowsCloudPlanner) {
+            return "Screen tasks need the cloud route. Your screen was not read or uploaded."
+        }
         if (!AccessibilityStatus.isServiceEnabled(context)) {
             return "Screen control is off, so I cannot see the app to finish this."
         }
@@ -71,6 +75,9 @@ object ScreenAgent {
         val startedAt = System.currentTimeMillis()
 
         repeat(MAX_STEPS) { index ->
+            if (!VoiceSettings.route(context).allowsCloudPlanner) {
+                return "The selected route changed to local-only. I stopped before another screen read."
+            }
             if (System.currentTimeMillis() - startedAt > MAX_TASK_MS) {
                 return "That was taking too long, so I stopped. Say it again if you want me to carry on."
             }
@@ -192,7 +199,7 @@ object ScreenAgent {
         history: List<String>,
         viaOcr: Boolean,
     ): Decision? {
-        if (AiKeyStore.config(context) == null) return null
+        if (!IntentRouter.aiReady(context)) return null
 
         val done = if (history.isEmpty()) "- nothing yet" else history.joinToString("\n") { "- $it" }
         val visible = if (labels.isEmpty()) "(nothing readable)" else labels.joinToString(" | ")

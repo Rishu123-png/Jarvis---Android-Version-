@@ -22,6 +22,7 @@ import com.jarvis.assistant.MainActivity
 import com.jarvis.assistant.R
 import com.jarvis.assistant.voice.AssistantHandoff
 import com.jarvis.assistant.voice.Presence
+import com.jarvis.assistant.voice.VoiceController
 import com.jarvis.assistant.voice.WakeHandoff
 import org.vosk.Model
 import org.vosk.Recognizer
@@ -190,22 +191,40 @@ class WakeWordService : Service() {
         val ring = WakeCapture.Ring()
         val command = ByteArrayOutputStream()
         var tracker: WakeCapture.Tracker? = null
+        var emptyReads = 0
 
         while (listening) {
             val read = try {
                 device.read(chunk, 0, chunk.size)
             } catch (t: Throwable) {
-                -1
+                AudioRecord.ERROR_INVALID_OPERATION
             }
 
             if (read <= 0) {
                 if (!listening) break
-                if (read == AudioRecord.ERROR_DEAD_OBJECT) {
-                    main.post { fail("The microphone was taken by another app.") }
-                    return
+                if (read == 0) {
+                    emptyReads++
+                    if (emptyReads >= EMPTY_READ_LIMIT) {
+                        main.post { fail("The microphone stopped delivering audio.") }
+                        return
+                    }
+                    try {
+                        Thread.sleep(EMPTY_READ_BACKOFF_MS)
+                    } catch (interrupted: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        return
+                    }
+                    continue
                 }
-                continue
+                val reason = if (read == AudioRecord.ERROR_DEAD_OBJECT) {
+                    "The microphone was taken by another app."
+                } else {
+                    "The microphone read failed (code $read)."
+                }
+                main.post { fail(reason) }
+                return
             }
+            emptyReads = 0
 
             val chunkMs = read * 1_000 / (SAMPLE_RATE.toInt() * 2)
             val loudness = try {
@@ -325,16 +344,24 @@ class WakeWordService : Service() {
         scheduleRearm()
     }
 
-    private fun scheduleRearm() {
+    private fun scheduleRearm(delayMs: Long = REARM_MS) {
+        rearm?.let(main::removeCallbacks)
         val again = Runnable {
-            handled = false
             rearm = null
-            if (WakeWord.isEnabled(applicationContext)) {
-                WakeWordModel.installedDir(applicationContext)?.let { listen(it.path) }
+            if (!WakeWord.isEnabled(applicationContext)) return@Runnable
+
+            // A conversation follow-up may still own the microphone. Keep the wake service paused
+            // until the voice surface is idle instead of racing it for AudioRecord.
+            if (VoiceController.state.value.phase.isBusy) {
+                scheduleRearm(REARM_RETRY_MS)
+                return@Runnable
             }
+
+            handled = false
+            WakeWordModel.installedDir(applicationContext)?.let { listen(it.path) }
         }
         rearm = again
-        main.postDelayed(again, REARM_MS)
+        main.postDelayed(again, delayMs)
     }
 
     /** A failure is final for this run: say why, drop the foreground state, and stop. */
@@ -413,5 +440,8 @@ class WakeWordService : Service() {
 
         /** Long enough for the app to take the microphone and finish with it. */
         private const val REARM_MS = 10_000L
+        private const val REARM_RETRY_MS = 2_000L
+        private const val EMPTY_READ_LIMIT = 10
+        private const val EMPTY_READ_BACKOFF_MS = 20L
     }
 }

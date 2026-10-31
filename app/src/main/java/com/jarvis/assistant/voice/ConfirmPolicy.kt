@@ -6,12 +6,12 @@ import java.util.Locale
 /**
  * The only things that wait for a yes.
  *
- * Everything else runs the moment it is said. These few do not, because a misheard word cannot be
- * taken back: a call that was placed, a message that reached someone, a contact or an event that was
- * written into the phone, or a shell command that wipes something.
+ * Reversible device controls run immediately. Calls, messages, records, destructive shell commands,
+ * and every screen-agent goal wait for a yes: a misheard word must not reach another person, write
+ * data, wipe something, or start interacting with an app.
  *
- * The check is on the planned step, before anything runs, so the question is asked once and the plan
- * is stored whole. There is no second guess after the yes.
+ * The check is on the planned step or screen goal, before anything runs, so the question is asked
+ * once and the plan is stored whole. There is no second guess after the yes.
  */
 object ConfirmPolicy {
 
@@ -51,6 +51,19 @@ object ConfirmPolicy {
     /** The first step that needs a yes, if any. */
     fun firstAskable(steps: List<PlannedStep>): PlannedStep? =
         steps.firstOrNull { needsAsking(it.action, it.param) }
+
+    /** Screen automation can type, submit or send, so every screen goal needs explicit approval. */
+    fun needsScreenConfirmation(screenGoal: String?): Boolean = !screenGoal.isNullOrBlank()
+
+    /** States the actual screen goal so the yes is informed, not a blanket permission. */
+    fun screenTaskQuestion(screenGoal: String, lang: Lang): String {
+        val goal = screenGoal.trim().replace(Regex("\\s+"), " ").take(120)
+        return when (lang) {
+            Lang.HI -> "स्क्रीन पर यह काम करूँ: \"$goal\"? हाँ कहिए।"
+            Lang.HINGLISH -> "Screen par yeh kaam karun: \"$goal\"? Haan kahiye."
+            else -> "Use the screen to: \"$goal\"? Say yes to continue."
+        }
+    }
 
     /**
      * One short sentence the operator can answer. Kept at a handful of words so it is spoken before
