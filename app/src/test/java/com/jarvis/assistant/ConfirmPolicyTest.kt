@@ -28,6 +28,16 @@ class ConfirmPolicyTest {
     }
 
     @Test
+    fun everyScreenTaskNeedsExplicitApprovalAndNamesTheGoal() {
+        val goal = "search for Rahul, open chat, type hello and press send"
+        assertTrue(ConfirmPolicy.needsScreenConfirmation(goal))
+        assertFalse(ConfirmPolicy.needsScreenConfirmation(null))
+        val question = ConfirmPolicy.screenTaskQuestion(goal, Lang.EN)
+        assertTrue(question.contains(goal))
+        assertTrue(question.contains("Say yes"))
+    }
+
+    @Test
     fun ordinaryControlDoesNotAsk() {
         assertFalse(ConfirmPolicy.needsAsking(ActionType.TORCH_ON, ""))
         assertFalse(ConfirmPolicy.needsAsking(ActionType.OPEN_APP, "com.whatsapp"))

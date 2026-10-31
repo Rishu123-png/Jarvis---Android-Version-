@@ -7,8 +7,12 @@ import android.speech.tts.Voice
 import com.jarvis.assistant.voice.Feelings
 import com.jarvis.assistant.voice.VoiceGender
 import com.jarvis.assistant.voice.VoiceSettings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
@@ -17,9 +21,9 @@ import java.util.UUID
 /**
  * Text-to-speech for the SAY step.
  *
- * Deliberately narrow: one engine, initialised on first use, flushed per utterance, and always
- * bounded by a timeout so a device with no voice data cannot stall a routine. No audio is recorded
- * and no microphone permission is involved.
+ * Deliberately narrow: one engine, initialised on first use, and all utterances serialized through
+ * one mutex. Each call has its own utterance id and bounded wait; overlapping notification/nudge and
+ * voice replies cannot replace one another's listener or flush an active sentence.
  *
  * The voice itself is chosen, not inherited: most phones default to a bright female voice, so a
  * male voice is preferred for the language being spoken. When the device has no male voice for that
@@ -27,6 +31,8 @@ import java.util.UUID
  * pitch still sounds like the same one.
  */
 object SpeechOut {
+
+    private val speechMutex = Mutex()
 
     private var engine: TextToSpeech? = null
     private var ready: CompletableDeferred<Boolean>? = null
@@ -104,11 +110,11 @@ object SpeechOut {
         language: String? = null,
         /** Mood colouring: concern is slower and softer, playfulness a touch quicker. */
         tone: Feelings.Tone = Feelings.Tone.NEUTRAL,
-    ): String? {
+    ): String? = speechMutex.withLock {
         val trimmed = text.trim()
-        if (trimmed.isEmpty()) return "Nothing to say"
+        if (trimmed.isEmpty()) return@withLock "Nothing to say"
 
-        val tts = ensureEngine(context) ?: return "No speech engine available on this device"
+        val tts = ensureEngine(context) ?: return@withLock "No speech engine available on this device"
         applyLanguage(tts, language)
         applyVoice(context, tts)
         applyTone(tts, tone)
@@ -118,26 +124,38 @@ object SpeechOut {
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(id: String?) = Unit
             override fun onDone(id: String?) {
-                if (!done.isCompleted) done.complete(true)
+                if (id == utteranceId && !done.isCompleted) done.complete(true)
+            }
+
+            override fun onStop(id: String?, interrupted: Boolean) {
+                if (id == utteranceId && !done.isCompleted) done.complete(false)
             }
 
             @Deprecated("Required by the platform interface")
             override fun onError(id: String?) {
-                if (!done.isCompleted) done.complete(false)
+                if (id == utteranceId && !done.isCompleted) done.complete(false)
             }
 
             override fun onError(id: String?, errorCode: Int) {
-                if (!done.isCompleted) done.complete(false)
+                if (id == utteranceId && !done.isCompleted) done.complete(false)
             }
         })
 
-        return try {
+        try {
             val queued = withContext(Dispatchers.Main) {
                 tts.speak(trimmed.take(600), TextToSpeech.QUEUE_FLUSH, null, utteranceId)
             }
-            if (queued != TextToSpeech.SUCCESS) return "Speech engine rejected the request"
-            val finished = withTimeoutOrNull(timeoutMillis) { done.await() } == true
-            if (finished) null else "Speech did not finish in time"
+            if (queued != TextToSpeech.SUCCESS) return@withLock "Speech engine rejected the request"
+            val finished = withTimeoutOrNull(timeoutMillis) { done.await() }
+            if (finished == true) {
+                null
+            } else {
+                withContext(Dispatchers.Main) { tts.stop() }
+                if (finished == false) "Speech was interrupted" else "Speech did not finish in time"
+            }
+        } catch (cancelled: CancellationException) {
+            withContext(NonCancellable + Dispatchers.Main) { runCatching { tts.stop() } }
+            throw cancelled
         } catch (t: Throwable) {
             "Speech failed: ${t.javaClass.simpleName}"
         }

@@ -21,6 +21,7 @@ class PendingConfirmTest {
         subtitle = "AI · 1 STEP",
         say = "Sending.",
         steps = listOf(PendingConfirm.Step("message", "whatsapp|Divik|on my way", "SEND")),
+        heard = "send Divik on my way",
         at = at,
     )
 
@@ -35,6 +36,7 @@ class PendingConfirmTest {
         assertEquals("message", back.steps[0].action)
         assertEquals("whatsapp|Divik|on my way", back.steps[0].param)
         assertEquals("SEND", back.steps[0].label)
+        assertEquals("send Divik on my way", back.heard)
         assertNull(back.screenGoal)
         assertTrue(back.isFresh)
     }

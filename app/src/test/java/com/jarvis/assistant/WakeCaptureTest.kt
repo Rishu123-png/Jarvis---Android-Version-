@@ -142,6 +142,26 @@ class WakeCaptureTest {
     }
 
     @Test
+    fun terminalDecisionStaysTerminal() {
+        val tracker = WakeCapture.Tracker()
+        assertEquals(WakeCapture.Decision.NOTHING, tracker.feed(quiet(), WakeCapture.WAIT_FOR_SPEECH_MS))
+        assertEquals(WakeCapture.Decision.NOTHING, tracker.feed(loud(), 1_000))
+    }
+
+    @Test
+    fun aTappedRecorderCanUseThirtySecondsInsteadOfWakeWordCeiling() {
+        val tracker = WakeCapture.Tracker(maxMs = 30_000, waitForSpeechMs = 5_000)
+        repeat(90) {
+            assertEquals(WakeCapture.Decision.CAPTURING, tracker.feed(loud(), 100))
+        }
+        var decision = WakeCapture.Decision.CAPTURING
+        repeat(210) {
+            if (decision == WakeCapture.Decision.CAPTURING) decision = tracker.feed(loud(), 100)
+        }
+        assertEquals(WakeCapture.Decision.FINISH, decision)
+    }
+
+    @Test
     fun aZeroLengthChunkChangesNothing() {
         val tracker = WakeCapture.Tracker()
         assertEquals(WakeCapture.Decision.CAPTURING, tracker.feed(loud(), 0))

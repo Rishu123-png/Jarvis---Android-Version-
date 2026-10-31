@@ -71,10 +71,12 @@ object WakeCapture {
         private var elapsedMs = 0
         private var speechMs = 0
         private var quietMs = 0
+        private var terminal: Decision? = null
 
         val hasSpeech: Boolean get() = speechMs >= minSpeechMs
 
         fun feed(rms: Double, chunkMs: Int): Decision {
+            terminal?.let { return it }
             if (chunkMs <= 0) return Decision.CAPTURING
             elapsedMs += chunkMs
 
@@ -86,16 +88,22 @@ object WakeCapture {
             }
 
             // A sentence that started and then stopped.
-            if (speechMs >= minSpeechMs && quietMs >= silenceMs) return Decision.FINISH
+            if (speechMs >= minSpeechMs && quietMs >= silenceMs) {
+                terminal = Decision.FINISH
+                return Decision.FINISH
+            }
 
             if (elapsedMs >= maxMs) {
-                return if (speechMs >= minSpeechMs) Decision.FINISH else Decision.NOTHING
+                terminal = if (speechMs >= minSpeechMs) Decision.FINISH else Decision.NOTHING
+                return terminal!!
             }
 
             // Nothing that counts as a command was said — only the wake word, or a cough and a
-            // door. Stop holding the microphone and let the app take over straight away, rather
-            // than sitting on it until the eight-second ceiling.
-            if (speechMs < minSpeechMs && elapsedMs >= waitForSpeechMs) return Decision.NOTHING
+            // door. Stop holding the microphone once the configured initial-speech window closes.
+            if (speechMs < minSpeechMs && elapsedMs >= waitForSpeechMs) {
+                terminal = Decision.NOTHING
+                return Decision.NOTHING
+            }
 
             return Decision.CAPTURING
         }

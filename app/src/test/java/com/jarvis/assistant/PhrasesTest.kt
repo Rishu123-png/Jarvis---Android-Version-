@@ -35,6 +35,19 @@ class PhrasesTest {
     }
 
     @Test
+    fun devanagariCommandsMatchLocalIntents() {
+        assertEquals("गैलरी खोलो", PhraseBook.clean("गैलरी खोलो"))
+        assertEquals(PhraseIntent.GALLERY, intentOf("गैलरी खोलो"))
+        assertEquals(PhraseIntent.BATTERY, intentOf("बैटरी कितनी है"))
+        assertEquals(PhraseIntent.TORCH, intentOf("टॉर्च बंद करो"))
+        assertEquals(PhraseIntent.TIME, intentOf("अभी कितने बजे"))
+        assertEquals(PhraseIntent.OPEN_APP, intentOf("व्हाट्सएप खोलो"))
+        assertEquals(PhraseIntent.MEDIA_PAUSE, intentOf("गाना रोक दो"))
+        assertEquals(PhraseIntent.BACK, intentOf("वापस जाओ"))
+        assertEquals(PhraseIntent.CALENDAR, intentOf("अगली मीटिंग"))
+    }
+
+    @Test
     fun misspellingsStillLand() {
         assertEquals(PhraseIntent.GALLERY, intentOf("open galery"))
         assertEquals(PhraseIntent.IDENTITY, intentOf("who build you"))

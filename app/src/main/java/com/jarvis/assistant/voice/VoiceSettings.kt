@@ -1,21 +1,46 @@
 package com.jarvis.assistant.voice
 
 import android.content.Context
+import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.automation.SpeechOut
 
 /**
  * How JARVIS listens, chosen by the operator and stored locally.
  *
- * [SpeechRoute] is deliberately explicit rather than an "auto" mystery: the operator can see which
- * engine is armed in Settings and in the diagnostics panel, and can force the device recognizer when
- * they would rather not send audio to a provider at all.
+ * [SpeechRoute] controls both speech recognition and whether voice text may reach JARVIS's cloud
+ * planner. DEVICE/OFFLINE use the local command parser; AUTO/WHISPER may use the configured provider.
+ * The Android system recognizer in DEVICE mode can still use its own network service.
  */
 enum class SpeechRoute(val id: String, val label: String, val blurb: String) {
-    AUTO("auto", "AUTO", "Whisper when a key is stored, otherwise the device recognizer"),
-    WHISPER("whisper", "WHISPER", "Always send audio to your AI provider"),
-    DEVICE("device", "DEVICE", "The phone's own recognizer, online"),
-    OFFLINE("offline", "DEVICE OFFLINE", "Ask the phone to work without a network"),
+    AUTO(
+        "auto",
+        "AUTO",
+        "Use provider speech when available; otherwise use the phone. A configured AI provider may receive the transcript.",
+    ),
+    WHISPER(
+        "whisper",
+        "WHISPER",
+        "Use provider speech transcription and its AI planner; this route needs a provider with a supported speech endpoint.",
+    ),
+    DEVICE(
+        "device",
+        "DEVICE",
+        "Use the phone recognizer and local command parser. Android may use its own network service.",
+    ),
+    OFFLINE(
+        "offline",
+        "DEVICE OFFLINE",
+        "Require on-device speech recognition and local command parsing; unavailable if this phone has no offline model.",
+    ),
     ;
+
+    /** DEVICE and OFFLINE routes never send voice text or personal context to JARVIS's AI provider. */
+    val allowsCloudPlanner: Boolean
+        get() = this == AUTO || this == WHISPER
+
+    /** Only these routes may send captured PCM to the configured transcription provider. */
+    val allowsProviderTranscription: Boolean
+        get() = this == AUTO || this == WHISPER
 
     companion object {
         fun fromId(id: String?): SpeechRoute = entries.firstOrNull { it.id == id } ?: AUTO
@@ -77,14 +102,26 @@ object VoiceSettings {
         SpeechOut.forgetVoice()
     }
 
-    /** True when the device recognizer should be told to prefer an offline model. */
+    /** True only when the platform exposes a dedicated on-device speech recognizer. */
     fun preferOffline(context: Context): Boolean = route(context) == SpeechRoute.OFFLINE
 
     /** The engine that will actually run for the next turn, as a label for the UI. */
     fun activeEngine(context: Context): String = when (route(context)) {
-        SpeechRoute.OFFLINE -> "DEVICE · OFFLINE"
-        SpeechRoute.DEVICE -> "DEVICE"
-        SpeechRoute.WHISPER -> if (Whisper.ready(context)) "WHISPER" else "WHISPER · NO KEY"
-        SpeechRoute.AUTO -> if (Whisper.ready(context)) "WHISPER" else "DEVICE"
+        SpeechRoute.OFFLINE -> if (LocalSpeech.offlineRecognitionAvailable(context)) {
+            "DEVICE · OFFLINE · LOCAL PLANNER"
+        } else {
+            "OFFLINE MODEL UNAVAILABLE"
+        }
+        SpeechRoute.DEVICE -> "DEVICE · LOCAL PLANNER"
+        SpeechRoute.WHISPER -> when {
+            Whisper.ready(context) -> "WHISPER · CLOUD PLANNER"
+            AiKeyStore.config(context) != null -> "WHISPER · ENDPOINT UNSUPPORTED"
+            else -> "WHISPER · NO KEY"
+        }
+        SpeechRoute.AUTO -> when {
+            Whisper.ready(context) -> "WHISPER · CLOUD PLANNER"
+            AiKeyStore.config(context) != null -> "DEVICE · CLOUD PLANNER"
+            else -> "DEVICE · LOCAL PLANNER"
+        }
     }
 }

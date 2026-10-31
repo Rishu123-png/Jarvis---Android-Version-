@@ -39,32 +39,36 @@ object PhraseBook {
             "torch", "flashlight", "torch on", "torch off", "turn on the torch", "turn off the torch",
             "light on", "light off", "flashlight on", "flashlight off", "torch chalu", "torch band",
             "torch jalao", "light jalao", "batti on", "batti off",
+            "टॉर्च चालू", "टॉर्च चालू करो", "टॉर्च बंद", "टॉर्च बंद करो", "टॉर्च जलाओ", "टॉर्च बुझाओ",
         ),
         PhraseIntent.DND to listOf(
             "dnd", "do not disturb", "dont disturb", "silent mode", "silent", "disturb mat karo",
             "do not disturb on", "do not disturb off", "phone silent",
+            "परेशान मत करो", "फोन साइलेंट", "डू नॉट डिस्टर्ब",
         ),
         PhraseIntent.SCREENSHOT to listOf(
             "screenshot", "screen shot", "capture screen", "screen capture", "take a screenshot",
-            "screenshot lo", "screenshot le lo", "grab the screen",
+            "screenshot lo", "screenshot le lo", "grab the screen", "स्क्रीनशॉट लो", "स्क्रीनशॉट लो जरा",
         ),
         PhraseIntent.PHOTO to listOf(
             "take a photo", "take photo", "click a photo", "click photo", "take a picture",
             "photo kheencho", "photo lo", "selfie", "capture photo", "camera se photo",
+            "फोटो लो", "फ़ोटो खींचो", "तस्वीर लो", "सेल्फी लो",
         ),
         PhraseIntent.LAST_PHOTO to listOf(
             "last photo", "show my last photo", "newest photo", "recent photo", "latest photo",
-            "last photo dikhao", "show the last picture", "open the last photo",
+            "last photo dikhao", "show the last picture", "open the last photo", "आखिरी फोटो दिखाओ",
         ),
         PhraseIntent.GALLERY to listOf(
             "gallery", "open gallery", "gallery kholo", "photos", "my photos", "show my photos",
             "pictures", "album", "photo gallery", "open photos", "meri gallery",
+            "गैलरी खोलो", "गैलरी दिखाओ", "मेरी गैलरी", "तस्वीरें दिखाओ",
         ),
         PhraseIntent.LAUNCHER to listOf(
             "app drawer", "all apps", "show all apps", "open app drawer", "apps list",
         ),
         PhraseIntent.OPEN_APP to listOf(
-            "open", "launch", "start", "run", "kholo", "khol do", "open up",
+            "open", "launch", "start", "run", "kholo", "khol do", "open up", "खोलो", "खोल दो", "खोलिए",
         ),
         PhraseIntent.FILES_SEARCH to listOf(
             "find file", "search file", "find a file", "where is the file", "locate file",
@@ -87,21 +91,21 @@ object PhraseBook {
         ),
         PhraseIntent.STEPS to listOf(
             "steps", "step count", "how many steps", "my steps", "kitne steps", "kitne kadam",
-            "pedometer", "steps today", "how much have i walked",
+            "pedometer", "steps today", "how much have i walked", "कितने कदम", "आज कितने कदम चले",
         ),
         PhraseIntent.WATER to listOf(
             "drank water", "i drank water", "add water", "log water", "water log", "paani",
-            "paani piya", "one glass of water", "glass of water", "track water",
+            "paani piya", "one glass of water", "glass of water", "track water", "पानी पिया", "पानी दर्ज करो",
         ),
         PhraseIntent.HEART to listOf(
-            "heart rate", "pulse", "my pulse", "dhadkan", "bpm", "heart beat",
+            "heart rate", "pulse", "my pulse", "dhadkan", "bpm", "heart beat", "दिल की धड़कन", "हृदय गति",
         ),
         PhraseIntent.SLEEP to listOf(
-            "how did i sleep", "sleep last night", "my sleep", "neend", "sleep hours",
+            "how did i sleep", "sleep last night", "my sleep", "neend", "sleep hours", "कल रात की नींद",
         ),
         PhraseIntent.HEALTH to listOf(
             "health", "my health", "health summary", "how am i doing", "fitness", "health report",
-            "sehat",
+            "sehat", "सेहत", "स्वास्थ्य",
         ),
         PhraseIntent.CALCULATE to listOf(
             "calculate", "what is", "how much is", "kitna hota hai", "percent of", "percentage of",
@@ -109,54 +113,57 @@ object PhraseBook {
         ),
         PhraseIntent.NOTIF_MISSED to listOf(
             "what did i miss", "what did i miss", "missed notifications", "unread",
-            "kya miss kiya", "any notifications", "what is new", "new messages",
+            "kya miss kiya", "any notifications", "what is new", "new messages", "क्या छूटा", "कोई नोटिफिकेशन है",
         ),
         PhraseIntent.NOTIF_READ to listOf(
             "read my notifications", "read notifications", "read the last message",
-            "last message", "aakhri message", "read that again", "read it to me",
+            "last message", "aakhri message", "read that again", "read it to me", "नोटिफिकेशन पढ़ो", "संदेश पढ़ो",
         ),
         PhraseIntent.REPLY to listOf(
-            "reply", "reply to", "reply back", "answer", "jawab do", "reply karo", "tell them",
+            "reply", "reply to", "reply back", "answer", "jawab do", "reply karo", "tell them", "जवाब दो",
         ),
         PhraseIntent.MEDIA_PLAY to listOf(
             "play", "resume", "play music", "continue playing", "gaana bajao", "music chalao",
+            "गाना चलाओ", "संगीत चलाओ", "म्यूजिक चलाओ",
         ),
         PhraseIntent.MEDIA_PAUSE to listOf(
             "pause", "pause music", "stop music", "roko", "pause karo", "music band",
+            "गाना रोक दो", "गाना बंद करो", "म्यूजिक बंद करो", "संगीत रोक दो",
         ),
         PhraseIntent.MEDIA_NEXT to listOf(
-            "next", "next track", "next song", "skip", "agla gaana", "skip song",
+            "next", "next track", "next song", "skip", "agla gaana", "skip song", "अगला गाना",
         ),
         PhraseIntent.MEDIA_PREVIOUS to listOf(
-            "previous", "previous track", "previous song", "pichla gaana", "go back a song",
+            "previous", "previous track", "previous song", "pichla gaana", "go back a song", "पिछला गाना",
         ),
         PhraseIntent.VOLUME_UP to listOf(
-            "louder", "volume up", "increase volume", "turn it up", "awaaz badhao", "awaaz up",
+            "louder", "volume up", "increase volume", "turn it up", "awaaz badhao", "awaaz up", "आवाज़ बढ़ाओ",
         ),
         PhraseIntent.VOLUME_DOWN to listOf(
-            "quieter", "volume down", "decrease volume", "turn it down", "awaaz kam", "awaaz down",
+            "quieter", "volume down", "decrease volume", "turn it down", "awaaz kam", "awaaz down", "आवाज़ कम करो",
         ),
         PhraseIntent.VOLUME_SET to listOf(
-            "volume", "set volume", "volume level", "awaaz", "sound level",
+            "volume", "set volume", "volume level", "awaaz", "sound level", "वॉल्यूम", "आवाज़",
         ),
         PhraseIntent.LOCK_SCREEN to listOf(
             "lock my phone", "lock the phone", "lock the screen", "screen lock", "phone lock karo",
-            "lock phone",
+            "lock phone", "फोन लॉक करो", "स्क्रीन लॉक करो",
         ),
-        PhraseIntent.HOME to listOf("go home", "home screen", "press home", "home pe jao"),
-        PhraseIntent.BACK to listOf("go back", "press back", "back", "wapas"),
-        PhraseIntent.RECENTS to listOf("recent apps", "recents", "open recent apps", "recent tasks"),
+        PhraseIntent.HOME to listOf("go home", "home screen", "press home", "home pe jao", "होम पर जाओ", "होम स्क्रीन"),
+        PhraseIntent.BACK to listOf("go back", "press back", "back", "wapas", "वापस जाओ", "पीछे जाओ"),
+        PhraseIntent.RECENTS to listOf("recent apps", "recents", "open recent apps", "recent tasks", "हाल के ऐप्स"),
         PhraseIntent.SHADE to listOf(
             "notification shade", "open notifications", "pull down notifications", "open the shade",
-            "notification panel",
+            "notification panel", "सूचनाएँ खोलो", "नोटिफिकेशन खोलो",
         ),
         PhraseIntent.QUICK_SETTINGS to listOf(
-            "quick settings", "open control center", "control panel", "quick panel",
+            "quick settings", "open control center", "control panel", "quick panel", "क्विक सेटिंग्स",
         ),
         PhraseIntent.CALENDAR to listOf(
             "calendar", "my calendar", "my schedule", "what is my schedule", "meetings",
             "next meeting", "what is next", "my meetings today", "what is on today",
-            "aaj ka schedule", "mera schedule", "next appointment",
+            "aaj ka schedule", "mera schedule", "next appointment", "आज का कैलेंडर", "आज का शेड्यूल",
+            "अगली मीटिंग", "मेरी मीटिंग",
         ),
         PhraseIntent.CALENDAR_ADD to listOf(
             "add to calendar", "add event", "create event", "schedule a meeting", "book a meeting",
@@ -172,16 +179,16 @@ object PhraseBook {
         ),
         PhraseIntent.READ_SCREEN to listOf(
             "read the screen", "read this screen", "read screen", "what is on the screen",
-            "read it to me", "screen padho", "read this page",
+            "read it to me", "screen padho", "read this page", "स्क्रीन पढ़ो", "यह स्क्रीन पढ़ो",
         ),
         PhraseIntent.BATTERY to listOf(
-            "battery", "battery status", "how much battery", "kitni battery", "battery level",
+            "battery", "battery status", "how much battery", "kitni battery", "battery level", "बैटरी कितनी है", "बैटरी बताओ",
         ),
         PhraseIntent.STORAGE to listOf(
-            "storage", "how much storage", "free space", "disk space", "jagah kitni hai",
+            "storage", "how much storage", "free space", "disk space", "jagah kitni hai", "कितनी जगह बची है",
         ),
         PhraseIntent.NETWORK to listOf(
-            "network", "wifi status", "am i online", "internet", "net status",
+            "network", "wifi status", "am i online", "internet", "net status", "वाईफाई स्टेटस", "नेटवर्क स्टेटस",
         ),
         PhraseIntent.WEATHER to listOf(
             "weather", "the weather", "how is the weather", "what is the weather like",
@@ -191,24 +198,26 @@ object PhraseBook {
             "मौसम", "मौसम कैसा है", "बारिश होगी",
         ),
         PhraseIntent.TIME to listOf(
-            "what time is it", "the time", "time now", "kitne baje", "current time",
+            "what time is it", "the time", "time now", "kitne baje", "current time", "अभी कितने बजे", "समय क्या है",
         ),
         PhraseIntent.DATE to listOf(
-            "what is the date", "todays date", "today date", "aaj kya tareekh", "what day is it",
+            "what is the date", "todays date", "today date", "aaj kya tareekh", "what day is it", "आज की तारीख", "आज कौन सा दिन है",
         ),
         PhraseIntent.IDENTITY to listOf(
             "who made you", "who built you", "who created you", "who are you", "your name",
-            "tumhe kisne banaya", "who is your owner", "who developed you", "what are you",
+            "tumhe kisne banaya", "who is your owner", "who developed you", "what are you", "तुम कौन हो",
         ),
         PhraseIntent.HELP to listOf(
             "what can you do", "help", "capabilities", "what all can you do", "tum kya kar sakte ho",
-            "list commands", "commands", "how do i use you",
+            "list commands", "commands", "how do i use you", "मदद", "क्या कर सकते हो", "कमांड बताओ",
         ),
         PhraseIntent.STOP to listOf(
             "cancel", "stop", "never mind", "nevermind", "chhodo", "rehne do", "abort", "forget it",
+            "रद्द करो", "छोड़ दो",
         ),
         PhraseIntent.REPEAT to listOf(
             "again", "repeat", "do it again", "repeat that", "same again", "phir se", "one more time",
+            "फिर से", "दोबारा",
         ),
         PhraseIntent.ALARM to listOf(
             "alarm", "set alarm", "set an alarm", "wake me up", "alarm laga do", "wake me at",
@@ -217,7 +226,7 @@ object PhraseBook {
             "timer", "set a timer", "countdown", "timer laga do", "set timer",
         ),
         PhraseIntent.REMINDER to listOf(
-            "remind me", "reminder", "remind", "yaad dila do", "set a reminder",
+            "remind me", "reminder", "remind", "yaad dila do", "set a reminder", "मुझे याद दिलाओ", "याद दिलाना",
         ),
         PhraseIntent.TRANSLATE to listOf(
             "translate", "translate this", "meaning of", "matlab kya", "what does it mean",
@@ -226,12 +235,12 @@ object PhraseBook {
             "download", "download this", "save this file", "download karo",
         ),
         PhraseIntent.SYSTEM_SETTINGS to listOf(
-            "settings", "open settings", "phone settings", "system settings", "settings kholo",
+            "settings", "open settings", "phone settings", "system settings", "settings kholo", "सेटिंग खोलो", "सेटिंग्स खोलो",
         ),
-        PhraseIntent.CALL to listOf("call", "phone", "dial", "ring", "call karo"),
+        PhraseIntent.CALL to listOf("call", "phone", "dial", "ring", "call karo", "कॉल करो", "फोन करो"),
         PhraseIntent.MESSAGE to listOf(
             "message", "send message", "send a message", "text", "whatsapp", "msg",
-            "message bhejo", "text karo",
+            "message bhejo", "text karo", "संदेश भेजो", "मैसेज भेजो",
         ),
     )
 
@@ -242,7 +251,7 @@ object PhraseBook {
     /** Lowercase, punctuation folded to spaces, whitespace collapsed. */
     fun clean(text: String): String = text.lowercase(Locale.US)
         .replace("'", "")
-        .replace(Regex("[^\\p{L}\\p{N}%.+\\-*/ ]"), " ")
+        .replace(Regex("[^\\p{L}\\p{M}\\p{N}%.+\\-*/ ]"), " ")
         .replace(Regex("\\s+"), " ")
         .trim()
 

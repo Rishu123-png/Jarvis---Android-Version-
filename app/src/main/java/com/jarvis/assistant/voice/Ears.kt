@@ -22,12 +22,11 @@ import java.net.URL
  * worker thread exits on [stop], on [cancel], or after [MAX_SECONDS], whichever comes first.
  */
 class MicRecorder(
-    /**
-     * Called once, on the recorder thread, when the operator has spoken and then stopped. The
-     * caller turns that into an ordinary stop, so a pause ends the turn without a tap.
-     */
-    private val onQuiet: (() -> Unit)? = null,
+    /** Called once from the worker when speech ends, no speech is heard, or the stream fails. */
+    private val onAutoStop: ((EndReason) -> Unit)? = null,
 ) {
+
+    enum class EndReason { SPEECH_FINISHED, NO_SPEECH, READ_ERROR }
 
     private var record: AudioRecord? = null
     private var worker: Thread? = null
@@ -95,14 +94,26 @@ class MicRecorder(
         worker = Thread({
             val buffer = ByteArray(bufferSize)
             var total = 0
-            val quiet = if (onQuiet == null) null else WakeCapture.Tracker()
+            // Wake capture is deliberately short; a tapped command gets the full recording window.
+            val quiet = if (onAutoStop == null) null else WakeCapture.Tracker(
+                maxMs = MAX_SECONDS * 1_000,
+                waitForSpeechMs = MANUAL_WAIT_FOR_SPEECH_MS,
+            )
             while (running && total < SAMPLE_RATE * 2 * MAX_SECONDS) {
                 val read = try {
                     recorder.read(buffer, 0, buffer.size)
                 } catch (t: Throwable) {
                     -1
                 }
-                if (read <= 0) break
+                if (read <= 0) {
+                    if (running) {
+                        running = false
+                        onAutoStop?.let { callback ->
+                            runCatching { callback(EndReason.READ_ERROR) }
+                        }
+                    }
+                    return@Thread
+                }
                 synchronized(pcm) { pcm.write(buffer, 0, read) }
                 total += read
                 // The orb answers the room, and the same measurement decides when the sentence
@@ -111,15 +122,34 @@ class MicRecorder(
                     val loudness = Presence.rmsOf(buffer, read)
                     Presence.publishRms(loudness)
                     val chunkMs = read * 1_000 / (SAMPLE_RATE * 2)
-                    if (quiet != null && quiet.feed(loudness, chunkMs) == WakeCapture.Decision.FINISH) {
-                        // Stop this loop, then let the owner run an ordinary stop. Returning here
-                        // means the thread is already on its way out when that join happens.
-                        running = false
-                        onQuiet?.invoke()
-                        return@Thread
+                    val decision = quiet?.feed(loudness, chunkMs)
+                    when (decision) {
+                        WakeCapture.Decision.FINISH -> {
+                            running = false
+                            onAutoStop?.let { callback ->
+                                runCatching { callback(EndReason.SPEECH_FINISHED) }
+                            }
+                            return@Thread
+                        }
+                        WakeCapture.Decision.NOTHING -> {
+                            running = false
+                            onAutoStop?.let { callback ->
+                                runCatching { callback(EndReason.NO_SPEECH) }
+                            }
+                            return@Thread
+                        }
+                        else -> Unit
                     }
                 } catch (t: Throwable) {
                     // Loudness is decoration; the transcript is the point.
+                }
+            }
+            // The 30-second ceiling is a real stop, not a dead worker with a hot microphone.
+            if (running) {
+                running = false
+                if (onAutoStop != null) {
+                    val reason = if (quiet?.hasSpeech == true) EndReason.SPEECH_FINISHED else EndReason.NO_SPEECH
+                    runCatching { onAutoStop.invoke(reason) }
                 }
             }
         }, "jarvis-mic").apply {
@@ -182,6 +212,7 @@ class MicRecorder(
     companion object {
         const val SAMPLE_RATE = 16_000
         const val MAX_SECONDS = 30
+        private const val MANUAL_WAIT_FOR_SPEECH_MS = 5_000
     }
 }
 
