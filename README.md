@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-28%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-42%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -91,6 +91,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [The sky](#the-sky)
 - [The assistant button](#the-assistant-button)
 - [Hey Jarvis](#hey-jarvis)
+- [Staying in the conversation](#staying-in-the-conversation)
 - [The crew](#the-crew)
 - [The dial](#the-dial)
 - [The eyes](#the-eyes)
@@ -285,6 +286,39 @@ Say **"Hey Jarvis"** and he opens listening. It is off until you turn it on in
 **The honest cost.** Listening uses battery the whole time it is on. The figure of 1–3% an hour is
 an estimate, not a measurement; measure it on your own phone before you rely on it. Turn it off
 when you don't need it.
+
+## Staying in the conversation
+
+One sentence used to be the whole session: say it, hear the answer, say *"hey jarvis"* again. With
+**Advanced → Conversation** on, the ear stays open after a finished turn instead.
+
+- **He answers, then asks.** The question is shaped by what just happened — after a chat app opens,
+  *"Boss, kisko message karna hai?"*. The next sentence is taken as a normal command, with no wake
+  word and no tap.
+- **Bounded in four directions.** A per-sentence window of 9 seconds (4–20, adjustable), a turn
+  budget of 6 (up to 12), exit words (*bas*, *theek hai*, *chalo bye*, *thank you*, *so jao*), and
+  silence — which closes the window quietly instead of showing a failure. On the provider route
+  recording stops after 900 ms of trailing quiet, and a silent window is never sent anywhere.
+- **A male voice, chosen rather than inherited.** Most phones default to a bright female voice. A
+  male voice is picked from the engine's own list for the spoken language; when the phone has none,
+  pitch drops to 0.78 instead of the wrong voice being used. **Advanced → JARVIS Voice** switches it.
+- **Feelings, read and not invented.** Tired, low, angry, anxious, happy, excited, warm — read from
+  your own words in English, Hindi and Hinglish. A feeling word inside a command never swallows the
+  command (*"tired hoon, alarm laga do"* still sets the alarm). Days together, streak and turn count
+  are arithmetic over real timestamps, and *Forget everything* clears them. Care is only offered from
+  a real reading — a battery at 8%, a water log at zero, past midnight — never out of nowhere. His
+  register reaches the voice: concern is spoken slower and softer.
+- **The internet, one page at a time.** *"padho https://…"* fetches that page, answers from it and
+  names the site. https only, loopback and private ranges refused, no JavaScript, and an empty page is
+  reported as empty rather than summarised. This reads one page on request; it is not a search engine.
+- **He can be taught, and learning is a proposal.** *"what can't you do"* reads back what he failed
+  at; *"seekho …"* turns your description into a routine built only from actions that already exist,
+  saved **disabled** so you can read it before it ever runs.
+- **Captions on the platform's real rules.** *"reel ka caption banao about X"* writes a hook that fits
+  the ~125 characters before *more*, 3–8 specific hashtags and one call to action, lints it and
+  **copies it to the clipboard**. Posting stays yours: Instagram has no public API for an ordinary
+  app, and the timing line stays silent because this build has no account connections to read numbers
+  from — a guess dressed as data is worse than no advice.
 
 ## Memory and who he is
 
@@ -602,7 +636,7 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 28 JVM suites
+./gradlew :app:testDebugUnitTest    # 42 JVM suites
 ```
 
 Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
@@ -628,7 +662,7 @@ no assistant.
 | Keep the bundled Shizuku up to date by itself | The copy inside the APK is pinned to one version. A newer Shizuku comes when a newer JARVIS does. |
 | Undo a destructive shell command | The privileged tier runs as `adb`: a wipe is a wipe. That is why `reboot`, `pm clear`, uninstalling and wiping are asked about before they run. |
 
-**Verified by CI:** compilation, 34 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 42 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -697,7 +731,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-28 JVM suites, run before every APK in CI.
+42 JVM suites, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|

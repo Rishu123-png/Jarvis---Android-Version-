@@ -46,13 +46,16 @@ import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextPrimary
 import com.jarvis.assistant.voice.Brain
+import com.jarvis.assistant.voice.Conversation
+import com.jarvis.assistant.voice.Feelings
 import com.jarvis.assistant.voice.SpeechRoute
+import com.jarvis.assistant.voice.VoiceGender
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Advanced settings: privacy lock, floating bubble, speech engine, widget.
+ * Advanced settings: privacy lock, floating bubble, speech engine, voice, conversation, widget.
  *
  * One screen rather than four, because these all answer the same question — how much of JARVIS is
  * allowed to run, and where. Every control states what it costs and what breaks without it, and
@@ -64,11 +67,21 @@ fun PrivacyScreen(
     bubbleEnabled: Boolean,
     bubbleAllowed: Boolean,
     speechRoute: SpeechRoute,
+    voiceGender: VoiceGender,
+    conversationEnabled: Boolean,
+    conversationWindowMs: Long,
+    feelingsEnabled: Boolean,
+    feelingsDays: Int,
+    feelingsStreak: Int,
     onSetPin: (String) -> Unit,
     onClearPin: () -> Unit,
     onToggleBubble: (Boolean) -> Unit,
     onOpenOverlaySettings: () -> Unit,
     onSelectRoute: (SpeechRoute) -> Unit,
+    onSelectGender: (VoiceGender) -> Unit,
+    onToggleConversation: (Boolean) -> Unit,
+    onSetConversationWindow: (Long) -> Unit,
+    onToggleFeelings: (Boolean) -> Unit,
     onAddWidget: () -> Unit,
     biometricStatus: String,
     biometricEnabled: Boolean,
@@ -344,6 +357,129 @@ fun PrivacyScreen(
                         style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 0.6.sp),
                         color = TextMuted,
                     )
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------- feelings
+        HudPanel(
+            label = "FEELINGS",
+            accent = if (feelingsEnabled) StatusGreen else Amber,
+            trailing = {
+                HudChip(
+                    text = if (feelingsEnabled) "ON" else "OFF",
+                    accent = if (feelingsEnabled) StatusGreen else TextMuted,
+                )
+            },
+        ) {
+            Text(
+                text = "He notices instead of only obeying: how your words sound, how long you two " +
+                    "have been talking, and what the phone already knows \u2014 a dying battery, no " +
+                    "water logged, a past-midnight hour. He answers the person before the request, " +
+                    "and a concerned reply is spoken slower and softer. Nothing here is invented: " +
+                    "if the sensors cannot read it, he says nothing.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            ReadoutRow(
+                label = "DAYS TOGETHER",
+                value = if (feelingsDays <= 0) "TODAY" else "$feelingsDays",
+                valueColor = TextPrimary,
+            )
+            ReadoutRow(
+                label = "STREAK",
+                value = if (feelingsStreak <= 0) "\u2014" else "$feelingsStreak day" +
+                    if (feelingsStreak == 1) "" else "s",
+                valueColor = if (feelingsStreak >= 3) StatusGreen else TextPrimary,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey(if (feelingsEnabled) "QUIET MODE" else "TURN ON") {
+                    onToggleFeelings(!feelingsEnabled)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Quiet mode keeps every command working and drops the warmth \u2014 for a week " +
+                    "when you would rather he just did the thing.",
+                style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+                color = TextMuted,
+            )
+        }
+
+        // ---------------------------------------------------------------- voice
+        HudPanel(label = "JARVIS VOICE", accent = ElectricCyan) {
+            Text(
+                text = "Which voice speaks. Most phones default to a bright female voice; a male " +
+                    "voice is used when the phone has one for your language, and the pitch is " +
+                    "lowered when it does not, so it still sounds like him.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                VoiceGender.entries.forEach { option ->
+                    val selected = option == voiceGender
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                if (selected) ElectricCyan.copy(alpha = 0.10f) else PanelNavy.copy(alpha = 0.5f),
+                                ChipShape,
+                            )
+                            .border(
+                                1.dp,
+                                if (selected) ElectricCyan.copy(alpha = 0.55f) else ElectricCyan.copy(alpha = 0.12f),
+                                ChipShape,
+                            )
+                            .clickable { onSelectGender(option) }
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = option.label,
+                            style = HudType.label.copy(fontSize = 9.sp, letterSpacing = 1.4.sp),
+                            color = if (selected) TextPrimary else TextMuted,
+                        )
+                    }
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------- conversation
+        HudPanel(
+            label = "CONVERSATION",
+            accent = if (conversationEnabled) StatusGreen else Amber,
+            trailing = {
+                HudChip(
+                    text = if (conversationEnabled) "ON" else "OFF",
+                    accent = if (conversationEnabled) StatusGreen else TextMuted,
+                )
+            },
+        ) {
+            Text(
+                text = "Keeps the ear open after a command, so the next sentence does not need " +
+                    "the orb again. He asks what is next, listens for a few seconds, and stops on " +
+                    "silence, on \u201Cbas\u201D, or when the turn budget runs out. Nothing is " +
+                    "recorded once the window closes.",
+                style = HudType.valueSmall,
+                color = TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            ReadoutRow(
+                label = "WINDOW",
+                value = if (conversationEnabled) "${conversationWindowMs / 1000}s" else "—",
+                valueColor = if (conversationEnabled) TextPrimary else TextMuted,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KeypadKey(if (conversationEnabled) "TURN OFF" else "TURN ON") {
+                    onToggleConversation(!conversationEnabled)
+                }
+                if (conversationEnabled) {
+                    KeypadKey("WINDOW ${nextWindowSeconds(conversationWindowMs)}s") {
+                        onSetConversationWindow(nextWindow(conversationWindowMs))
+                    }
                 }
             }
         }
@@ -808,6 +944,13 @@ private fun KeypadKey(label: String, onClick: () -> Unit) {
         )
     }
 }
+
+/** The next window length, cycling so one key covers every choice. */
+private fun nextWindow(current: Long): Long =
+    if (current + 3_000L > Conversation.MAX_WINDOW_MS) Conversation.MIN_WINDOW_MS
+    else current + 3_000L
+
+private fun nextWindowSeconds(current: Long): Long = nextWindow(current) / 1000L
 
 /** A size a person can read at a glance: "512 KB", "12.4 MB". */
 private fun formatBytes(bytes: Long): String = when {

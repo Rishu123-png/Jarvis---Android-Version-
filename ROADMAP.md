@@ -118,6 +118,56 @@ notification, `Download/JARVIS`), translate through the operator's key.
 
 ---
 
+## 2b · The internet, honestly
+
+The film's JARVIS was a datacentre. This one is an APK on a phone, so "available on the internet"
+has to mean something narrower, and the narrow version is written down here so it cannot drift.
+
+**What is already true today.**
+
+| Capability | How | Cost |
+| --- | --- | --- |
+| Facts and definitions | Wikipedia REST (keyless) + dictionary API | free, no account |
+| Reading a page you point at | `WebRead` — https only, one page, no JavaScript | free |
+| Anything else | your own model key (`AiClient`) | your provider bill |
+| Your own numbers | Instagram / Drive / Gmail connectors, read-only | OAuth you granted |
+
+**What "on the internet" must never become.** A JARVIS backend. The moment the app depends on a
+server that someone else runs, three things follow: an account, a breach surface holding your
+memory, and a subscription. That is the product this repository exists to not be.
+
+**If you want him reachable from another device**, the honest shape is a relay you own, not a
+service you rent:
+
+1. **Tailscale (recommended).** Install Tailscale on the phone and on the laptop. Expose a tiny
+   HTTPS endpoint from the phone's own process, bound to the tailnet address only. No public port,
+   no DNS, no relay server, no third party that can read the traffic. The phone stays the brain; the
+   laptop is only a window.
+2. **A Cloudflare Worker as a dumb pipe.** The Worker holds no data, only forwards an
+   authenticated request to a phone that polls it. Still a third party in the path, so the payload
+   has to stay end-to-end encrypted with a key only your devices hold.
+3. **Do nothing, and use the phone.** Every second invested in a relay is a second not spent on the
+   thing that makes him useful in the room, which is the microphone and the screen he is already
+   holding.
+
+**What would have to be built for option 1**, in order: a foreground service with a small HTTPS
+listener bound to the tailnet interface; an auth token generated on the phone and shown once; a
+request schema with only the actions the phone already exposes; and a kill switch that stops the
+listener when the screen is off. Two weeks of careful work, and none of it belongs in the same
+release as a voice pipeline change.
+
+**Self-improvement, and its ceiling.** He cannot rewrite his own code, and he never will: an
+assistant whose behaviour can change without your review is an assistant you cannot audit. What he
+can do is in `Growth`:
+
+- notice what he failed at, and keep a short list on the phone (`what can't you do`);
+- ask, in plain words, how it should be done (`seekho …`);
+- draft a routine from your description with `AiPlanner`, which may only use actions that already
+  exist — and save it **disabled**. He cannot enable it, and the record that it was added cannot be
+  deleted by him. Running it is a decision only the operator makes.
+
+The pattern is deliberately: *propose, never apply.*
+
 ## 3 · What to take from FRIDAY OS, and how
 
 FRIDAY OS is a PWA + Capacitor + FastAPI stack. JARVIS is a native Compose app with no server, so the

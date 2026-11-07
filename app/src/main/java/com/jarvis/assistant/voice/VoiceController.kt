@@ -34,12 +34,27 @@ import kotlinx.coroutines.withTimeoutOrNull
  *  - **Nothing can hang.** Recording, transcription, planning and every step are bounded.
  *  - **Nothing runs on the main thread** except state updates and speech.
  *  - **Honest outcomes.** A step that failed says why and stops the turn; it never reports success.
+ *  - **One session, many sentences.** When conversation mode is on (see [Conversation]) the ear
+ *    stays open after a finished turn, so an obvious next sentence does not need the orb again.
  */
 object VoiceController {
 
     private const val PLAN_TIMEOUT_MS = 45_000L
     private const val STEP_TIMEOUT_MS = 25_000L
     private const val AUTO_DISMISS_MS = 2_400L
+    private const val SAY_TIMEOUT_MS = 22_000L
+    private const val FOLLOW_UP_TRANSCRIBE_MS = 30_000L
+
+    /** Two seconds of 16 kHz mono 16-bit audio, the window the silence check looks at. */
+    private const val TAIL_SAMPLES_BYTES = 16_000 * 2 * 2
+
+    /**
+     * A feeling has to be at least this old before he asks about it.
+     *
+     * Anything newer belongs to the turn that just finished — asking "how are you now?" three
+     * seconds after hearing "I am tired" would be absurd.
+     */
+    private const val CARRY_OVER_MIN_AGE_MS = 2 * 60 * 60 * 1000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -50,6 +65,14 @@ object VoiceController {
     private var mic: MicRecorder? = null
     private var local: LocalSpeech? = null
     private var taskId = 0
+
+    /**
+     * How many follow-up sentences have been taken in this session.
+     *
+     * Reset whenever a session starts or ends, so every session gets the same budget and the count
+     * can never creep across an idle period.
+     */
+    private var conversationTurns = 0
 
     /** The last thing the operator said, so follow-ups ("again, but quieter") have a subject. */
     @Volatile
@@ -64,7 +87,10 @@ object VoiceController {
     fun toggle(context: Context) {
         val app = context.applicationContext
         when (_state.value.phase) {
-            VoicePhase.LISTENING -> stopListening(app)
+            VoicePhase.LISTENING ->
+                // While a conversation is open the microphone is held on purpose: a tap means
+                // "that is all", so the session ends instead of transcribing half a sentence.
+                if (_state.value.conversation) endConversation() else stopListening(app)
             VoicePhase.THINKING, VoicePhase.RUNNING -> cancel()
             else -> startListening(app)
         }
@@ -140,6 +166,17 @@ object VoiceController {
 
     fun cancel() {
         taskId += 1
+        conversationTurns = 0
+        job?.cancel()
+        job = null
+        releaseEngines()
+        _state.value = VoiceTask(taskId = taskId)
+    }
+
+    /** Closes an open conversation without pretending anything failed. */
+    private fun endConversation() {
+        taskId += 1
+        conversationTurns = 0
         job?.cancel()
         job = null
         releaseEngines()
@@ -171,6 +208,7 @@ object VoiceController {
     private fun startListening(context: Context) {
         taskId += 1
         val id = taskId
+        conversationTurns = 0
         job?.cancel()
         job = null
         releaseEngines()
@@ -222,7 +260,11 @@ object VoiceController {
                 source = "WHISPER",
             )
         } else {
-            val session = LocalSpeech(context, preferOffline = route == SpeechRoute.OFFLINE)
+            val session = LocalSpeech(
+                context,
+                preferOffline = route == SpeechRoute.OFFLINE,
+                languageTag = SpokenLanguage.recognizerTag(context),
+            )
             session.start()
             local = session
             _state.value = VoiceTask(
@@ -256,7 +298,7 @@ object VoiceController {
                         fail(id, "NO AUDIO", "The microphone captured nothing.")
                         return@launch
                     }
-                    val result = Whisper.transcribe(context, pcm)
+                    val result = Whisper.transcribe(context, pcm, hint = transcriptHint(context))
                     if (result.text == null) {
                         fail(id, "TRANSCRIPTION", result.error ?: "The provider returned no words.")
                         return@launch
@@ -290,11 +332,32 @@ object VoiceController {
     // Planning + executing
     // ---------------------------------------------------------------------------------------------
 
-    private suspend fun runTurn(context: Context, id: Int, heard: String) {
+    private suspend fun runTurn(
+        context: Context,
+        id: Int,
+        heard: String,
+        conversation: Boolean = false,
+    ) {
         if (id != taskId) return
+
+        // Read once per turn and carried through it: the tone of the reply has to match the mood
+        // of the sentence that caused it, even if the step takes a while to run.
+        val affect = try {
+            Feelings.affect(heard)
+        } catch (t: Throwable) {
+            Feelings.Affect.NEUTRAL
+        }
+        val mood = try {
+            Feelings.moodOf(hourNow(), affect, Feelings.bond(context))
+        } catch (t: Throwable) {
+            Feelings.Mood.CALM
+        }
+        val tone = Feelings.Tone.forMood(mood)
+
         _state.value = _state.value.copy(
             phase = VoicePhase.THINKING,
             heard = heard,
+            conversation = conversation || _state.value.conversation,
             title = "THINKING",
             subtitle = "PLANNING",
             steps = emptyList(),
@@ -349,8 +412,9 @@ object VoiceController {
                 ),
             )
             Brain.absorb(context, heard)
-            // The full record of the conversation. Written off the main thread: it is one short
-            // append, but the reply above is already on screen, so nothing waits for it.
+            // The full record of the conversation, and the relationship it belongs to. Both are
+            // written off the main thread: they are short appends, but the reply is already on
+            // screen, so nothing waits for them.
             withContext(Dispatchers.IO) {
                 ConversationLog.append(
                     context = context,
@@ -360,6 +424,9 @@ object VoiceController {
                     command = plan.steps.isNotEmpty(),
                 )
             }
+            // One finished turn is one line in the relationship: turn count, streak, and the
+            // feeling heard in it, so the next greeting can ask about it once.
+            Feelings.recordTurn(context, affect)
         }
         lastHeard = heard
         val spokenLang = Language.detect(heard)
@@ -367,8 +434,7 @@ object VoiceController {
         val spokenLanguage = spokenLang.tag
 
         if (plan.steps.isEmpty() && !hasScreenTask) {
-            speak(context, plan.say, spokenLanguage)
-            scheduleDismiss(id)
+            continueOrDismiss(context, id, plan.spoken ?: plan.say, spokenLang, plan.title, tone)
             return
         }
 
@@ -410,12 +476,29 @@ object VoiceController {
         if (id != taskId) return
 
         if (failure == null) {
-            _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = plan.say, error = null)
-            speak(context, plan.say, spokenLanguage)
-            scheduleDismiss(id)
+            // A finished task should not end on a step count when the operator was clearly having a
+            // hard day: one short sentence, then the conversation can continue as usual.
+            val tail = try {
+                if (plan.steps.isEmpty()) null else Feelings.afterCommand(affect, spokenLang, plan.steps.size)
+            } catch (t: Throwable) {
+                null
+            }
+            val said = plan.spoken ?: plan.say
+            val answer = if (tail.isNullOrBlank()) said else "${said.trim()} $tail"
+            _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = answer, error = null)
+            continueOrDismiss(context, id, answer, spokenLang, plan.title, tone)
         } else {
-            _state.value = _state.value.copy(phase = VoicePhase.FAILED, reply = failure, error = failure)
-            speak(context, failure)
+            // A failure ends the session: holding the ear open after something broke would invite
+            // a second doomed attempt without explaining the first.
+            conversationTurns = 0
+            _state.value = _state.value.copy(
+                phase = VoicePhase.FAILED,
+                reply = failure,
+                error = failure,
+                conversation = false,
+                turn = 0,
+            )
+            speak(context, failure, spokenLanguage, tone)
         }
     }
 
@@ -466,7 +549,9 @@ object VoiceController {
         val goal = plan.screenGoal
         if (failure == null && goal != null) {
             failure = runScreenTask(context, id, goal)
+            if (id != taskId) return failure
         }
+
         return failure
     }
 
@@ -483,6 +568,232 @@ object VoiceController {
         }
         closeLastStep(id, failure == null)
         return failure
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Conversation mode
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * The end of every turn: answer, then either close or hold the ear open.
+     *
+     * The session is continued only when the operator turned it on, the turn budget is not spent,
+     * and the last turn actually succeeded — a conversation that keeps asking "what next?" after a
+     * failure is worse than one that stops.
+     */
+    private suspend fun continueOrDismiss(
+        context: Context,
+        id: Int,
+        answer: String,
+        lang: Lang,
+        title: String,
+        tone: Feelings.Tone = Feelings.Tone.NEUTRAL,
+    ) {
+        if (!Conversation.isEnabled(context) || conversationTurns >= Conversation.maxTurns(context)) {
+            _state.value = _state.value.copy(conversation = false, turn = 0)
+            speak(context, answer, lang.tag, tone)
+            scheduleDismiss(id)
+            return
+        }
+
+        // Speak first, listen after: a microphone opened while the answer is still playing
+        // transcribes JARVIS instead of the operator.
+        sayAndWait(context, answer, lang.tag, tone)
+        if (id != taskId) return
+
+        conversationTurns += 1
+
+        // What to ask next, in order of what he actually knows: a feeling he heard earlier, then a
+        // real reading of the phone, then the plain question.
+        val carry = try {
+            Feelings.carryOver(
+                context,
+                minAgeMs = CARRY_OVER_MIN_AGE_MS,
+            )?.also { Feelings.clearCarryOver(context) }
+        } catch (t: Throwable) {
+            null
+        }
+        val ask = if (carry != null) {
+            Feelings.carryOverLine(carry, lang).ifBlank { Conversation.prompt(lang, title) }
+        } else {
+            Conversation.prompt(
+                lang = lang,
+                lastTitle = title,
+                fallback = try {
+                    Feelings.careFor(context, lang)
+                } catch (t: Throwable) {
+                    null
+                },
+            )
+        }
+        _state.value = _state.value.copy(
+            phase = VoicePhase.LISTENING,
+            conversation = true,
+            turn = conversationTurns,
+            reply = ask,
+            subtitle = "LISTENING · ${lang.label}",
+            source = try {
+                VoiceSettings.activeEngine(context)
+            } catch (t: Throwable) {
+                "VOICE"
+            },
+        )
+        sayAndWait(context, ask, lang.tag, tone)
+        if (id != taskId) return
+
+        val heard = captureFollowUp(context, Conversation.windowMs(context))
+        if (id != taskId) return
+
+        when {
+            // Silence is not a failure. The window simply closes.
+            heard.isNullOrBlank() -> {
+                _state.value = _state.value.copy(
+                    phase = VoicePhase.DONE,
+                    conversation = false,
+                    turn = 0,
+                    subtitle = "WINDOW CLOSED",
+                    reply = Conversation.slept(lang),
+                )
+                scheduleDismiss(id)
+            }
+
+            Conversation.isExit(heard) -> {
+                val bye = Conversation.goodbye(lang)
+                _state.value = _state.value.copy(
+                    phase = VoicePhase.DONE,
+                    conversation = false,
+                    turn = 0,
+                    heard = heard,
+                    reply = bye,
+                )
+                speak(context, bye, lang.tag)
+                scheduleDismiss(id)
+            }
+
+            // Anything else is just the next sentence of the same session.
+            else -> runTurn(context, id, heard, conversation = true)
+        }
+    }
+
+    /**
+     * One follow-up sentence, captured without a second tap.
+     *
+     * Two routes, same contract: return what was said, or null when there was nothing worth acting
+     * on. Both are bounded — a window that never closes would leave a hot microphone behind a HUD
+     * that looks idle.
+     */
+    private suspend fun captureFollowUp(context: Context, windowMs: Long): String? {
+        val route = VoiceSettings.route(context)
+        val useWhisper = when (route) {
+            SpeechRoute.WHISPER -> Whisper.ready(context)
+            SpeechRoute.DEVICE, SpeechRoute.OFFLINE -> false
+            SpeechRoute.AUTO -> Whisper.ready(context)
+        }
+        return if (useWhisper) captureWithWhisper(context, windowMs)
+        else captureWithDevice(context, windowMs)
+    }
+
+    /** The device recognizer ends on its own silence, which is exactly what a window needs. */
+    private suspend fun captureWithDevice(context: Context, windowMs: Long): String? {
+        val session = LocalSpeech(
+            context,
+            preferOffline = VoiceSettings.preferOffline(context),
+            languageTag = SpokenLanguage.recognizerTag(context),
+        )
+        session.start()
+        local = session
+        val outcome = try {
+            session.await(windowMs + 5_000L)
+        } catch (t: Throwable) {
+            null
+        }
+        local = null
+        session.cancel()
+        return outcome?.text?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * The provider route records the window itself, and stops as soon as the operator has been
+     * quiet for long enough — waiting the full nine seconds after a two-second sentence is what
+     * makes a voice assistant feel slow.
+     */
+    private suspend fun captureWithWhisper(context: Context, windowMs: Long): String? {
+        val recorder = MicRecorder()
+        if (recorder.start() != null) return null
+        mic = recorder
+
+        // The polling loop reads a growing buffer and takes an RMS of it, which is real work: it
+        // runs off the main thread so holding the ear open can never cost the HUD a frame.
+        val deadline = System.currentTimeMillis() + windowMs
+        withContext(Dispatchers.Default) {
+            var speechSeen = false
+            while (System.currentTimeMillis() < deadline) {
+                delay(200L)
+                if (!recorder.isRunning) continue
+                // Only the last two seconds matter: speech already seen stays seen, and trailing
+                // quiet is by definition at the end. Copying the whole recording every tick would
+                // cost more than the answer is worth.
+                val full = recorder.snapshot()
+                val tail = full.copyOfRange(
+                    maxOf(0, full.size - TAIL_SAMPLES_BYTES),
+                    full.size,
+                )
+                if (!speechSeen) {
+                    if (Conversation.hasSpeech(tail)) speechSeen = true
+                } else if (Conversation.silenceAtEndMs(tail) >= Conversation.SILENCE_DONE_MS) {
+                    break
+                }
+            }
+        }
+
+        val pcm = try {
+            withContext(Dispatchers.IO) { recorder.stop() }
+        } catch (t: Throwable) {
+            ByteArray(0)
+        }
+        mic = null
+
+        // Room tone is not a question: a silent window ends the session without spending a request.
+        if (!Conversation.hasSpeech(pcm)) return null
+
+        val heard = withTimeoutOrNull(FOLLOW_UP_TRANSCRIBE_MS) {
+            try {
+                Whisper.transcribe(context, pcm, hint = transcriptHint(context))
+            } catch (t: Throwable) {
+                null
+            }
+        }
+        return heard?.text?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * The Roman-letter nudge for transcription, or null.
+     *
+     * Only for an operator who was already speaking Hinglish: their words should come back as
+     * Roman letters so the reply is Hinglish too, not Devanagari Hindi.
+     */
+    private fun transcriptHint(context: Context): String? =
+        if (SpokenLanguage.last(context) == Lang.HINGLISH) {
+            "Hinglish in Roman letters: kya haal hai bhai, whatsapp kholo, kal milte hain."
+        } else {
+            null
+        }
+
+    /** Speech that blocks until it is finished, used where the microphone opens straight after. */
+    private suspend fun sayAndWait(
+        context: Context,
+        text: String,
+        language: String?,
+        tone: Feelings.Tone = Feelings.Tone.NEUTRAL,
+    ) {
+        if (text.isBlank()) return
+        try {
+            withTimeoutOrNull(SAY_TIMEOUT_MS) {
+                SpeechOut.speak(context, text.take(240), language = language, tone = tone)
+            }
+        } catch (t: Throwable) {
+            // Speech is a courtesy; silence is not an error, and the window still opens.
+        }
     }
 
     private fun appendStep(id: Int, label: String, detail: String) {
@@ -538,15 +849,26 @@ object VoiceController {
         )
     }
 
-    private fun speak(context: Context, text: String, language: String? = null) {
+    private fun speak(
+        context: Context,
+        text: String,
+        language: String? = null,
+        tone: Feelings.Tone = Feelings.Tone.NEUTRAL,
+    ) {
         if (text.isBlank()) return
         scope.launch {
             try {
-                SpeechOut.speak(context, text.take(240), language = language)
+                SpeechOut.speak(context, text.take(240), language = language, tone = tone)
             } catch (t: Throwable) {
                 // Speech is a courtesy; silence is not an error.
             }
         }
+    }
+
+    private fun hourNow(): Int = try {
+        java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    } catch (t: Throwable) {
+        12
     }
 
     private fun scheduleDismiss(id: Int) {

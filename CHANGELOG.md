@@ -4,6 +4,57 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 33
+
+Four things land together in this build, all on top of 32 and all following the same rule: he
+proposes, he never applies.
+
+**He stays in the conversation.** One sentence used to be the whole session. Now, with conversation
+mode on (**Advanced → Conversation**), the ear stays open after a finished turn: he says what he did,
+asks a question shaped by it — *"Boss, kisko message karna hai?"* after a chat app — and takes the next
+sentence as a normal command. Bounded in four directions: a per-sentence window (9 s, 4–20 adjustable),
+a turn budget (6, up to 12), exit words (*bas*, *theek hai*, *thank you*), and silence, which closes the
+window quietly instead of showing a failure. On the provider route recording stops after 900 ms of
+trailing quiet, and a silent window is never transcribed.
+
+**A male voice, chosen not inherited.** Most phones default to a bright female voice. A male voice is
+picked from the engine's own list for the spoken language; when the phone has none, pitch drops to
+0.78 rather than the wrong voice being used. **Advanced → JARVIS Voice** switches it.
+
+**Feelings, from readings and not from invention.** Tired, low, angry, anxious, happy, excited, warm —
+read from the operator's own words in English, Hindi and Hinglish. A feeling word inside a command
+never swallows the command (`"tired hoon, alarm laga do"` still sets the alarm) while a strong feeling
+survives one (`"bahut gussa hai, message bhej do"` is heard **and** sent). Days together, streak and
+turn count are real arithmetic over real timestamps, cleared by the same *forget everything* key. His
+register reaches the voice: concern is spoken slower and softer, layered over the chosen voice. Care
+is only offered from a real reading — a battery at 8%, a water log at zero, past midnight — so he
+cannot invent a reason to be kind.
+
+**The internet, honestly, and captions on real rules.** *"padho https://…"* reads one page and answers
+from it, naming the site: https only, loopback and private ranges refused so a spoken sentence can
+never probe your own wifi, no JavaScript, and an empty page is reported as empty. *"what can't you
+do"* reads back the shortlist of things he failed at; *"seekho …"* turns the operator's description
+into a routine through `AiPlanner` — which may only use actions that already exist — saved
+**disabled**, so learning is always a proposal. *"reel ka caption banao about X"* writes a caption
+whose hook fits the ~125 characters before "more", with 3–8 specific hashtags and one call to action,
+lints it, and **copies it to the clipboard**; posting stays the operator's, because Instagram has no
+public API for an ordinary app and the unofficial route risks the account.
+
+**Two privacy holes closed.** `allowBackup` was true, which let Android copy every `jarvis_*`
+preferences file — people, facts, health, the PIN digest — to Drive; it is now false, with backup and
+device-transfer rules excluding everything (Android 12 ignores the attribute during D2D transfer). The
+PIN gains a lockout: five wrong guesses cost 30 s, doubling per round, up to five minutes.
+
+**Merged on top of 28–32, not beside it.** This build is the union: the conversation record with its
+habits and export (28), Shizuku system controls (29, 30), Presence and the sideways wheel (31) and
+"Hey Jarvis" reading the whole sentence (32) all land here too. One consequence worth naming: 32 removed
+the Instagram module and the account connections, so the caption's timing line now stays silent —
+there are no numbers to read, and a blog post's guess dressed as data would be worse than no advice.
+
+**versionCode 33**, 42 suites.
+
+---
+
 ## 1.0.0 — versionCode 32
 
 **"Hey Jarvis" now hears the rest of the sentence (same version).** The wake word used to be the
