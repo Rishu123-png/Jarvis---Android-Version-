@@ -717,7 +717,7 @@ private fun CoreField(
     label: String,
     value: String,
     placeholder: String,
-    keyboardType: KeyboardType,
+    keyboardType: KeyboardType = KeyboardType.Text,
     onChange: (String) -> Unit,
 ) {
     Spacer(Modifier.height(10.dp))

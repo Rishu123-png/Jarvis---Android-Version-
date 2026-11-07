@@ -250,7 +250,7 @@ object AiClient {
         if (code !in 200..299) {
             return@withContext AiResult.Error(
                 "The core answered HTTP $code.",
-                providerMessage(text).ifBlank { "Is \"$model\" pulled on the PC?" },
+                providerMessage(text) ?: "Is \"$model\" pulled on the PC?",
             )
         }
 
