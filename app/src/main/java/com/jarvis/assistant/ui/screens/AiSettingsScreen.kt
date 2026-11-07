@@ -33,9 +33,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.ai.AiClient
 import com.jarvis.assistant.ai.AiKeyStore
+import com.jarvis.assistant.ai.AiMessage
 import com.jarvis.assistant.ai.AiProvider
 import com.jarvis.assistant.ai.AiResult
 import com.jarvis.assistant.ai.ModelsResult
+import com.jarvis.assistant.data.CoreLink
 import com.jarvis.assistant.ui.components.HudDivider
 import com.jarvis.assistant.ui.components.HudPanel
 import com.jarvis.assistant.ui.components.ReadoutRow
@@ -84,6 +86,13 @@ fun AiSettingsScreen(onBack: () -> Unit) {
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var modelPage by remember { mutableStateOf(1) }
     var fetchingModels by remember { mutableStateOf(false) }
+
+    var coreOn by remember { mutableStateOf(CoreLink.isEnabled(context)) }
+    var coreBase by remember { mutableStateOf(CoreLink.base(context)) }
+    var coreModel by remember { mutableStateOf(CoreLink.model(context)) }
+    var coreBusy by remember { mutableStateOf(false) }
+    var coreNote by remember { mutableStateOf<String?>(null) }
+    var coreOk by remember { mutableStateOf(false) }
 
     val effectiveModel = model.ifBlank { provider.defaultModel }
 
@@ -212,6 +221,51 @@ fun AiSettingsScreen(onBack: () -> Unit) {
         }
     }
 
+    // Saving and testing both go through CoreLink.save, so the address rule is applied once and
+    // the sentence the operator sees is the rule's own, not a paraphrase written here.
+    fun saveCore(): Boolean {
+        val problem = CoreLink.save(context, coreOn, coreBase, coreModel)
+        if (problem != null) {
+            coreNote = problem
+            coreOk = false
+            return false
+        }
+        coreBase = CoreLink.base(context)
+        coreModel = CoreLink.model(context)
+        coreNote = if (coreOn) {
+            "Core saved. Planning goes to ${CoreLink.hostOf(coreBase) ?: coreBase}."
+        } else {
+            "Core off. Planning uses your key."
+        }
+        coreOk = true
+        return true
+    }
+
+    fun testCore() {
+        if (coreBusy || !saveCore()) return
+        coreBusy = true
+        coreNote = null
+        scope.launch {
+            val result = AiClient.chatOnCore(
+                context = context,
+                messages = listOf(AiMessage.user("Reply with exactly one word: ONLINE")),
+                system = "You are a connectivity probe. Reply with one word only.",
+            )
+            when (result) {
+                is AiResult.Ok -> {
+                    coreNote = "Core answered: ${result.model}. " +
+                        if (coreOn) "Planning will use it." else "Turn the core on to use it."
+                    coreOk = true
+                }
+                is AiResult.Error -> {
+                    coreNote = listOfNotNull(result.message, result.hint).joinToString(" ")
+                    coreOk = false
+                }
+            }
+            coreBusy = false
+        }
+    }
+
     ModuleScaffold(
         title = "INTELLIGENCE",
         subtitle = "your key · your provider",
@@ -236,11 +290,88 @@ fun AiSettingsScreen(onBack: () -> Unit) {
             HudDivider(modifier = Modifier.padding(vertical = 8.dp))
             Text(
                 text = "The key is encrypted with the Android Keystore (AES-256-GCM) before " +
-                    "it is written to storage. It is sent only to the provider you chose — " +
-                    "JARVIS has no server of its own.",
+                    "it is written to storage. It is sent only to the provider you chose; " +
+                    "JARVIS runs no server of its own. The core below is your machine, not mine.",
                 style = HudType.terminal.copy(fontSize = 10.sp),
                 color = TextSecondary,
             )
+        }
+
+        HudPanel(
+            label = "CORE · PC AS BRAIN",
+            accent = if (coreOn) StatusGreen else TextMuted,
+        ) {
+            ReadoutRow(
+                label = "CORE",
+                value = if (coreOn) "ON" else "OFF",
+                valueColor = if (coreOn) StatusGreen else TextMuted,
+            )
+            ReadoutRow(
+                label = "ADDRESS",
+                value = CoreLink.hostOf(coreBase) ?: "—",
+                valueColor = if (CoreLink.isAllowed(coreBase)) TextPrimary else Amber,
+            )
+            ReadoutRow(label = "MODEL", value = coreModel.ifBlank { CoreLink.DEFAULT_MODEL })
+
+            HudDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text(
+                text = "Plan on your own machine instead of a provider. Speech still uses the key " +
+                    "above; only the thinking moves. If the core is asleep, JARVIS falls back to " +
+                    "the key for that sentence, so nothing stops working when the PC is off.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextSecondary,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "Start the model on the PC (Ollama, llama.cpp, LM Studio, vLLM — anything " +
+                    "OpenAI-compatible), then plug in USB and run: adb reverse tcp:11434 tcp:11434. " +
+                    "That is why the address is 127.0.0.1 — the cable, not the wifi. Plain http over " +
+                    "wifi is refused: any machine on the network could pretend to be the core.",
+                style = HudType.terminal.copy(fontSize = 10.sp),
+                color = TextMuted,
+            )
+
+            CoreField(
+                label = "ADDRESS",
+                value = coreBase,
+                placeholder = CoreLink.DEFAULT_BASE,
+                keyboardType = KeyboardType.Uri,
+                onChange = { coreBase = it },
+            )
+            CoreField(
+                label = "MODEL",
+                value = coreModel,
+                placeholder = CoreLink.DEFAULT_MODEL,
+                onChange = { coreModel = it },
+            )
+
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SmallPill(
+                    label = if (coreOn) "CORE ON" else "CORE OFF",
+                    accent = if (coreOn) StatusGreen else TextMuted,
+                    onClick = { coreOn = !coreOn },
+                )
+                SmallPill(
+                    label = "SAVE CORE",
+                    accent = ElectricCyan,
+                    onClick = { saveCore() },
+                )
+                SmallPill(
+                    label = if (coreBusy) "TESTING…" else "TEST CORE",
+                    accent = StatusGreen,
+                    onClick = { testCore() },
+                )
+            }
+
+            coreNote?.let { message ->
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = message,
+                    style = HudType.terminal.copy(fontSize = 10.sp),
+                    color = if (coreOk) StatusGreen else Color(0xFFFF8A98),
+                )
+            }
         }
 
         HudPanel(label = "API KEY", accent = ElectricCyan) {
@@ -578,6 +709,47 @@ fun AiSettingsScreen(onBack: () -> Unit) {
                 color = TextMuted,
             )
         }
+    }
+}
+
+@Composable
+private fun CoreField(
+    label: String,
+    value: String,
+    placeholder: String,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    onChange: (String) -> Unit,
+) {
+    Spacer(Modifier.height(10.dp))
+    Text(
+        text = label,
+        style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+        color = TextMuted,
+    )
+    Spacer(Modifier.height(6.dp))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF08131F), ChipShape)
+            .border(1.dp, ElectricCyan.copy(alpha = 0.20f), ChipShape)
+            .padding(horizontal = 11.dp, vertical = 10.dp),
+    ) {
+        if (value.isEmpty()) {
+            Text(
+                text = placeholder,
+                style = HudType.value.copy(fontSize = 12.sp),
+                color = TextMuted,
+            )
+        }
+        BasicTextField(
+            value = value,
+            onValueChange = { onChange(it.take(160)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            textStyle = HudType.value.copy(fontSize = 12.sp, color = TextPrimary),
+            cursorBrush = SolidColor(ElectricCyan),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

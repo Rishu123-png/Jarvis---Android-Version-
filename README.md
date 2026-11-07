@@ -87,6 +87,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 
 - [What he actually is](#what-he-actually-is)
 - [The brain](#the-brain)
+- [The core — the brain on your PC](#the-core--the-brain-on-your-pc)
 - [The curiosity](#the-curiosity)
 - [The sky](#the-sky)
 - [The assistant button](#the-assistant-button)
@@ -192,6 +193,40 @@ through the model, with the matching text-to-speech voice.
 
 </td></tr>
 </table>
+
+---
+
+## The core — the brain on your PC
+
+The six parts above run on the phone, against your own key. There is a second arrangement: a model
+running on your own computer does the planning, and the phone keeps the ear, the voice, and the hands.
+
+**Settings → INTELLIGENCE → CORE · PC AS BRAIN.** Start a model on the PC — Ollama, llama.cpp,
+LM Studio, vLLM, anything OpenAI-compatible — plug the phone in, and run:
+
+```
+adb reverse tcp:11434 tcp:11434
+```
+
+That is the whole setup. The PC now appears to the app as `127.0.0.1:11434`, the bytes travel down
+the USB cable, and nothing touches the wifi. Then turn the core on and plan there instead of at a
+provider.
+
+**Why the address is local.** A plain `http://192.168.x.x` is refused, with a sentence saying so.
+Over wifi, any machine on the network can claim to be the core, and a phone has no way to tell once
+it starts treating that machine's words as instructions. Over the cable there is nobody in the middle
+and TLS would be theatre. An `https://` address is accepted from anywhere, so a core served with a
+real certificate works over the LAN or a tailnet. The rule is enforced twice — when you save
+(`CoreLink`) and by the platform's network policy — and `CoreLinkTest` fails CI if it is ever
+loosened for convenience.
+
+**The PC is never required.** If the core is off, asleep, or the cable is out, that same sentence is
+planned with your key instead. With neither configured, the local rules answer exactly as they did
+before this build. Nothing about the phone waits for a computer that is not there.
+
+**What is not built yet.** No pairing flow, no installer for the core, no phone-side control of the
+PC, and no long-lived session. This slice moves one thing — the plan — and leaves every other part
+where it was.
 
 ---
 
@@ -717,8 +752,8 @@ app/src/main/java/com/jarvis/assistant/
 
 | | |
 |---|---|
-| **Backend** | None. There is no JARVIS server, no account, no sync. |
-| **Network** | Only: your own AI key's provider, one optional router for road distance, a one-time voice-model download when you turn on Hey Jarvis, or a URL you asked for. |
+| **Backend** | None of mine. No JARVIS server, no account, no sync. The optional core is your own machine, reached over your own cable. |
+| **Network** | Only: your own AI key's provider, one optional router for road distance, a one-time voice-model download when you turn on Hey Jarvis, a URL you asked for, or the core you run yourself. |
 | **Memory** | A preferences file on this phone. Read it in Advanced; wipe it with one key. |
 | **Keys** | Android Keystore (`AES/GCM`). Never in this repository. |
 | **Notifications** | Held in memory only, dropped when the listener disconnects. |

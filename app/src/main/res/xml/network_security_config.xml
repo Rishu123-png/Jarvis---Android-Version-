@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The only cleartext the app will ever speak is over its own loopback.
+
+    The core lives on the operator's PC. Reached over USB with `adb reverse tcp:11434 tcp:11434`,
+    the address is 127.0.0.1 and the bytes never touch a network, so there is nobody to impersonate
+    and TLS would be theatre. Everywhere else — the LAN, a tailnet, the internet — stays HTTPS-only
+    and is enforced by the platform, not by a check in the app.
+
+    Keep this file in step with CoreLink.isAllowed, which applies the same rule before saving.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- adb reverse, or any local model server on the device itself. -->
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <!-- The Android emulator's alias for its host machine, for testing the core. -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
