@@ -1,6 +1,7 @@
 package com.jarvis.assistant.ai
 
 import android.content.Context
+import com.jarvis.assistant.data.CoreLink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -179,6 +180,92 @@ object AiClient {
         } else {
             AiResult.Error("No model configured.", "Set one in Settings → INTELLIGENCE.")
         }
+    }
+
+    /**
+     * Plans against the operator's own machine instead of a provider.
+     *
+     * Same wire format as OpenAI, because every local runtime worth using (Ollama, llama.cpp,
+     * LM Studio, vLLM) speaks it. The differences that matter are all in the failure handling: a
+     * model on a desk can be asleep, unplugged, or not running, so every failure here is a normal
+     * answer rather than an exception, and the caller falls back to the operator's key.
+     *
+     * Images are refused on purpose: a small local model on a laptop is the wrong thing to hand a
+     * photo to, and the cloud path already handles looking.
+     */
+    suspend fun chatOnCore(
+        context: Context,
+        messages: List<AiMessage>,
+        system: String,
+    ): AiResult = withContext(Dispatchers.IO) {
+        if (messages.isEmpty()) return@withContext AiResult.Error("Nothing to send.")
+        if (messages.any { it.images.isNotEmpty() }) {
+            return@withContext AiResult.Error("The core does not look at pictures.")
+        }
+
+        val base = CoreLink.base(context)
+        val model = CoreLink.model(context)
+        if (!CoreLink.isAllowed(base)) {
+            return@withContext AiResult.Error("That core address is not allowed.", CoreLink.refusalFor(base))
+        }
+
+        val body = try {
+            JSONObject().apply {
+                put("model", model)
+                put("max_tokens", MAX_REPLY_TOKENS)
+                put("messages", JSONArray().apply {
+                    put(JSONObject().put("role", "system").put("content", system))
+                    messages.forEach { message ->
+                        put(JSONObject().put("role", message.role).put("content", message.content))
+                    }
+                })
+            }.toString()
+        } catch (t: Throwable) {
+            return@withContext AiResult.Error("Could not build the core request.", t.message)
+        }
+
+        val response = try {
+            post(
+                Request(
+                    url = CoreLink.endpoint(base),
+                    headers = mapOf("Content-Type" to "application/json; charset=utf-8"),
+                    body = body,
+                ),
+            )
+        } catch (e: SocketTimeoutException) {
+            return@withContext AiResult.Error(
+                "The core did not answer in time.",
+                "Is the model still loaded on the PC?",
+            )
+        } catch (e: IOException) {
+            return@withContext AiResult.Error(
+                "Could not reach the core.",
+                "Check that it is running and the USB link is up.",
+            )
+        } catch (t: Throwable) {
+            return@withContext AiResult.Error("The core request failed.", t.message)
+        }
+
+        val (code, text) = response
+        if (code !in 200..299) {
+            return@withContext AiResult.Error(
+                "The core answered HTTP $code.",
+                providerMessage(text).ifBlank { "Is \"$model\" pulled on the PC?" },
+            )
+        }
+
+        val reply = extractText(AiWire.OPENAI, text)
+            ?: return@withContext AiResult.Error(
+                "The core sent a reply JARVIS could not read.",
+                "Only OpenAI-compatible servers work here, e.g. Ollama at /v1.",
+            )
+
+        AiResult.Ok(
+            text = reply.take(MAX_REPLY_CHARS),
+            providerLabel = "CORE",
+            model = model,
+            note = null,
+        )
     }
 
     /** Round-trips a fixed prompt so the operator can prove the key works. */

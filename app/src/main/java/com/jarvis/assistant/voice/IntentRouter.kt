@@ -13,6 +13,7 @@ import com.jarvis.assistant.automation.JarvisAccessibilityService
 import com.jarvis.assistant.automation.ParamKind
 import com.jarvis.assistant.data.AppRepository
 import com.jarvis.assistant.data.ConversationLog
+import com.jarvis.assistant.data.CoreLink
 import com.jarvis.assistant.data.PendingConfirm
 import com.jarvis.assistant.data.Knowledge
 import com.jarvis.assistant.data.Lane
@@ -130,7 +131,12 @@ object IntentRouter {
         !it.blocks && it != ActionType.WEBHOOK
     }
 
-    fun aiReady(context: Context): Boolean = AiKeyStore.config(context) != null
+    /**
+     * True when a plan can be made at all: either the operator's key, or a core on their PC.
+     * The core alone is enough — which is the point of the core.
+     */
+    fun aiReady(context: Context): Boolean =
+        AiKeyStore.config(context) != null || CoreLink.isEnabled(context)
 
     suspend fun plan(context: Context, heard: String, previous: String? = null): VoicePlan {
         val spoken = heard.trim()
@@ -357,11 +363,14 @@ object IntentRouter {
             }
             add(AiMessage.user(heard))
         }
-        val result = AiClient.chat(
-            context = context,
-            messages = messages,
-            system = system,
-        )
+        // The brain on the PC first, when the operator turned it on; the key is the fallback, so a
+        // sleeping laptop costs one slow sentence rather than a command that does nothing.
+        val result = if (CoreLink.isEnabled(context)) {
+            val viaCore = AiClient.chatOnCore(context, messages, system)
+            if (viaCore is AiResult.Ok) viaCore else AiClient.chat(context, messages, system)
+        } else {
+            AiClient.chat(context, messages, system)
+        }
         val reply = when (result) {
             is AiResult.Error -> return null
             is AiResult.Ok -> result.text

@@ -4,6 +4,35 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 34
+
+The first slice of the core: the thinking can now happen on your own PC.
+
+**PC as the brain.** Settings → INTELLIGENCE → **CORE · PC AS BRAIN** points JARVIS at a model
+running on your machine — Ollama, llama.cpp, LM Studio, vLLM, anything that speaks the OpenAI wire
+format. When the core is on, a spoken command is planned there instead of at a provider. Speech is
+unchanged: the transcription still uses your key (or the on-phone recogniser), so the core only
+replaces the planning half.
+
+**It is not a replacement, it is a preference.** If the core is off, asleep, or the cable is out, that
+sentence is planned with your key instead, and nothing else changes. With neither configured, the local
+rules answer exactly as they always did. The phone is never dependent on the PC.
+
+**Why the address looks strange.** The core is reached over USB: plug the phone in, run
+`adb reverse tcp:11434 tcp:11434`, and the PC appears to the app as `127.0.0.1:11434`. The bytes
+travel down the cable and never touch a network, which is why plain http is allowed there and
+nowhere else. A plain `http://192.168.x.x` is refused with a sentence explaining what to do instead;
+an `https://` address is accepted from anywhere. That rule is enforced twice — before saving, and by
+the platform's own network policy in `network_security_config.xml` — and it is covered by
+`CoreLinkTest`.
+
+**What this build does not include.** No pairing flow, no core software to install, no phone-side
+control of the PC, and no fallback from a half-finished core reply into a half-run command: a core
+answer either plans a complete command or the sentence goes to the key. There is also no key needed
+for the core itself; it is your machine on your cable.
+
+---
+
 ## 1.0.0 — versionCode 33
 
 Four things land together in this build, all on top of 32 and all following the same rule: he
