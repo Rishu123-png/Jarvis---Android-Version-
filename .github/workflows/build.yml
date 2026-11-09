@@ -98,9 +98,9 @@ jobs:
             assembleDebug assembleRelease assembleDebugAndroidTest 2>&1 | tee -a build.log
 
       # Android lint has never been run over this codebase, so it starts as a report rather than a
-      # gate: the HTML is uploaded and the step is allowed to fail. Once the first report has been
-      # triaged -- or a baseline has been committed -- drop `continue-on-error` and it joins the
-      # tests as something that can stop a release.
+      # gate: `abortOnError` is off in app/build.gradle.kts and the HTML is uploaded for triage.
+      # Once the report is clean (or a baseline is committed), turn `abortOnError` back on, delete
+      # the line below, and lint joins the tests as something that can stop a release.
       - name: Android lint (report only)
         continue-on-error: true
         run: ./gradlew --no-daemon --console=plain lintDebug

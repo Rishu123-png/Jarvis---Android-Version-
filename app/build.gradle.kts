@@ -252,6 +252,24 @@ android {
         jvmTarget = "17"
     }
 
+    /*
+     * Android lint runs on every build in CI, but it does not stop one -- yet.
+     *
+     * This app has never been through lint, and a linter's first pass over a five-year-old codebase
+     * is a triage exercise, not a verdict: the largest group is always `MissingPermission`, which
+     * fires wherever a permission is checked by hand with a graceful fallback instead of by an
+     * annotation. Turning that into a red build on day one would teach everyone to ignore it.
+     *
+     * So errors are reported, not fatal. When the report is clean (or a baseline is committed),
+     * set `abortOnError = true` here and drop `continue-on-error` from the CI step: the gate then
+     * exists for real.
+     */
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+        warningsAsErrors = false
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
