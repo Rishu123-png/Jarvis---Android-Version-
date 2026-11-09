@@ -4,6 +4,45 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 35
+
+Five things land together. The theme is the same in all of them: the phone should not need a second
+file, a second app, or a second guess to do what it was told.
+
+**The voice model ships inside the APK.** It was already supposed to — the build could fetch it —
+but the fetch failed quietly and CI never checked, so builds arrived that asked the operator to
+download 40 MB from inside the app. That is gone twice over: CI now builds with
+`-PrequireVoskModel=true`, which *fails the build* rather than shipping without it, and the workflow
+refuses any APK that does not contain `assets/model-en-us/am/final.mdl`. On the phone the service
+unpacks the bundled copy on first start. Installing JARVIS is the whole download.
+
+**A risk ladder instead of a yes/no.** `ActionRisk` orders every action READ_ONLY → REVERSIBLE →
+SENSITIVE → IRREVERSIBLE, built from the flags that already existed plus a short, explicit list of
+things that leave the phone or cannot be taken back. It decides one thing that matters: a plan may
+be moved between the core on the PC and your key only when it is read-only or reversible. A
+sensitive plan that fell back says so before it runs, instead of quietly being composed by a
+different model than the one you chose. It also lets a routine report its worst step before it is
+armed.
+
+**Routines can prove they are themselves.** Every routine's steps and trigger are hashed when it is
+saved and re-checked before every run. If the stored program changed on its own — a partial write, a
+bad restore, a migration that misread a field — the engine refuses to run it and says why. The name
+and the on/off switch are deliberately excluded: renaming a routine is not a change to what it would
+do, and a warning that fires for harmless edits is a warning nobody reads.
+
+**He can touch the screen properly.** The planner used to get a list of words, which is enough to
+press "Send" and nothing else: an icon-only button has no words at all. Each row now carries the
+widget type, the Android resource id and the centre point, so a paper-plane icon is reachable by id.
+And three gestures exist for the cases no label can cover: scroll a scrollable area, swipe in four
+directions, tap an exact coordinate. All of it sits behind the same screen-press consent that already
+gated every press.
+
+**He stops when you start talking.** A second wake or a new sentence cuts him off mid-word instead of
+talking over you, and the speech engine stays warm so the next answer still has its voice. A shell
+command that wipes or reboots now says it cannot be undone before asking for the yes.
+
+---
+
 ## 1.0.0 — versionCode 34
 
 The first slice of the core: the thinking can now happen on your own PC.

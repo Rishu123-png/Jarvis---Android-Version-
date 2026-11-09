@@ -298,9 +298,12 @@ Say **"Hey Jarvis"** and he opens listening. It is off until you turn it on in
   no cloud. The recogniser is given a grammar of exactly two alternatives — the phrase and the
   engine's "unknown" token — so ordinary speech does not wake him.
 - **The model** (`vosk-model-small-en-us-0.15`, ~40 MB) is packed into the APK at build time, so
-  installing the app is enough: turning the wake word on copies it to private storage, offline, in
-  seconds. If a build could not fetch it, the app downloads it the first time you turn the wake word
-  on, and says so. It is checked by its contents before use.
+  installing the app is enough — there is nothing to download afterwards, and it works with the
+  phone in flight mode. Turning the wake word on unpacks it to private storage, offline, in seconds,
+  and it is checked by its contents before use. The build enforces this: CI compiles with
+  `-PrequireVoskModel=true` and rejects any APK that is missing `assets/model-en-us/am/final.mdl`,
+  because a build that quietly shipped without the model would ask you for a second download — the
+  exact thing this is here to prevent.
 - **While it is on:** a foreground service holds the microphone. Android shows its microphone
   indicator and a notification the whole time, with a *TURN OFF* button. It listens only while
   switched on; turning it off stops the service.
@@ -753,7 +756,7 @@ app/src/main/java/com/jarvis/assistant/
 | | |
 |---|---|
 | **Backend** | None of mine. No JARVIS server, no account, no sync. The optional core is your own machine, reached over your own cable. |
-| **Network** | Only: your own AI key's provider, one optional router for road distance, a one-time voice-model download when you turn on Hey Jarvis, a URL you asked for, or the core you run yourself. |
+| **Network** | Only: your own AI key's provider, one optional router for road distance, a URL you asked for, or the core you run yourself. The wake-word model is inside the APK — nothing is fetched to make "Hey Jarvis" work. |
 | **Memory** | A preferences file on this phone. Read it in Advanced; wipe it with one key. |
 | **Keys** | Android Keystore (`AES/GCM`). Never in this repository. |
 | **Notifications** | Held in memory only, dropped when the listener disconnects. |
@@ -766,7 +769,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-42 JVM suites, run before every APK in CI.
+46 JVM suites and 429 tests, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|
