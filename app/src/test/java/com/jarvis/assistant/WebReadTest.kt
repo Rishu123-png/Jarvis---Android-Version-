@@ -136,6 +136,65 @@ class WebReadTest {
         assertTrue(WebRead.Page(url = "https://x.test", title = "", text = "").isEmpty)
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Redirects
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    fun aRedirectToAnotherPublicPageIsFollowed() {
+        assertEquals(
+            "https://news.example.com/story",
+            WebRead.redirectTarget("https://example.com/a", "https://news.example.com/story"),
+        )
+    }
+
+    @Test
+    fun aRelativeRedirectIsResolvedAgainstThePageThatSentIt() {
+        assertEquals(
+            "https://example.com/next",
+            WebRead.redirectTarget("https://example.com/a/b", "/next"),
+        )
+        assertEquals(
+            "https://example.com/a/deeper",
+            WebRead.redirectTarget("https://example.com/a/b", "deeper"),
+        )
+        assertEquals(
+            "https://cdn.example.com/x",
+            WebRead.redirectTarget("https://example.com/a", "//cdn.example.com/x"),
+        )
+    }
+
+    @Test
+    fun aRedirectToAPrivateAddressIsRefused() {
+        assertNull(WebRead.redirectTarget("https://example.com", "https://192.168.1.1/admin"))
+        assertNull(WebRead.redirectTarget("https://example.com", "https://127.0.0.1:8080/"))
+        assertNull(WebRead.redirectTarget("https://example.com", "https://localhost/"))
+        assertNull(WebRead.redirectTarget("https://example.com", "https://10.0.0.5/"))
+        assertNull(WebRead.redirectTarget("https://example.com", "//169.254.169.254/latest"))
+        assertNull(WebRead.redirectTarget("https://example.com", "https://router.local/"))
+    }
+
+    @Test
+    fun aRedirectThatLeavesHttpsIsRefused() {
+        assertNull(WebRead.redirectTarget("https://example.com", "http://example.com/plain"))
+        assertNull(WebRead.redirectTarget("https://example.com", "file:///etc/passwd"))
+        assertNull(WebRead.redirectTarget("https://example.com", "javascript:alert(1)"))
+    }
+
+    @Test
+    fun aRedirectWithoutALocationEndsTheRead() {
+        assertNull(WebRead.redirectTarget("https://example.com", null))
+        assertNull(WebRead.redirectTarget("https://example.com", "   "))
+    }
+
+    @Test
+    fun theFragmentOfARedirectIsNotPartOfTheAddress() {
+        assertEquals(
+            "https://example.com/next",
+            WebRead.redirectTarget("https://example.com", "https://example.com/next#section"),
+        )
+    }
+
     @Test
     fun theFallbackSummaryTakesTheFirstSentences() {
         val text = "Delhi received heavy rain today. Two flights were delayed as a result. " +

@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-42%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-47%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -606,8 +606,8 @@ Photos to `Pictures/JARVIS`, notes to `Music/JARVIS`.</td></tr>
 
 <tr><td><b>Routines</b></td><td>
 
-Full automation engine: triggers, conditions, control flow, retries, run history, and **19 action
-types** available to both routines and voice.</td></tr>
+Full automation engine: triggers, conditions, control flow, retries, run history, and **63 action
+types** — 58 actions and 5 control-flow steps — available to both routines and voice.</td></tr>
 
 </table>
 
@@ -674,7 +674,8 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 42 JVM suites
+./gradlew :app:testDebugUnitTest    # 47 JVM suites
+python3 tools/guard.py              # docs, pins, cleartext, exported receivers
 ```
 
 Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
@@ -700,7 +701,7 @@ no assistant.
 | Keep the bundled Shizuku up to date by itself | The copy inside the APK is pinned to one version. A newer Shizuku comes when a newer JARVIS does. |
 | Undo a destructive shell command | The privileged tier runs as `adb`: a wipe is a wipe. That is why `reboot`, `pm clear`, uninstalling and wiping are asked about before they run. |
 
-**Verified by CI:** compilation, 42 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 47 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -712,7 +713,7 @@ step/heart sensors, the system credential screen, TTS voices.
 app/src/main/java/com/jarvis/assistant/
 ├── MainActivity.kt               single activity, Compose host
 ├── ai/                           your key, any provider, JSON + free conversation
-├── automation/                   the engine: 19 actions, conditions, triggers, screen agent
+├── automation/                   the engine: 58 actions, 11 conditions, 10 triggers, screen agent
 ├── data/                         PhraseBook (~400 phrasings) · Units · When · command line
 ├── device/                       the phone itself: files, gallery, location, health, calendar,
 │                                 contacts, notifications, voice notes, lock, biometrics
@@ -769,7 +770,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-46 JVM suites and 429 tests, run before every APK in CI.
+47 JVM suites and 444 tests, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|
@@ -785,6 +786,7 @@ capability, what it unlocks, and what breaks without it.
 | `HealthMathTest` | step baselines, sleep estimate caps |
 | `NudgesTest` | briefs that should stay silent |
 | `BiometricPolicyTest` | when the sensor may fire on its own |
+| `StepInputTest` | the address a webhook may call, and the gesture a word means |
 | `TimeFormatTest` · `VoiceParsingTest` · `JsonReplyTest` · `WavTest` · `WorkflowJsonTest` | the rest of the pure logic |
 
 ---

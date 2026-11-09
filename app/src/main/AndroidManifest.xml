@@ -389,13 +389,18 @@
             </intent-filter>
         </receiver>
 
-        <!-- Re-arms alarms and the watcher after a reboot or an app update. -->
+        <!-- Re-arms alarms and the watcher after a reboot or an app update.
+             Not exported: both actions are system broadcasts, and the system is exempt from the
+             exported check. Leaving it `true` would only let any other app poke the re-arm path. -->
         <receiver
             android:name=".automation.AutomationBootReceiver"
-            android:exported="true"
+            android:exported="false"
             android:directBootAware="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- Some OEM builds (Xiaomi, Realme, Oppo) send this instead of BOOT_COMPLETED.
+                     The receiver already answers it; without the filter below it was unreachable. -->
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>

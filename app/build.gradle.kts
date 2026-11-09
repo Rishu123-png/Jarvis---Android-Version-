@@ -106,6 +106,17 @@ val fetchVoskModel by tasks.registering {
  */
 val shizukuVersion = "13.6.0"
 val shizukuApkBytes = 2_571_773L
+/*
+ * Why the bundled app (13.6.0) and the API artifact (13.1.5, in gradle/libs.versions.toml) are not
+ * the same number, on purpose.
+ *
+ * 13.1.5 is the newest `dev.rikka.shizuku` the author publishes to Maven Central — the library's own
+ * changelog ends there — so asking for 13.6.0 in the dependency block would not resolve and would
+ * fail the build. Shizuku guarantees that a newer manager keeps serving an older client, which is
+ * exactly this pairing: the operator gets the newest Shizuku fixes, and the app talks to it through
+ * the newest API that exists. The two pins are checked against the phone's download URL by
+ * tools/guard.py, so this comment cannot quietly become untrue.
+ */
 val shizukuUrl = "https://github.com/RikkaApps/Shizuku/releases/download/v" + shizukuVersion + "/" +
     "shizuku-v" + shizukuVersion + ".r1086.2650830c-release.apk"
 /*

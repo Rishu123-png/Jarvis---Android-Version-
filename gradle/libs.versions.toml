@@ -5,6 +5,9 @@ coreKtx = "1.13.1"
 lifecycle = "2.8.6"
 activityCompose = "1.9.3"
 composeBom = "2024.10.01"
+# Newest published dev.rikka.shizuku artifacts. The Shizuku *app* shipped inside the APK is newer
+# (13.6.0, pinned in app/build.gradle.kts) — a newer manager keeps serving an older client, and
+# tools/guard.py keeps the two pins and the download URL in agreement.
 shizuku = "13.1.5"
 camerax = "1.4.1"
 mlkitText = "16.0.1"
