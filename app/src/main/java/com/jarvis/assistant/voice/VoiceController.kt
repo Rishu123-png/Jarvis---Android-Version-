@@ -106,6 +106,8 @@ object VoiceController {
     fun startFromWake(context: Context) {
         val app = context.applicationContext
         if (_state.value.phase == VoicePhase.LISTENING) return
+        // He was mid-sentence; the operator talking is the newer information, so he stops.
+        SpeechOut.stop()
         startListening(app)
     }
 
@@ -116,6 +118,8 @@ object VoiceController {
      */
     fun submitCaptured(context: Context, pcm: ByteArray) {
         val app = context.applicationContext
+        // Same rule for the one-breath case: a new sentence wins over a sentence already playing.
+        SpeechOut.stop()
 
         // Without a speech endpoint the captured bytes cannot become words. Fall back to the normal
         // listening session rather than silently dropping what was said.

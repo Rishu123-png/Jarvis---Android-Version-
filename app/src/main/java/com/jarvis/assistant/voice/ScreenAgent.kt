@@ -3,14 +3,16 @@ package com.jarvis.assistant.voice
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import com.jarvis.assistant.ai.AiClient
-import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.ai.AiMessage
 import com.jarvis.assistant.ai.AiResult
 import com.jarvis.assistant.automation.AccessibilityStatus
 import com.jarvis.assistant.automation.ActionType
 import com.jarvis.assistant.automation.JarvisAccessibilityService
+import com.jarvis.assistant.automation.ScreenItem
+import com.jarvis.assistant.automation.ScreenMap
 import com.jarvis.assistant.automation.StepExecutor
 import com.jarvis.assistant.automation.WorkflowStep
+import com.jarvis.assistant.data.CoreLink
 import kotlinx.coroutines.delay
 import org.json.JSONObject
 import java.util.Locale
@@ -46,6 +48,13 @@ object ScreenAgent {
     private const val SETTLE_MS = 900L
     private const val DECISION_TIMEOUT_MS = 20_000L
 
+    /**
+     * How long one step waits on the core before falling back to the key. Shorter than a whole
+     * sentence gets: this loop can make twenty decisions, so a sleeping PC must not cost twenty
+     * full timeouts.
+     */
+    private const val CORE_DECISION_TIMEOUT_MS = 12_000L
+
     data class Event(val label: String, val detail: String)
 
     private data class Decision(
@@ -75,20 +84,20 @@ object ScreenAgent {
                 return "That was taking too long, so I stopped. Say it again if you want me to carry on."
             }
             val app = JarvisAccessibilityService.currentPackage() ?: "unknown"
-            var labels = JarvisAccessibilityService.visibleLabels(MAX_LABELS)
+            var items = JarvisAccessibilityService.describeScreen(MAX_LABELS)
             var viaOcr = false
 
-            if (labels.isEmpty()) {
+            if (items.isEmpty()) {
                 // Some apps draw their own UI, so the tree is empty. Read the pixels instead.
-                labels = readScreenByOcr(context)
-                viaOcr = labels.isNotEmpty()
-                if (labels.isEmpty() && index > 0) {
+                items = readScreenByOcr(context).map { ScreenItem(label = it) }
+                viaOcr = items.isNotEmpty()
+                if (items.isEmpty() && index > 0) {
                     // A blank screen is usually an ad or a splash; wait once, then decide again.
                     delay(SETTLE_MS)
                 }
             }
 
-            val decision = decide(context, goal, app, labels, history, viaOcr)
+            val decision = decide(context, goal, app, items, history, viaOcr)
                 ?: return "The brain stopped answering partway through."
 
             when (decision.action) {
@@ -110,6 +119,43 @@ object ScreenAgent {
                         return "I could not find \"$target\" on screen."
                     }
                     history.add("pressed \"$target\"")
+                }
+
+                "scroll" -> {
+                    val forward = !decision.param.trim().equals("up", ignoreCase = true)
+                    onEvent(Event(if (forward) "SCROLL DOWN" else "SCROLL UP", decision.say.take(48)))
+                    val moved = if (forward) {
+                        JarvisAccessibilityService.scrollForward()
+                    } else {
+                        JarvisAccessibilityService.scrollBackward()
+                    }
+                    if (!moved) return "Nothing on this screen scrolls."
+                    history.add(if (forward) "scrolled down" else "scrolled up")
+                }
+
+                "swipe" -> {
+                    val metrics = context.resources.displayMetrics
+                    val path = ScreenMap.swipePath(decision.param, metrics.widthPixels, metrics.heightPixels)
+                        ?: return "It asked for a swipe I do not understand (${decision.param})."
+                    onEvent(Event("SWIPE ${decision.param.uppercase(Locale.US).take(16)}", decision.say.take(48)))
+                    val done = JarvisAccessibilityService.swipe(
+                        path.first.first,
+                        path.first.second,
+                        path.second.first,
+                        path.second.second,
+                    )
+                    if (!done) return "The swipe was refused."
+                    history.add("swiped ${decision.param}")
+                }
+
+                "tap" -> {
+                    val point = ScreenMap.parsePoint(decision.param)
+                        ?: return "It gave a tap position I could not read."
+                    onEvent(Event("TAP ${point.first},${point.second}", decision.say.take(48)))
+                    if (!JarvisAccessibilityService.tapAt(point.first, point.second)) {
+                        return "The tap was refused."
+                    }
+                    history.add("tapped ${point.first},${point.second}")
                 }
 
                 "type" -> {
@@ -188,30 +234,37 @@ object ScreenAgent {
         context: Context,
         goal: String,
         app: String,
-        labels: List<String>,
+        items: List<ScreenItem>,
         history: List<String>,
         viaOcr: Boolean,
     ): Decision? {
-        if (AiKeyStore.config(context) == null) return null
+        if (!IntentRouter.aiReady(context)) return null
 
         val done = if (history.isEmpty()) "- nothing yet" else history.joinToString("\n") { "- $it" }
-        val visible = if (labels.isEmpty()) "(nothing readable)" else labels.joinToString(" | ")
+        val visible = ScreenMap.render(items)
         val source = if (viaOcr) "read from the screen image (no accessibility text)" else "accessibility text"
 
         val system = """
             You are driving an Android phone through an accessibility service, ONE action at a time.
 
             Reply with ONE JSON object and nothing else:
-            {"action":"press|type|global|open_app|wait|done|give_up","param":"...","say":"short note"}
+            {"action":"press|scroll|swipe|tap|type|global|open_app|wait|done|give_up","param":"...","say":"short note"}
 
             Action meanings:
             - press: tap a control. param must be a label from the visible list, copied exactly.
+            - scroll: move the page. param is down or up. Use this before giving up on a list.
+            - swipe: drag across the screen. param is up, down, left or right.
+            - tap: tap an exact point. param is "x,y" copied from an "@(x,y)" in the visible list.
             - type: type into the field that already has focus. Press the field first if needed.
             - global: system gesture. param is back, home, recents, shade or lock.
             - open_app: launch an app. param is a package name.
             - wait: pause. param is seconds, 1 to 5.
             - done: the goal is achieved.
             - give_up: the goal cannot be reached from here. Explain in say.
+
+            Each visible line is: #index "label" [class] #id @(x,y) tappable
+            Use the label for press. Use #id when the label is missing or shared by several rows.
+            Use @(x,y) only with tap, and only when no label or id fits.
 
             Rules:
             - One action per reply. Do not describe several steps.
@@ -228,14 +281,27 @@ object ScreenAgent {
             App in front: $app
             Actions taken:
             $done
-            Visible text, $source: $visible
+            Visible, $source:
+            $visible
         """.trimIndent()
 
+        // Same preference as a spoken command: the operator's own machine first when it is on,
+        // the key when it is not. A step gets a shorter core deadline than a whole sentence —
+        // this loop runs many times, so waiting a full timeout on every step would crawl.
         val reply = withTimeoutOrNull(DECISION_TIMEOUT_MS) {
-            when (val result = AiClient.chat(context, listOf(AiMessage.user(prompt)), system)) {
-                is AiResult.Ok -> result.text
-                is AiResult.Error -> null
+            val fromCore = if (CoreLink.isEnabled(context)) {
+                withTimeoutOrNull(CORE_DECISION_TIMEOUT_MS) {
+                    AiClient.chatOnCore(context, listOf(AiMessage.user(prompt)), system)
+                }
+            } else {
+                null
             }
+            val answer = if (fromCore is AiResult.Ok) {
+                fromCore
+            } else {
+                AiClient.chat(context, listOf(AiMessage.user(prompt)), system)
+            }
+            (answer as? AiResult.Ok)?.text
         } ?: return null
 
         val json = com.jarvis.assistant.ai.JsonReply.extractObject(reply) ?: return null

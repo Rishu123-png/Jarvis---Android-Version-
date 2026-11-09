@@ -60,6 +60,10 @@ class WakeWordService : Service() {
     @Volatile
     private var listening = false
 
+    /** Guards the one-time unpack from the APK so two starts cannot copy the model twice. */
+    @Volatile
+    private var preparing = false
+
     private val main = Handler(Looper.getMainLooper())
     private var handled = false
     private var rearm: Runnable? = null
@@ -90,7 +94,29 @@ class WakeWordService : Service() {
 
         val dir = WakeWordModel.installedDir(applicationContext)
         if (dir == null) {
-            fail("The voice model is not installed yet. Turn the wake word on again to download it.")
+            // The model ships inside this APK. Unpacking it once is part of installing the app —
+            // the operator is never sent to fetch a second file, and this works with no network.
+            if (WakeWordModel.bundled(applicationContext)) {
+                if (preparing) return START_STICKY
+                preparing = true
+                promoteToForeground("Preparing the offline voice model")
+                Thread({
+                    val problem = WakeWordModel.install(applicationContext) { percent ->
+                        promoteToForeground("Preparing the offline voice model · $percent%")
+                    }
+                    main.post {
+                        preparing = false
+                        val ready = WakeWordModel.installedDir(applicationContext)
+                        when {
+                            problem != null -> fail(problem)
+                            ready == null -> fail("The voice model did not unpack. Reinstall JARVIS.")
+                            else -> listen(ready.path)
+                        }
+                    }
+                }, "jarvis-model").start()
+                return START_STICKY
+            }
+            fail("The voice model is not in this build. Install the full APK to use the wake word.")
             return START_NOT_STICKY
         }
         listen(dir.path)

@@ -36,6 +36,15 @@ val hasReleaseKeystore = releaseKeystorePath != null
  * If the download fails (no network on the build machine), the build still succeeds and warns; the
  * app then downloads the model itself the first time the operator turns the wake word on.
  */
+/*
+ * The offline voice model travels INSIDE the APK.
+ *
+ * The operator downloads one file and the wake word works — no second download, no first-run
+ * network call, no "install the model" screen. That only holds if the fetch cannot quietly fail,
+ * so CI passes -PrequireVoskModel=true and an APK built without the model is not shippable.
+ * A local build stays forgiving so it can be compiled without a network.
+ */
+val requireVoskModel = providers.gradleProperty("requireVoskModel").orNull?.toBoolean() == true
 val voskModelUrl = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
 val voskAssetRoot = layout.buildDirectory.dir("generated/vosk-assets").get().asFile
 val voskAssetDir = File(voskAssetRoot, "model-en-us")
@@ -75,6 +84,9 @@ val fetchVoskModel by tasks.registering {
             unpacked.copyRecursively(voskAssetDir, overwrite = true)
             logger.lifecycle("Offline voice model bundled into the APK.")
         } catch (e: Exception) {
+            if (requireVoskModel) {
+                error("The offline voice model had to be bundled for this build but was not: ${e.message}")
+            }
             logger.warn("Offline voice model NOT bundled (${e.message}). The app will download it on first use.")
             zip.delete()
         }
@@ -179,7 +191,7 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 34
+        versionCode = 35
         versionName = "1.0.0"
 
         vectorDrawables { useSupportLibrary = true }

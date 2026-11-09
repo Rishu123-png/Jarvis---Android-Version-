@@ -7,6 +7,7 @@ import com.jarvis.assistant.ai.AiMessage
 import com.jarvis.assistant.ai.AiResult
 import com.jarvis.assistant.ai.JsonReply
 import com.jarvis.assistant.automation.AccessibilityStatus
+import com.jarvis.assistant.automation.ActionRisk
 import com.jarvis.assistant.automation.Crew
 import com.jarvis.assistant.automation.ActionType
 import com.jarvis.assistant.automation.JarvisAccessibilityService
@@ -365,9 +366,19 @@ object IntentRouter {
         }
         // The brain on the PC first, when the operator turned it on; the key is the fallback, so a
         // sleeping laptop costs one slow sentence rather than a command that does nothing.
+        //
+        // Whether that fallback may be *silent* depends on what gets planned, which is not known
+        // until the plan exists. So the switch is recorded here and judged below, once the steps
+        // have been read.
+        var fellBackFromCore = false
         val result = if (CoreLink.isEnabled(context)) {
             val viaCore = AiClient.chatOnCore(context, messages, system)
-            if (viaCore is AiResult.Ok) viaCore else AiClient.chat(context, messages, system)
+            if (viaCore is AiResult.Ok) {
+                viaCore
+            } else {
+                fellBackFromCore = true
+                AiClient.chat(context, messages, system)
+            }
         } else {
             AiClient.chat(context, messages, system)
         }
@@ -422,8 +433,12 @@ object IntentRouter {
         if (resolved.isEmpty() && screenGoal == null && say.isBlank()) return null
 
         // The provider is deliberately not named in the UI or in speech: the operator asked that
-        // JARVIS never discuss which key or service is behind him.
-        val sourceLabel = "AI"
+        // JARVIS never discuss which key or service is behind him. The *core* is a different
+        // matter: it is his own machine, and a different model composed this plan, so a sensitive
+        // one says so instead of pretending nothing changed.
+        val plannedElsewhere = fellBackFromCore &&
+            !ActionRisk.allowsSilentFallback(ActionRisk.highest(resolved.map { it.action }))
+        val sourceLabel = if (plannedElsewhere) "AI · CORE OFFLINE" else "AI"
 
         val subtitle = when {
             resolved.isEmpty() && screenGoal != null -> "SCREEN TASK"
@@ -436,7 +451,12 @@ object IntentRouter {
             title = title,
             subtitle = subtitle,
             steps = resolved,
-            say = say.ifBlank { if (resolved.isEmpty()) "Done." else "On it." },
+            say = if (plannedElsewhere) {
+                "The core was offline, so I planned this with your key. " +
+                    say.ifBlank { "On it." }
+            } else {
+                say.ifBlank { if (resolved.isEmpty()) "Done." else "On it." }
+            },
             source = sourceLabel,
             screenGoal = screenGoal,
         )
