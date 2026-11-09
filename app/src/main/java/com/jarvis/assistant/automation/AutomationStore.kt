@@ -84,12 +84,18 @@ object AutomationStore {
         val raw = store.getString(KEY_ROUTINES, null) ?: return presets()
         return try {
             val array = JSONArray(raw)
-            buildList {
+            val loaded = buildList {
                 for (i in 0 until array.length()) {
                     val obj = array.optJSONObject(i) ?: continue
                     Workflow.fromJson(obj)?.let { add(it) }
                 }
             }.ifEmpty { presets() }
+
+            // Routines saved before fingerprints existed get one once, not on every read. Until
+            // that happens their fingerprint is blank, which matches everything — the check only
+            // starts protecting a routine after it has been written once by this build.
+            if (loaded.any { it.fingerprint.isBlank() }) save(context, loaded)
+            loaded
         } catch (t: Throwable) {
             // A corrupt blob must not brick the module: fall back to the presets.
             presets()
@@ -98,7 +104,9 @@ object AutomationStore {
 
     fun save(context: Context, workflows: List<Workflow>) {
         val array = JSONArray()
-        workflows.forEach { array.put(it.toJson()) }
+        // Stamped at the moment of writing: from here on, the stored hash describes exactly what
+        // the engine will load back, so a later disagreement means the data changed on its own.
+        workflows.forEach { array.put(it.stamped().toJson()) }
         prefs(context).edit()
             .putString(KEY_ROUTINES, array.toString())
             .putInt(KEY_SCHEMA, Workflow.SCHEMA)

@@ -1,5 +1,6 @@
 package com.jarvis.assistant.voice
 
+import com.jarvis.assistant.automation.ActionRisk
 import com.jarvis.assistant.automation.ActionType
 import java.util.Locale
 
@@ -120,10 +121,21 @@ object ConfirmPolicy {
 
             ActionType.SHELL -> {
                 val command = step.param.trim().take(60)
-                when {
-                    hindi -> "यह कमांड चलाऊँ: $command ? हाँ कहिए।"
-                    hinglish -> "Yeh command chalaun: $command ? Haan kahiye."
-                    else -> "Run \"$command\"? Say yes to run it."
+                // A command that wipes or reboots cannot be answered with "sorry, undo". Saying so
+                // before the yes is the whole difference between a gate and a formality.
+                if (shellIsFinal(step.param)) {
+                    when {
+                        hindi -> "यह कमांड चलाऊँ: $command ? यह वापस नहीं आएगा। हाँ कहिए।"
+                        hinglish -> "Yeh command chalaun: $command ? Ye wapas nahi aayega. Haan kahiye."
+                        else -> "Run \"$command\"? " +
+                            ActionRisk.consequence(ActionRisk.IRREVERSIBLE) + " Say yes to run it."
+                    }
+                } else {
+                    when {
+                        hindi -> "यह कमांड चलाऊँ: $command ? हाँ कहिए।"
+                        hinglish -> "Yeh command chalaun: $command ? Haan kahiye."
+                        else -> "Run \"$command\"? Say yes to run it."
+                    }
                 }
             }
 

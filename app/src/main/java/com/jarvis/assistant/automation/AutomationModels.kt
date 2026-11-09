@@ -362,6 +362,11 @@ data class Workflow(
     val builtIn: Boolean = false,
     val trigger: RoutineTrigger = RoutineTrigger(),
     val enabled: Boolean = true,
+    /**
+     * Hash of [steps] and [trigger] as they were when this routine was saved. See
+     * [AutomationFingerprint] for why it exists and what is deliberately left out of it.
+     */
+    val fingerprint: String = "",
 ) {
     private val allSteps: List<WorkflowStep>
         get() {
@@ -384,6 +389,12 @@ data class Workflow(
     val totalSteps: Int get() = steps.sumOf { it.totalSteps }
     val isArmed: Boolean get() = enabled && !trigger.kind.isSilent
 
+    /** The worst thing this routine can do, across every step including nested ones. */
+    val risk: ActionRisk get() = ActionRisk.of(this)
+
+    /** Stamped at save time, so a later change to the stored program can be noticed. */
+    fun stamped(): Workflow = copy(fingerprint = AutomationFingerprint.of(this))
+
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
         put("name", name)
@@ -391,11 +402,12 @@ data class Workflow(
         put("enabled", enabled)
         put("trigger", trigger.toJson())
         put("steps", JSONArray().apply { steps.forEach { put(it.toJson()) } })
+        if (fingerprint.isNotBlank()) put("fingerprint", fingerprint)
     }
 
     companion object {
         /** Bumped whenever the stored shape changes, so old data can be migrated rather than lost. */
-        const val SCHEMA = 2
+        const val SCHEMA = 3
 
         fun fromJson(obj: JSONObject): Workflow? {
             val id = obj.optString("id").ifBlank { return null }
@@ -415,6 +427,7 @@ data class Workflow(
                 // Schema 1 had no trigger or enabled flag: those routines were manual and active.
                 trigger = RoutineTrigger.fromJson(obj.optJSONObject("trigger")),
                 enabled = obj.optBoolean("enabled", true),
+                fingerprint = obj.optString("fingerprint").trim(),
             )
         }
     }

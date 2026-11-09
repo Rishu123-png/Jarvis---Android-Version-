@@ -148,6 +148,24 @@ object AutomationEngine {
             val counters = Counters()
             val budget = Budget(MAX_TOTAL_STEPS)
 
+            // A routine is a program that runs itself, so the program that runs must be the one
+            // that was saved. Drift here means a corrupt write, a bad restore or a migration that
+            // read a field wrong — never something the operator chose. Refusing is the safe answer;
+            // running a routine nobody wrote is not.
+            if (!AutomationFingerprint.matches(workflow)) {
+                log.add(
+                    RunLogEntry(
+                        0,
+                        "ROUTINE",
+                        "Refused: this routine changed after it was saved",
+                        ok = false,
+                    ),
+                )
+                counters.failed++
+                finish(appContext, workflow, counters, triggerLabel, stopped = true)
+                return@launch
+            }
+
             if (workflow.steps.isEmpty()) {
                 log.add(RunLogEntry(0, "ROUTINE", "No steps configured", ok = false))
                 finish(appContext, workflow, counters, triggerLabel, stopped = false)

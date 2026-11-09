@@ -285,6 +285,21 @@ object SpeechOut {
         }
     }
 
+    /**
+     * Stops him mid-sentence.
+     *
+     * Speaking over the operator is the fastest way to feel like a device rather than an assistant,
+     * and until now the only stop lived in [release], which tears the engine down. This keeps the
+     * engine warm: the next sentence still gets the chosen voice, it just goes first.
+     */
+    fun stop() {
+        try {
+            engine?.stop()
+        } catch (t: Throwable) {
+            // Ignore: stopping an engine that is already silent is harmless.
+        }
+    }
+
     /** Forces the next sentence to choose a voice again. Called when the setting changes. */
     fun forgetVoice() {
         currentVoiceKey = null

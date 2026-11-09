@@ -1,6 +1,9 @@
 package com.jarvis.assistant.automation
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
+import android.graphics.Rect
 import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Context
@@ -373,6 +376,234 @@ class JarvisAccessibilityService : AccessibilityService() {
                 } catch (t: Throwable) {
                     // Best-effort.
                 }
+            }
+        }
+
+        // -------------------------------------------------------------------------------------
+        // The screen, described for a planner
+        // -------------------------------------------------------------------------------------
+
+        /**
+         * The visible controls, with the three facts a planner needs to act safely: what kind of
+         * widget each one is, what Android calls it, and where it is.
+         *
+         * Read-only. Nothing here changes the screen, and it is bounded exactly like [visibleLabels]
+         * — depth 24, 1,200 nodes, [limit] rows — so a huge window cannot stall the caller.
+         */
+        fun describeScreen(limit: Int = ScreenMap.MAX_LINES): List<ScreenItem> {
+            val service = instance ?: return emptyList()
+            val root: AccessibilityNodeInfo = try {
+                service.rootInActiveWindow ?: return emptyList()
+            } catch (t: Throwable) {
+                return emptyList()
+            }
+            return try {
+                val out = ArrayList<ScreenItem>(limit)
+                collectItems(root, 0, intArrayOf(0), out, limit)
+                out
+            } catch (t: Throwable) {
+                emptyList()
+            } finally {
+                @Suppress("DEPRECATION")
+                try {
+                    root.recycle()
+                } catch (t: Throwable) {
+                    // Best-effort.
+                }
+            }
+        }
+
+        private fun collectItems(
+            node: AccessibilityNodeInfo,
+            depth: Int,
+            counter: IntArray,
+            out: MutableList<ScreenItem>,
+            limit: Int,
+        ) {
+            if (depth > 24 || counter[0] > 1_200 || out.size >= limit) return
+            counter[0]++
+
+            val label = node.text?.toString()?.trim()?.ifBlank { null }
+                ?: node.contentDescription?.toString()?.trim()?.ifBlank { null }
+            val viewId = node.viewIdResourceName?.substringAfterLast('/').orEmpty()
+            // A row with neither words nor an id cannot be referred to, so it would only waste a
+            // line of the planner's budget. An id alone is enough: that is the icon-button case.
+            if (!label.isNullOrBlank() || viewId.isNotBlank()) {
+                val box = Rect()
+                try {
+                    node.getBoundsInScreen(box)
+                } catch (t: Throwable) {
+                    box.setEmpty()
+                }
+                out.add(
+                    ScreenItem(
+                        label = label ?: viewId,
+                        className = node.className?.toString().orEmpty(),
+                        viewId = viewId,
+                        x = if (box.isEmpty) 0 else box.centerX(),
+                        y = if (box.isEmpty) 0 else box.centerY(),
+                        clickable = nearestClickable(node) != null,
+                    ),
+                )
+            }
+
+            for (index in 0 until node.childCount) {
+                if (out.size >= limit) return
+                val child = try {
+                    node.getChild(index)
+                } catch (t: Throwable) {
+                    null
+                } ?: continue
+                collectItems(child, depth + 1, counter, out, limit)
+            }
+        }
+
+        /**
+         * Presses a control by its Android resource id (`send`, `com.app:id/send` or the full name).
+         *
+         * This is the third way to find something, after the exact label and the loose label. It
+         * matters because icon-only buttons — a paper plane, a close cross, a camera — frequently
+         * have no text and no description, and are then invisible to every text-based match while
+         * still being addressable by id.
+         */
+        fun pressByViewId(rawId: String): Boolean {
+            val service = instance ?: return false
+            if (!AccessibilityStatus.isScreenPressAllowed(service)) return false
+            val wanted = rawId.trim().substringAfterLast('/')
+            if (wanted.isBlank()) return false
+
+            val root = try {
+                service.rootInActiveWindow ?: return false
+            } catch (t: Throwable) {
+                return false
+            }
+            return try {
+                val target = findViewById(root, wanted, depth = 0, counter = intArrayOf(0))
+                target?.let { nearestClickable(it) }
+                    ?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+            } catch (t: Throwable) {
+                false
+            } finally {
+                @Suppress("DEPRECATION")
+                try {
+                    root.recycle()
+                } catch (t: Throwable) {
+                    // Best-effort.
+                }
+            }
+        }
+
+        private fun findViewById(
+            node: AccessibilityNodeInfo,
+            wanted: String,
+            depth: Int,
+            counter: IntArray,
+        ): AccessibilityNodeInfo? {
+            if (depth > 24 || counter[0] > 800) return null
+            counter[0]++
+            val id = node.viewIdResourceName?.substringAfterLast('/')
+            if (node.isVisibleToUser && id == wanted) return node
+            for (index in 0 until node.childCount) {
+                val child = try {
+                    node.getChild(index)
+                } catch (t: Throwable) {
+                    null
+                } ?: continue
+                findViewById(child, wanted, depth + 1, counter)?.let { return it }
+            }
+            return null
+        }
+
+        // -------------------------------------------------------------------------------------
+        // Touch, for the things no label can reach
+        // -------------------------------------------------------------------------------------
+
+        /**
+         * Scrolls the nearest scrollable area. Returns false when there is nothing scrollable on
+         * screen, which is a real answer: the caller says so instead of pretending it scrolled.
+         */
+        fun scrollForward(): Boolean = scroll(forward = true)
+
+        fun scrollBackward(): Boolean = scroll(forward = false)
+
+        private fun scroll(forward: Boolean): Boolean {
+            val service = instance ?: return false
+            if (!AccessibilityStatus.isScreenPressAllowed(service)) return false
+            val root = try {
+                service.rootInActiveWindow ?: return false
+            } catch (t: Throwable) {
+                return false
+            }
+            return try {
+                val target = findScrollable(root, depth = 0, counter = intArrayOf(0)) ?: return false
+                val action = if (forward) {
+                    AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                } else {
+                    AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                }
+                target.performAction(action)
+            } catch (t: Throwable) {
+                false
+            } finally {
+                @Suppress("DEPRECATION")
+                try {
+                    root.recycle()
+                } catch (t: Throwable) {
+                    // Best-effort.
+                }
+            }
+        }
+
+        private fun findScrollable(
+            node: AccessibilityNodeInfo,
+            depth: Int,
+            counter: IntArray,
+        ): AccessibilityNodeInfo? {
+            if (depth > 24 || counter[0] > 800) return null
+            counter[0]++
+            if (node.isScrollable && node.isVisibleToUser) return node
+            for (index in 0 until node.childCount) {
+                val child = try {
+                    node.getChild(index)
+                } catch (t: Throwable) {
+                    null
+                } ?: continue
+                findScrollable(child, depth + 1, counter)?.let { return it }
+            }
+            return null
+        }
+
+        /** A single tap at a point, for controls that cannot be named at all. */
+        fun tapAt(x: Int, y: Int): Boolean {
+            if (x < 0 || y < 0) return false
+            val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
+            return dispatch(path, durationMs = 60L)
+        }
+
+        /** A swipe from one point to another, used for scrolling and for dismissing sheets. */
+        fun swipe(fromX: Int, fromY: Int, toX: Int, toY: Int, durationMs: Long = 320L): Boolean {
+            if (fromX < 0 || fromY < 0 || toX < 0 || toY < 0) return false
+            val path = Path().apply {
+                moveTo(fromX.toFloat(), fromY.toFloat())
+                lineTo(toX.toFloat(), toY.toFloat())
+            }
+            return dispatch(path, durationMs.coerceIn(80L, 1_500L))
+        }
+
+        /**
+         * Dispatches one gesture. Gated exactly like a press: the service must be connected and the
+         * operator must have switched screen actions on, because a swipe behind their back is the
+         * same intrusion as a tap behind their back.
+         */
+        private fun dispatch(path: Path, durationMs: Long): Boolean {
+            val service = instance ?: return false
+            if (!AccessibilityStatus.isScreenPressAllowed(service)) return false
+            return try {
+                val stroke = GestureDescription.StrokeDescription(path, 0L, durationMs)
+                val gesture = GestureDescription.Builder().addStroke(stroke).build()
+                service.dispatchGesture(gesture, null, null)
+            } catch (t: Throwable) {
+                false
             }
         }
 
