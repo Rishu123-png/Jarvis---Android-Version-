@@ -26,8 +26,14 @@ object WakeCapture {
     /** The longest command that will be carried over. Beyond this the operator is talking to someone else. */
     const val MAX_COMMAND_MS = 8_000
 
-    /** Quiet needed after speech to call the sentence finished. */
-    const val SILENCE_MS = 1_000
+    /**
+     * The longest quiet that can count as the end of a sentence.
+     *
+     * The gap actually used is [Endpointing.silenceFor] — shorter for a short command, never longer
+     * than this. The ceiling exists because a long description may pause mid-thought, and cutting it
+     * short loses the half that was not said yet.
+     */
+    const val SILENCE_MS = Endpointing.LONG_MS
 
     /** If nothing is said this long after the wake word, he just opens and listens, as before. */
     const val WAIT_FOR_SPEECH_MS = 1_500
@@ -85,8 +91,10 @@ object WakeCapture {
                 quietMs += chunkMs
             }
 
-            // A sentence that started and then stopped.
-            if (speechMs >= minSpeechMs && quietMs >= silenceMs) return Decision.FINISH
+            // A sentence that started and then stopped. How much quiet ends it depends on how much
+            // was said: a two-word command is finished when it stops, a long one may only be pausing.
+            val needed = minOf(silenceMs, Endpointing.silenceFor(speechMs))
+            if (speechMs >= minSpeechMs && quietMs >= needed) return Decision.FINISH
 
             if (elapsedMs >= maxMs) {
                 return if (speechMs >= minSpeechMs) Decision.FINISH else Decision.NOTHING

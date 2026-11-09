@@ -385,6 +385,10 @@ object AutomationEngine {
                 }
             }
 
+            RetryPolicy.overruledNote(step)?.let { note ->
+                log.add(RunLogEntry(index, "RETRIES", note, ok = true))
+            }
+
             val result = executeWithRetry(context, step)
 
             when (result) {
@@ -396,7 +400,11 @@ object AutomationEngine {
                 is StepExecutor.Result.Failed -> {
                     counters.failed++
                     log.add(RunLogEntry(index, step.action.label, result.reason, ok = false))
-                    if (step.onFail == FailPolicy.HALT) return true
+                    if (step.onFail == FailPolicy.HALT) {
+                        // The routine is about to stop. Put back what it changed, then stop.
+                        if (depth == 0) compensate(context, steps, index)
+                        return true
+                    }
                 }
 
                 is StepExecutor.Result.Skipped -> {
@@ -438,7 +446,11 @@ object AutomationEngine {
         var attempt = 0
         var last: StepExecutor.Result = StepExecutor.Result.Failed("Not attempted")
 
-        while (attempt <= step.retries) {
+        // Not every step may be tried twice. A step that cannot be taken back is attempted once,
+        // whatever it asks for: a retry on a timeout is how the same message gets sent twice.
+        val allowed = RetryPolicy.retriesFor(step)
+
+        while (attempt <= allowed) {
             val outcome = withTimeoutOrNull(timeoutMs) {
                 withContext(Dispatchers.Default) { StepExecutor.execute(context, step) }
             }
@@ -448,12 +460,47 @@ object AutomationEngine {
             // Only a hard failure is worth retrying; a skip means the prerequisite is missing.
             if (last is StepExecutor.Result.Ok || last is StepExecutor.Result.Skipped) return last
 
-            if (attempt < step.retries) {
-                delay(400L * (attempt + 1))
+            if (attempt < allowed) {
+                delay(RetryPolicy.backoffMs(attempt + 1))
             }
             attempt++
         }
         return last
+    }
+
+    /**
+     * Walks a failed routine backwards.
+     *
+     * Only top-level steps, only the ones before the failure, only reversals that are themselves
+     * reversible — [Compensation] owns those rules. The run log carries every attempt, because a
+     * rollback that half worked is exactly the thing the operator needs to see.
+     */
+    private suspend fun compensate(context: Context, steps: List<WorkflowStep>, failedAt: Int) {
+        val plan = Compensation.planFor(steps, failedAt)
+        if (plan.isEmpty()) return
+
+        log.add(RunLogEntry(failedAt, "ROLLBACK", "${plan.size} step(s) to take back", ok = true))
+        var ran = 0
+        for (undo in plan) {
+            val outcome = withTimeoutOrNull(30_000L) {
+                withContext(Dispatchers.Default) { StepExecutor.execute(context, Compensation.stepFor(undo)) }
+            }
+            when (outcome) {
+                is StepExecutor.Result.Ok -> {
+                    ran++
+                    log.add(RunLogEntry(undo.index, undo.label, outcome.detail, ok = true))
+                }
+
+                is StepExecutor.Result.Failed ->
+                    log.add(RunLogEntry(undo.index, undo.label, outcome.reason, ok = false))
+
+                is StepExecutor.Result.Skipped ->
+                    log.add(RunLogEntry(undo.index, undo.label, outcome.reason, ok = false))
+
+                null -> log.add(RunLogEntry(undo.index, undo.label, "Timed out", ok = false))
+            }
+        }
+        log.add(RunLogEntry(failedAt, "ROLLBACK", Compensation.summary(ran, plan.size), ok = ran == plan.size))
     }
 
     private suspend fun waitUntil(

@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-47%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-55%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -674,7 +674,7 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 47 JVM suites
+./gradlew :app:testDebugUnitTest    # 55 JVM suites
 python3 tools/guard.py              # docs, pins, cleartext, exported receivers
 ```
 
@@ -701,7 +701,7 @@ no assistant.
 | Keep the bundled Shizuku up to date by itself | The copy inside the APK is pinned to one version. A newer Shizuku comes when a newer JARVIS does. |
 | Undo a destructive shell command | The privileged tier runs as `adb`: a wipe is a wipe. That is why `reboot`, `pm clear`, uninstalling and wiping are asked about before they run. |
 
-**Verified by CI:** compilation, 47 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 55 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -770,7 +770,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-47 JVM suites and 444 tests, run before every APK in CI.
+55 JVM suites and 510 tests, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|
@@ -787,6 +787,14 @@ capability, what it unlocks, and what breaks without it.
 | `NudgesTest` | briefs that should stay silent |
 | `BiometricPolicyTest` | when the sensor may fire on its own |
 | `StepInputTest` | the address a webhook may call, and the gesture a word means |
+| `ToolSchemaTest` | the tool schema covers every action, condition, trigger and fail policy, on all three wires |
+| `ToolCallsTest` | reading a call off OpenAI, Anthropic and Gemini envelopes — and refusing rubbish |
+| `StepReflectionTest` | when a silent screen means a miss, and which id the retry should use |
+| `RetryPolicyTest` | irreversible work is attempted once, whatever it asked for |
+| `CompensationTest` | rollback order, and the two cases it must refuse |
+| `AssistContextTest` | what a screen may never carry: passwords, duplicates, instructions |
+| `MemorySearchTest` | relevance ranking, long-entry damping, Hinglish and Devanagari |
+| `EndpointingTest` | the pause that ends a sentence, from the speech that came before it |
 | `TimeFormatTest` · `VoiceParsingTest` · `JsonReplyTest` · `WavTest` · `WorkflowJsonTest` | the rest of the pure logic |
 
 ---

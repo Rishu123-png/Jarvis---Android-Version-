@@ -202,7 +202,7 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 35
+        versionCode = 36
         versionName = "1.0.0"
 
         vectorDrawables { useSupportLibrary = true }
@@ -232,8 +232,18 @@ android {
             signingConfig = signingConfigs.getByName(if (hasReleaseKeystore) "release" else "debug")
         }
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            /*
+             * R8 on, and resources shrunk with it.
+             *
+             * The app ships a 40 MB voice model and a 2.5 MB Shizuku, so the code is not the bulk of
+             * the download — but the *startup* cost of unshrunk dex is real, and a 300-class app with
+             * a thousand library classes pays for library code it never calls. Minifying also lets
+             * the startup profile in src/main/baseline-prof.txt do anything at all.
+             *
+             * Debug stays unminified, so a crash in development keeps its own names.
+             */
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -289,6 +299,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
+    // Applies the bundled baseline profile at install time; without it the profile is inert.
+    implementation(libs.androidx.profileinstaller)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

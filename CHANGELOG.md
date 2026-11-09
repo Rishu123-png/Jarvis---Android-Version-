@@ -4,6 +4,56 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 36
+
+Seven changes, all of them about the same thing: the parts of JARVIS that were *guessing* now have
+something to check against.
+
+**The action catalogue is a tool, not a paragraph.** Every planner used to paste the 63 actions into a
+prompt and ask for "ONE JSON object and nothing else", then scrape an object back out. That works most
+of the time, which is the problem — at four failures in five per hundred steps, a twenty-step routine
+almost never finishes. The catalogue is now generated from `ActionType`, `ConditionType`,
+`TriggerKind` and `FailPolicy` and sent as a real `tools` declaration in the shape each provider
+expects (OpenAI and the local core, Anthropic, Gemini). Tool calls are read back from all three
+envelopes; a model that answers in prose anyway still goes down the old path, and a server that has
+never heard of `tools` is told once and never asked again. Nothing about validation changed: the
+planner still only accepts ids that exist.
+
+**The screen agent looks at what it did.** After each action it compares the visible labels before and
+after. If a press changed nothing, the same control is retried by Android resource id — the retry a
+model cannot make, because a model can only read labels — and if that fails too, the next decision is
+told plainly that this control is not responding. No extra model call, no extra screen read.
+
+**The Assist API is used at last.** When the gesture fires, the session reads the accessibility tree
+the platform hands it, drops password fields, dedupes and caps the text, and attaches it to the
+conversation as *untrusted* content behind a header that says so. "What does this say?" now has
+something to look at, and no page can write a routine.
+
+**Memory is retrieved, not truncated.** Facts and people were sent as a fixed head of the list, so the
+name mentioned last month lost to the fact written on the first day. They are now ranked against what
+the operator just said — exact matches, prefixes, phrase hits, length-normalised — and fall back to
+exactly the old order when there is nothing to rank against. It splits on letters, so Hinglish and
+Devanagari work.
+
+**The pause that ends a sentence depends on the sentence.** A fixed one second was either dead air
+after every short command or a cut-off long one. A two-word command now ends after 0.55 s, an
+ordinary sentence after 0.7 s, and only a long description keeps the full second.
+
+**A retry is not always a second chance.** `SHELL`, messages, calls, uploads and downloads are
+attempted exactly once however many retries the step asks for, and the run log says why. And when a
+routine fails with `halt`, the steps before it are walked backwards: only reversible actions, only
+undone by something that is itself reversible. A sent message is never "undone".
+
+**Release builds are shrunk and profiled.** R8 and resource shrinking are on for release (debug keeps
+its names), with keep rules for JNA/Vosk, Shizuku, the manifest components and the AIDL service, plus
+a hand-written startup profile installed by `profileinstaller`. The profile is honest about being a
+starting point: a device-generated one is better, and the file says so.
+
+**Deliberately not in this build:** streaming replies (SSE, sentence-by-sentence speech), an on-device
+LLM tier, sherpa-onnx for VAD/keyword-spotting/TTS, Room and DataStore behind the five preference
+stores, and the Gradle module split. Each needs a device or an SDK in the loop to land without
+guessing, and a half-migrated store or an unbuildable module is worse than the current shape.
+
 ## 1.0.0 — versionCode 35
 
 Five things land together. The theme is the same in all of them: the phone should not need a second

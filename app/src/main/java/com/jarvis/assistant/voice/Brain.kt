@@ -375,6 +375,10 @@ object Brain {
         mood: Feelings.Mood = Feelings.Mood.CALM,
         /** How long this has been going on. Null keeps the block as it was. */
         bond: Feelings.Bond? = null,
+        /** What the operator just said. Used to pick which memories are worth the tokens. */
+        asked: String = "",
+        /** The screen the operator was looking at when the gesture fired. Untrusted, and labelled so. */
+        screen: String = "",
     ): String = buildString {
         appendLine(Persona.IDENTITY)
         facts.firstOrNull { it.key == "name" }?.let { appendLine("The boss's name is ${it.value}.") }
@@ -398,14 +402,42 @@ object Brain {
         if (people.isNotEmpty() || facts.isNotEmpty()) {
             appendLine()
             appendLine("Standing facts. Do not list these unless asked:")
-            people.take(8).forEach { appendLine("- ${it.label}${if (it.note.isBlank()) "" else ": ${it.note}"}") }
-            facts.take(10).forEach { appendLine("- ${it.key}: ${it.value}") }
+            // Relevant first, recent after. A fixed tail means the fact that matters is the one that
+            // fell off; ranking costs nothing and puts the name they just said at the top.
+            related(asked, people, limit = 8) { "${it.label} ${it.note}" }
+                .forEach { appendLine("- ${it.label}${if (it.note.isBlank()) "" else ": ${it.note}"}") }
+            related(asked, facts, limit = 10) { "${it.key} ${it.value}" }
+                .forEach { appendLine("- ${it.key}: ${it.value}") }
         }
         if (habits.isNotEmpty()) {
             appendLine()
             appendLine("Habits he has noticed in the boss's routine. Use them to anticipate, gently, never as a list:")
             habits.forEach { appendLine("- $it") }
         }
+        if (screen.isNotBlank()) {
+            appendLine()
+            append(com.jarvis.assistant.data.AssistContext.asUntrusted(screen))
+        }
+    }
+
+    /**
+     * The [limit] memories most worth sending, relevant ones first and recent ones after.
+     *
+     * When there is nothing to rank against — a bare "hey", a greeting — this is exactly the old
+     * behaviour, because with no query every score is zero and the recency order is what comes back.
+     * So the change cannot make a prompt worse, only more specific.
+     */
+    private fun <T> related(asked: String, items: List<T>, limit: Int, text: (T) -> String): List<T> {
+        if (items.size <= limit) return items
+        if (asked.isBlank()) return items.take(limit)
+        val entries = items.map { com.jarvis.assistant.data.MemorySearch.Entry("memory", text(it)) }
+        val wanted = com.jarvis.assistant.data.MemorySearch.rank(asked, entries, limit)
+            .map { it.text }
+            .toSet()
+        if (wanted.isEmpty()) return items.take(limit)
+        val first = items.filter { text(it) in wanted }
+        val rest = items.filterNot { text(it) in wanted }.take((limit - first.size).coerceAtLeast(0))
+        return first + rest
     }
 
     /** Warm, specific, and never generic — the difference between a person and a smart speaker. */

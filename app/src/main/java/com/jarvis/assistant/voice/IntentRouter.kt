@@ -334,6 +334,10 @@ object IntentRouter {
                 affect = affect,
                 mood = mood,
                 bond = bond,
+                asked = heard,
+                // Whatever the screen said when the gesture fired. Taken once, here, so a long
+                // conversation does not keep re-reading a page the operator left minutes ago.
+                screen = AssistantHandoff.takeAssist(),
             )
         } catch (t: Throwable) {
             ""

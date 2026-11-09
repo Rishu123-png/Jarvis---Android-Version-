@@ -77,6 +77,9 @@ class MainActivity : ComponentActivity() {
      */
     private fun wantsVoice(intent: Intent?): Boolean {
         if (intent == null) return false
+        // The assist gesture carries the screen it fired on. Keep it for the next turn, then hand
+        // over exactly as before — a screen that could not be read simply arrives blank.
+        intent.getStringExtra(AssistantHandoff.EXTRA_ASSIST)?.let { AssistantHandoff.hand(it) }
         if (intent.getBooleanExtra(AssistantHandoff.EXTRA_VOICE, false)) return true
         return intent.action == Intent.ACTION_ASSIST
     }

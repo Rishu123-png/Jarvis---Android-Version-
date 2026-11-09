@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **1.0.0 (versionCode 35)**.
+Last updated with **1.0.0 (versionCode 36)**.
 
 ---
 
@@ -46,13 +46,20 @@ Last updated with **1.0.0 (versionCode 35)**.
 | Phone's own lock, lock-screen line, language-aware replies | Live |
 | Calendar, contacts, voice notes, follow-ups, brief | Live |
 | **The brain**: local memory of people and facts, free conversation, small talk offline | Live |
-| Tests: 47 JVM suites and 444 tests over the pure logic, run in CI before the APKs | Live |
+| Tests: 55 JVM suites and 510 tests over the pure logic, run in CI before the APKs | Live |
 | Quick Settings tiles (open JARVIS, torch) | Live |
 | Reminders, screenshot action, subsystem health panel | Live |
 | Privacy lock (PBKDF2 PIN) + fingerprint/face shortcut, floating bubble, home-screen widget | Live |
 | Downloads, translate, per-app speech engine choice | Live |
 | OCR fallback for the screen agent (bundled, on device) | Live |
 | VERIFY step type, multi-turn voice, 12-hour clock | Live |
+| Native tool calling: the action catalogue sent as a JSON Schema, not asked for in prose | Live |
+| Screen agent reflection: a hash of the screen before/after, and a retry by resource id | Live |
+| Assist API: the screen the gesture fired on, read before a word is spoken | Live |
+| Memory retrieval by relevance (BM25-style, Hindi/Hinglish aware) instead of a fixed tail | Live |
+| Adaptive endpointing: the silence that ends a sentence scales with what was said | Live |
+| Risk-aware retries and automatic rollback of reversible steps on failure | Live |
+| R8, resource shrinking and a baseline startup profile in release builds | Live |
 | Automated tests | **None** |
 
 ---

@@ -43,6 +43,16 @@ object AiPlanner {
         val ask = request.trim()
         if (ask.isEmpty()) return PlanResult.Error("Nothing to plan.")
 
+        // The tool path first. It is the same model and the same validation; the only difference is
+        // that the schema is enforced by the provider instead of requested in a sentence.
+        if (AiClient.toolsWorthTrying()) {
+            when (val tool = planWithTool(context, ask)) {
+                is PlanResult.Ok -> return tool
+                is PlanResult.Error -> return tool
+                null -> Unit
+            }
+        }
+
         val result = AiClient.chat(
             context = context,
             messages = listOf(AiMessage.user(ask)),
@@ -61,6 +71,81 @@ object AiPlanner {
             )
 
         return parse(context, json)
+    }
+
+    /**
+     * One tool call instead of one parsed paragraph.
+     *
+     * Returns null when the model did not call the tool — it answered in prose, or the provider does
+     * not know what `tools` means — and the caller falls back to the prompt it has always used. It
+     * returns a [PlanResult] only when there is something to report: a validated routine, or a
+     * refusal with a reason.
+     */
+    private suspend fun planWithTool(context: Context, ask: String): PlanResult? {
+        val result = AiClient.chatWithTools(
+            context = context,
+            messages = listOf(AiMessage.user(ask)),
+            system = toolPrompt(context),
+            screen = false,
+        )
+
+        return when (result) {
+            is ToolResult.Called -> {
+                if (result.call.name != ToolSchema.ROUTINE) return null
+                val json = result.call.argumentsObject()
+                    ?: return PlanResult.Error(
+                        "The model called the tool with arguments JARVIS could not read.",
+                        "Try again, or rephrase the request.",
+                    )
+                parse(context, json)
+            }
+
+            is ToolResult.Said -> null
+            is ToolResult.Unsupported -> null
+            is ToolResult.Failed -> PlanResult.Error(result.error.message, result.error.hint)
+        }
+    }
+
+    /**
+     * The prompt for the tool path.
+     *
+     * Much shorter than [systemPrompt], and that is the improvement: the ids, the enums and the shape
+     * all live in the schema now, so this only has to carry the rules a schema cannot express —
+     * numbers, times, depth, and what to do when the request is not automatable at all.
+     */
+    private fun toolPrompt(context: Context): String = """
+        You convert a request into a JARVIS automation routine.
+        Call ${ToolSchema.ROUTINE} exactly once. Do not answer in prose.
+
+        Rules:
+        - "action" MUST be an id from the schema. Never invent one.
+        - "condition" is REQUIRED for "if" and "wait_until". Omit it otherwise.
+        - "if" uses children and elseChildren. "repeat" uses children and a numeric param.
+        - Maximum depth 3, maximum 40 steps in total.
+        - Use "say" for spoken feedback, "notify" for a silent text alert.
+        - Numbers: volume 0-100, timer in seconds, wait in seconds, battery percent 0-100.
+        - Times are "HH:mm", 24-hour.
+        - "undo" is optional: only for a step that a later failure might need to take back, and only
+          with an action that itself changes nothing irreversible.
+        - If the request cannot be expressed with these actions, call the tool with
+          name "UNSUPPORTED", a rationale, a manual trigger and no steps.
+
+        INSTALLED PACKAGES (exact ids for open_app, as "package/activity" or just "package"):
+        ${installedPackages(context)}
+    """.trimIndent()
+
+    /** The installed launcher apps, as a comma list. Best effort: a locked-down phone returns none. */
+    private fun installedPackages(context: Context): String = try {
+        val pm = context.packageManager
+        val intent = android.content.Intent(android.content.Intent.ACTION_MAIN)
+            .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+        pm.queryIntentActivities(intent, 0)
+            .map { it.activityInfo.packageName }
+            .distinct()
+            .take(60)
+            .joinToString(", ")
+    } catch (t: Throwable) {
+        ""
     }
 
     // -----------------------------------------------------------------------------------------
@@ -90,18 +175,7 @@ object AiPlanner {
             if (kind.needsParam) "- ${kind.id}: ${kind.label} — param is ${kind.paramLabel}" else "- ${kind.id}: ${kind.label}"
         }
 
-        val installed = try {
-            val pm = context.packageManager
-            val intent = android.content.Intent(android.content.Intent.ACTION_MAIN)
-                .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
-            pm.queryIntentActivities(intent, 0)
-                .map { it.activityInfo.packageName }
-                .distinct()
-                .take(60)
-                .joinToString(", ")
-        } catch (t: Throwable) {
-            ""
-        }
+        val installed = installedPackages(context)
 
         return """
             You convert a request into a JARVIS automation routine.

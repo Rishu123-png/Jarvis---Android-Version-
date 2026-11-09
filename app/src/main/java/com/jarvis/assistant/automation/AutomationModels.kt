@@ -210,6 +210,16 @@ data class WorkflowStep(
     val onFail: FailPolicy = FailPolicy.CONTINUE,
     val timeoutSec: Int = 45,
     val retries: Int = 0,
+    /**
+     * What would take this step back, if a later step in the same routine fails.
+     *
+     * Empty for most steps, and that is the honest state: a torch that was switched on can be
+     * switched off, a message that was sent cannot be unsent. [ActionRisk] decides which, and
+     * [Compensation] refuses to run an undo that is itself irreversible — an "undo" that cannot be
+     * undone is worse than no undo at all.
+     */
+    val undoAction: String = "",
+    val undoParam: String = "",
 ) {
     val displayParam: String
         get() = when {
@@ -248,6 +258,9 @@ data class WorkflowStep(
         put("onFail", onFail.id)
         put("timeoutSec", timeoutSec)
         put("retries", retries)
+        if (undoAction.isNotBlank()) {
+            put("undo", JSONObject().put("action", undoAction).put("param", undoParam))
+        }
         condition?.let { put("condition", it.toJson()) }
         if (children.isNotEmpty()) {
             put("children", JSONArray().apply { children.forEach { put(it.toJson()) } })
@@ -269,6 +282,8 @@ data class WorkflowStep(
                 onFail = FailPolicy.fromId(obj.optString("onFail")),
                 timeoutSec = obj.optInt("timeoutSec", 45).coerceIn(5, 600),
                 retries = obj.optInt("retries", 0).coerceIn(0, 3),
+                undoAction = obj.optJSONObject("undo")?.optString("action")?.trim().orEmpty(),
+                undoParam = obj.optJSONObject("undo")?.optString("param")?.trim().orEmpty(),
             )
         }
 

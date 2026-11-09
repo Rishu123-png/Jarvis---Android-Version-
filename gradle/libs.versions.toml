@@ -10,6 +10,8 @@ composeBom = "2024.10.01"
 # tools/guard.py keeps the two pins and the download URL in agreement.
 shizuku = "13.1.5"
 camerax = "1.4.1"
+# Installs the baseline profile (src/main/baseline-prof.txt) on first run.
+profileinstaller = "1.3.1"
 mlkitText = "16.0.1"
 junit = "4.13.2"
 orgJson = "20240303"
@@ -35,6 +37,7 @@ org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 androidx-test-core-ktx = { group = "androidx.test", name = "core-ktx", version.ref = "testCore" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "testExtJunit" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "testRunner" }
+androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
 androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
