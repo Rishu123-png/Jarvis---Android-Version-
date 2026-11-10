@@ -218,7 +218,9 @@ object ToolSchema {
      */
     private fun stripGeminiUnsupported(schema: JSONObject): JSONObject {
         val copy = JSONObject()
-        for (key in schema.keySet()) {
+        val names = schema.keys()
+        while (names.hasNext()) {
+            val key = names.next()
             if (key == "additionalProperties") continue
             val value = schema.opt(key)
             copy.put(

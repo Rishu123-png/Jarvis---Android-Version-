@@ -84,8 +84,13 @@ object ToolCalls {
 
     /** A short, safe rendering of a call for the run log. Never includes a param body. */
     fun describe(call: Call): String {
-        val keys = call.argumentsObject()?.keySet()?.sorted()?.joinToString(",") ?: ""
-        return if (keys.isEmpty()) call.name else "${call.name}($keys)"
+        // keys() rather than keySet(): the platform's org.json has the iterator, and this code is
+        // compiled against android.jar.
+        val object0 = call.argumentsObject() ?: return call.name
+        val names = object0.keys()
+        val keys = ArrayList<String>()
+        while (names.hasNext()) keys.add(names.next())
+        return if (keys.isEmpty()) call.name else "${call.name}(${keys.sorted().joinToString(",")})"
     }
 
     /** Unused by production code; kept so a test can build the exact envelope each wire sends. */

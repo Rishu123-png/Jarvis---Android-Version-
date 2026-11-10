@@ -28,6 +28,14 @@ class ToolSchemaTest {
     private fun parameters(screen: Boolean = false): JSONObject =
         openAiTool(screen).getJSONObject("parameters")
 
+    /** keys() rather than keySet(): the test compiles against the same platform JSONObject. */
+    private fun keysOf(obj: JSONObject): Set<String> {
+        val out = LinkedHashSet<String>()
+        val names = obj.keys()
+        while (names.hasNext()) out.add(names.next())
+        return out
+    }
+
     private fun stringEnum(container: JSONObject, path: List<String>): Set<String> {
         var node = container
         for (key in path.dropLast(1)) node = node.getJSONObject(key)
@@ -90,8 +98,9 @@ class ToolSchemaTest {
         assertEquals(ToolSchema.ROUTINE, anthropic.getString("name"))
         assertEquals(ToolSchema.ROUTINE, gemini.getString("name"))
 
-        assertEquals(openAi.getJSONObject("parameters").keySet(), anthropic.getJSONObject("input_schema").keySet())
-        assertEquals(openAi.getJSONObject("parameters").keySet(), gemini.getJSONObject("parameters").keySet())
+        val openAiKeys = keysOf(openAi.getJSONObject("parameters"))
+        assertEquals(openAiKeys, keysOf(anthropic.getJSONObject("input_schema")))
+        assertEquals(openAiKeys, keysOf(gemini.getJSONObject("parameters")))
     }
 
     @Test

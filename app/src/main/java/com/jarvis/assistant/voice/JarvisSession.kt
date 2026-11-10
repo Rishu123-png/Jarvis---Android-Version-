@@ -52,9 +52,9 @@ class JarvisSession(context: Context) : VoiceInteractionSession(context) {
     private fun readStructure(structure: AssistStructure?): String {
         if (structure == null) return ""
         val nodes = ArrayList<AssistContext.Node>(64)
-        for (index in 0 until structure.windowCount) {
-            val window = structure.getWindowAt(index) ?: continue
-            val root = window.root ?: continue
+        for (index in 0 until structure.windowNodeCount) {
+            val window = structure.getWindowNodeAt(index) ?: continue
+            val root = window.rootViewNode ?: continue
             collect(root, nodes, depth = 0)
             if (nodes.size >= AssistContext.MAX_NODES) break
         }
