@@ -294,7 +294,7 @@ object IntentRouter {
 
         if (aiReady(context)) {
             val viaAi = try {
-                aiPlan(context, completed, previous)
+                aiPlan(context, completed, previous, onSentence)
             } catch (t: Throwable) {
                 null
             }
@@ -334,7 +334,12 @@ object IntentRouter {
     // AI path
     // ---------------------------------------------------------------------------------------------
 
-    private suspend fun aiPlan(context: Context, heard: String, previous: String?): VoicePlan? {
+    private suspend fun aiPlan(
+        context: Context,
+        heard: String,
+        previous: String?,
+        onSentence: (suspend (String) -> Unit)? = null,
+    ): VoicePlan? {
         val lang = Language.detect(heard)
         // How they sound, and how long this has been going on: both are handed to the model so the
         // warmth is part of the answer instead of a fixed sentence bolted on top of it.
@@ -398,26 +403,31 @@ object IntentRouter {
         // have been read.
         var fellBackFromCore = false
         var spokenLive = false
-        val stream = if (onSentence == null) null else StreamingReply()
 
         // Streaming only on the key path: the core is a different wire, and a sentence that starts
         // 300 ms earlier is not worth a second implementation to maintain.
-        val streamed = if (stream != null && !CoreLink.isEnabled(context)) {
-            AiClient.chatStreaming(context, messages, system) { delta ->
-                for (sentence in stream.feed(delta)) {
+        val live: StreamingReply?
+        val streamed: AiResult?
+        val emit = onSentence
+        if (emit != null && !CoreLink.isEnabled(context)) {
+            val reader = StreamingReply()
+            live = reader
+            streamed = AiClient.chatStreaming(context, messages, system) { delta ->
+                for (sentence in reader.feed(delta)) {
                     spokenLive = true
-                    onSentence?.invoke(sentence)
+                    emit(sentence)
                 }
             }
         } else {
-            null
+            live = null
+            streamed = null
         }
 
         val result = when {
             // A partial stream is still a real answer. Re-asking would repeat what has been said.
             streamed is AiResult.Ok -> streamed
-            streamed is AiResult.Error && stream.text.isNotBlank() -> AiResult.Ok(
-                text = stream.text,
+            streamed is AiResult.Error && live != null && live.text.isNotBlank() -> AiResult.Ok(
+                text = live.text,
                 providerLabel = "STREAM",
                 model = "",
                 note = null,
@@ -441,7 +451,9 @@ object IntentRouter {
         }
 
         // Whatever the model wrote but has not been read out yet, before the plan is returned.
-        if (spokenLive) stream?.finish()?.forEach { tail -> onSentence?.invoke(tail) }
+        if (spokenLive && live != null && emit != null) {
+            for (tail in live.finish()) emit(tail)
+        }
 
         val json = JsonReply.extractObject(reply)
         if (json == null) {
