@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-55%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-57%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -358,6 +358,32 @@ One sentence used to be the whole session: say it, hear the answer, say *"hey ja
   app, and the timing line stays silent because this build has no account connections to read numbers
   from — a guess dressed as data is worse than no advice.
 
+## Talking sooner
+
+The old answer arrived whole: the request finished, then the first word was spoken. On a good day
+that was a second and a half of silence, and silence is what makes an assistant feel like a form.
+
+- **The reply is read as it is written.** The provider's stream is consumed frame by frame, and each
+  finished sentence goes to the voice the moment its full stop arrives, queued so the next one can
+  follow without cutting it off. The first sentence usually starts a few hundred milliseconds after
+  the request instead of after the whole paragraph. It is a *streaming* path and nothing else changes:
+  same model, same key, same fallbacks.
+- **A routine is never spoken while it is being written.** The first character decides: a brace means
+  a plan, and a plan must be whole before anything happens to it, so nothing is spoken until the
+  object has been validated. Conversation is spoken; commands stay quiet until they are understood.
+  If the stream dies mid-sentence, what was already said is kept and the rest is not invented.
+- **The pause that ends a sentence depends on the sentence.** A two-word command ends after 0.55 s of
+  quiet, an ordinary sentence after 0.7 s, and only a long description keeps the full second — timing
+  measured from the audio, before any transcription exists.
+- **What it costs when it fails.** A provider without streaming, or one that drops the connection,
+  falls back to the ordinary whole-reply path on the same turn. The worst case is the old behaviour,
+  never a half-spoken answer followed by an error.
+
+**The honest limit.** Sentence-by-sentence speaking is only as fast as the provider's first sentence.
+On a local core (Ollama, LM Studio) the model itself may take longer to produce the first sentence
+than the network ever did, and the core is still asked for whole replies. That is the next thing to
+fix, not something this build claims.
+
 ## Memory and who he is
 
 - **Every conversation is kept.** Each exchange is appended to a file in the app's private storage
@@ -654,6 +680,15 @@ That is the file to share. Anyone who opens that link can install it without a G
 | CI copy | `dist/jarvis-1.0.0-b32.apk` |
 | GitHub Release | attach `jarvis-1.0.0-b32.apk` to tag `v1.0.0-build32` |
 
+### Nothing is downloaded from inside the app
+
+The voice model, Shizuku and the OCR engine all travel **inside the APK**. There is no first-run
+fetch, no "download the model" screen, no 40 MB surprise on mobile data: installing the file is the
+whole install, and the app works in flight mode afterwards. This is enforced twice — CI builds with
+`-PrequireVoskModel=true -PrequireShizuku=true` and fails rather than shipping an APK without them,
+and the runtime fallbacks that used to fetch them are closed by `BUNDLED_ONLY`. A build that is
+missing something says so plainly instead of quietly downloading it.
+
 ### First run
 
 1. Set JARVIS as the **home app** when asked.
@@ -674,7 +709,7 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 55 JVM suites
+./gradlew :app:testDebugUnitTest    # 57 JVM suites
 python3 tools/guard.py              # docs, pins, cleartext, exported receivers
 ```
 
@@ -701,7 +736,7 @@ no assistant.
 | Keep the bundled Shizuku up to date by itself | The copy inside the APK is pinned to one version. A newer Shizuku comes when a newer JARVIS does. |
 | Undo a destructive shell command | The privileged tier runs as `adb`: a wipe is a wipe. That is why `reboot`, `pm clear`, uninstalling and wiping are asked about before they run. |
 
-**Verified by CI:** compilation, 55 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 57 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -770,7 +805,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-55 JVM suites and 510 tests, run before every APK in CI.
+57 JVM suites and 531 tests, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|
@@ -795,6 +830,8 @@ capability, what it unlocks, and what breaks without it.
 | `AssistContextTest` | what a screen may never carry: passwords, duplicates, instructions |
 | `MemorySearchTest` | relevance ranking, long-entry damping, Hinglish and Devanagari |
 | `EndpointingTest` | the pause that ends a sentence, from the speech that came before it |
+| `StreamingReplyTest` | prose is spoken as it arrives, a routine is never spoken at all |
+| `SseTest` | reading OpenAI, Anthropic and Gemini streams, frame by frame |
 | `TimeFormatTest` · `VoiceParsingTest` · `JsonReplyTest` · `WavTest` · `WorkflowJsonTest` | the rest of the pure logic |
 
 ---

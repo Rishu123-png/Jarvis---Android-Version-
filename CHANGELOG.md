@@ -4,6 +4,38 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 37
+
+**He starts talking before he has finished thinking.** The reply used to arrive whole and then be
+spoken; now the provider's stream is read frame by frame and each finished sentence goes to the voice
+the moment its full stop lands, queued behind the previous one so nothing is cut off. The first
+sentence normally starts a few hundred milliseconds after the request instead of after the whole
+paragraph.
+
+The interesting part is that he speaks two different things. A conversation is prose and can be read
+out as it is written; a routine is a JSON object that must be *whole* before anything happens to it.
+So the first character decides: a brace means a plan, and nothing is spoken until it has been
+validated. A provider that cannot stream, or that drops the connection mid-sentence, falls back to
+the ordinary whole-reply path with whatever was already said kept — the worst case is the old
+behaviour, never half an answer followed by an error.
+
+**The pause that ends a sentence now depends on the sentence.** Two words end after 0.55 s of quiet, an
+ordinary sentence after 0.7 s, a long description keeps the full second. Measured from the audio, so it
+is decided before any transcription exists.
+
+**Nothing is downloaded from inside the app.** The runtime fallbacks that fetched the 40 MB voice model
+or the Shizuku APK are closed behind `BUNDLED_ONLY`: both travel in the APK, CI already refuses to
+build without them, and a build that is missing one now says so instead of quietly using mobile data.
+
+Three new suites pin the pieces down: `StreamingReplyTest` (what counts as a sentence, decimals,
+abbreviations, Devanagari dandas, and the rule that a routine is never spoken) and `SseTest` (the three
+providers' actual stream frames). 57 suites, 531 tests.
+
+**Still to come, and named rather than implied:** the local core is asked for whole replies, so on a
+PC-based brain the first sentence still waits for the model; Room/DataStore behind the preference
+stores; the Gradle module split; dry runs and per-routine links. Those are next, and each one is a
+change that has to be felt on a phone before it is called done.
+
 ## 1.0.0 — versionCode 36
 
 Seven changes, all of them about the same thing: the parts of JARVIS that were *guessing* now have

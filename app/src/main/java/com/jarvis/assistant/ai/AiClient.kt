@@ -75,6 +75,15 @@ object AiClient {
 
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 45_000
+
+    /**
+     * How long a *stream* may go quiet before it is treated as dead.
+     *
+     * Shorter than [READ_TIMEOUT_MS] on purpose: a stream that has stopped producing frames has
+     * usually died, and the operator is standing there waiting. Twenty seconds of silence mid-reply
+     * is already far longer than any provider needs between sentences.
+     */
+    private const val STREAM_READ_TIMEOUT_MS = 20_000
     private const val MAX_REPLY_TOKENS = 420
     private const val MAX_REPLY_CHARS = 4_000
     private const val MAX_ERROR_CHARS = 2_000
@@ -174,6 +183,127 @@ object AiClient {
                 } else {
                     ToolResult.Said(extractText(walked.wire, walked.body).orEmpty())
                 }
+            }
+        }
+    }
+
+    /**
+     * The same conversation, read as it is written.
+     *
+     * Nothing about the answer changes — the words, the model, the fallbacks are all the same. What
+     * changes is *when* they arrive: instead of waiting for a whole paragraph, each finished sentence
+     * is handed to [onDelta] while the rest is still being generated. On a normal connection the
+     * first sentence lands in a few hundred milliseconds, which is the difference between an
+     * assistant that answers and one that thinks about it.
+     *
+     * Two deliberate limits:
+     *  - one model, no walk. Streaming holds a socket open; walking a list of dead model ids while a
+     *    microphone is open is worse than failing fast. The caller falls back to [chat], which walks.
+     *  - any failure is an ordinary error, never a partial answer. A half-spoken sentence is worse
+     *    than a short wait, so the caller may only speak what [onDelta] has been given.
+     *
+     * The core is not streamed: it is a separate wire, and the first-sentence win is worth less than
+     * the complexity of a second implementation. [chatWithTools] and this are independent paths.
+     */
+    suspend fun chatStreaming(
+        context: Context,
+        messages: List<AiMessage>,
+        system: String,
+        onDelta: suspend (String) -> Unit,
+    ): AiResult = withContext(Dispatchers.IO) {
+        val credentials = loadCredentials(context) ?: return@withContext missingKey(context)
+        if (messages.isEmpty()) return@withContext AiResult.Error("Nothing to send.")
+
+        val provider = credentials.config.provider
+        val model = credentials.config.resolvedModel
+        if (model.isBlank()) {
+            return@withContext AiResult.Error("No model configured.", "Set one in Settings → INTELLIGENCE.")
+        }
+
+        val request = try {
+            buildRequest(credentials, model, messages, system, tools = null, forceTool = false, stream = true)
+        } catch (t: Throwable) {
+            return@withContext AiResult.Error("Could not build the request.", t.message)
+        }
+
+        val text = StringBuilder()
+        try {
+            val (code, errorBody) = stream(request) { data ->
+                Sse.delta(provider.wire, data)?.let { piece ->
+                    text.append(piece)
+                    onDelta(piece)
+                }
+            }
+            if (code !in 200..299) {
+                // The error body is read by the same reader but never handed to the caller as words:
+                // a rejected request must not be spoken aloud.
+                return@withContext errorFor(code, errorBody, provider)
+            }
+        } catch (e: SocketTimeoutException) {
+            return@withContext AiResult.Error(
+                "The provider stopped sending partway through.",
+                "Check your connection; the answer will be fetched whole next time.",
+            )
+        } catch (e: IOException) {
+            return@withContext AiResult.Error("Network error while streaming.", e.message)
+        } catch (t: Throwable) {
+            return@withContext AiResult.Error("The stream failed.", t.message)
+        }
+
+        if (text.isEmpty()) {
+            return@withContext AiResult.Error(
+                "The provider sent nothing.",
+                "It may not support streaming; it will be asked without it next time.",
+            )
+        }
+        AiResult.Ok(text.toString().take(MAX_REPLY_CHARS), provider.label, model, null)
+    }
+
+    /**
+     * Opens a streaming request and calls [onData] for every `data:` frame.
+     *
+     * Returns the HTTP status and, for a failure, the body so the caller can quote the reason. The
+     * body is *returned* rather than passed to [onData] so that a rejection is never mistaken for
+     * words to speak.
+     *
+     * Reads line by line rather than by buffer, because SSE is line-delimited: a chunk boundary in
+     * the middle of a JSON object is normal, and assembling by hand is how partial objects get
+     * parsed and rejected.
+     */
+    private suspend fun stream(request: Request, onData: suspend (String) -> Unit): Pair<Int, String> {
+        val connection = (URL(request.url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = STREAM_READ_TIMEOUT_MS
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            setRequestProperty("Accept", "text/event-stream")
+            request.headers.forEach { (key, value) -> setRequestProperty(key, value) }
+        }
+        try {
+            connection.outputStream.use { out ->
+                out.write((request.body ?: "").toByteArray(Charsets.UTF_8))
+                out.flush()
+            }
+            val status = connection.responseCode
+            if (status !in 200..299) {
+                val error = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                return status to error.take(MAX_ERROR_CHARS)
+            }
+            connection.inputStream.bufferedReader().use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    val data = Sse.payload(line) ?: continue
+                    if (Sse.isEnd(data)) break
+                    onData(data)
+                }
+            }
+            return status to "" 
+        } finally {
+            try {
+                connection.disconnect()
+            } catch (t: Throwable) {
+                // Already gone.
             }
         }
     }
@@ -616,6 +746,7 @@ object AiClient {
         system: String,
         tools: JSONArray? = null,
         forceTool: Boolean = false,
+        stream: Boolean = false,
     ): Request {
         val provider = credentials.config.provider
         val apiKey = credentials.apiKey
@@ -646,6 +777,7 @@ object AiClient {
                     // prose, which the caller already knows how to read.
                     if (forceTool) payload.put("tool_choice", "required")
                 }
+                if (stream) payload.put("stream", true)
                 Request(url, mapOf("Authorization" to "Bearer $apiKey"), payload.toString())
             }
 
@@ -668,6 +800,7 @@ object AiClient {
                     payload.put("tools", tools)
                     if (forceTool) payload.put("tool_choice", JSONObject().put("type", "any"))
                 }
+                if (stream) payload.put("stream", true)
                 Request(
                     url = "${baseUrl(credentials.config)}/messages",
                     headers = mapOf(
@@ -717,8 +850,10 @@ object AiClient {
                     }
                 }
                 val encodedKey = URLEncoder.encode(apiKey, "UTF-8")
+                // Gemini streams from a different method name, and only answers in SSE if told to.
+                val method = if (stream) ":streamGenerateContent?alt=sse&key=" else ":generateContent?key="
                 Request(
-                    url = "${baseUrl(credentials.config)}/models/$model:generateContent?key=$encodedKey",
+                    url = "${baseUrl(credentials.config)}/models/$model$method$encodedKey",
                     headers = emptyMap(),
                     body = root.toString(),
                 )

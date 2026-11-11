@@ -66,6 +66,11 @@ object WakeWordModel {
                 // Copy from the APK: local, quick, and works offline.
                 onProgress(10)
                 copyAssets(context, ASSET_DIR, File(staging, NAME))
+            } else if (com.jarvis.assistant.BuildConfig.BUNDLED_ONLY) {
+                // No download, on purpose. Installing JARVIS is the whole download; a build without
+                // the model is a build that was made wrong, and saying so is better than quietly
+                // fetching 40 MB the operator never agreed to.
+                return "This build is missing the offline voice model. Install the full APK."
             } else {
                 download(archive, onProgress)
                     ?: return "The download stopped. Check the connection and try again."

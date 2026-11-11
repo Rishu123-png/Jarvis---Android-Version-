@@ -128,7 +128,17 @@ object ShizukuInstaller {
      * Brings Shizuku to the phone: bundled copy first, download second, system installer always.
      * Nothing here claims success — the installer is what actually installs.
      */
-    suspend fun install(context: Context, allowDownload: Boolean = true): Outcome = withContext(Dispatchers.IO) {
+    suspend fun install(
+        context: Context,
+        /**
+         * Whether a missing bundled copy may be fetched from the network.
+         *
+         * False in a shipped build: everything travels in the APK, so a download here would be a
+         * second install the operator never agreed to. It stays a parameter because a debug build
+         * built without the asset still has to be testable.
+         */
+        allowDownload: Boolean = !com.jarvis.assistant.BuildConfig.BUNDLED_ONLY,
+    ): Outcome = withContext(Dispatchers.IO) {
         if (isInstalled(context)) return@withContext Outcome.AlreadyInstalled
         if (needsInstallPermission(context)) {
             openInstallPermission(context)
@@ -148,7 +158,9 @@ object ShizukuInstaller {
         }
 
         if (!allowDownload) {
-            return@withContext Outcome.Failed("Shizuku is not in this build and I was told not to download it.")
+            return@withContext Outcome.Failed(
+                "This build does not include Shizuku. Install the full APK — nothing is downloaded from inside the app.",
+            )
         }
 
         val file = try {

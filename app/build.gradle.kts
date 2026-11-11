@@ -202,8 +202,20 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 36
+        versionCode = 37
         versionName = "1.0.0"
+
+        /*
+         * Everything JARVIS needs travels inside the APK, and this flag is what makes that true
+         * rather than aspirational.
+         *
+         * The voice model (~40 MB) and the Shizuku APK are fetched at *build* time — CI passes
+         * -PrequireVoskModel=true -PrequireShizuku=true, so a build without them fails instead of
+         * shipping. With this true, the runtime download fallbacks are closed: an app that quietly
+         * fetches 40 MB on first use is a second download the operator did not agree to, and the
+         * one thing this project promises is that installing the APK is the whole install.
+         */
+        buildConfigField("boolean", "BUNDLED_ONLY", "true")
 
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
