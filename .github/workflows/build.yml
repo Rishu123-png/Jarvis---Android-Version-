@@ -77,6 +77,13 @@ jobs:
           sys.exit(1 if failures else 0)
           EOF
 
+      # The checks no compiler can make: the numbers the docs claim must match the enums they
+      # describe, the Shizuku pin must match the URL the phone falls back to, no new plaintext
+      # address may appear in code, and no exported receiver may listen only to the system.
+      # Runs first because it costs about a second and catches a whole class of silent drift.
+      - name: Repository guard
+        run: python3 tools/guard.py
+
       # Tests run before the APKs are built: a failing test should stop the release, and the
       # androidTest sources are compiled so they cannot rot without anyone noticing.
       - name: Unit tests
@@ -89,6 +96,23 @@ jobs:
           set -o pipefail
           ./gradlew --no-daemon --console=plain -PrequireShizuku=true -PrequireVoskModel=true \
             assembleDebug assembleRelease assembleDebugAndroidTest 2>&1 | tee -a build.log
+
+      # Android lint has never been run over this codebase, so it starts as a report rather than a
+      # gate: `abortOnError` is off in app/build.gradle.kts and the HTML is uploaded for triage.
+      # Once the report is clean (or a baseline is committed), turn `abortOnError` back on, delete
+      # the line below, and lint joins the tests as something that can stop a release.
+      - name: Android lint (report only)
+        continue-on-error: true
+        run: ./gradlew --no-daemon --console=plain lintDebug
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Verify APK signatures and manifest (launcher intent filters)
         run: |

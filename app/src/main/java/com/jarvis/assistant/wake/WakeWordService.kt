@@ -76,8 +76,16 @@ class WakeWordService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        // Must promote to foreground straight away, or Android stops the service.
-        promoteToForeground("Listening for \"Hey Jarvis\"")
+        // Must promote to foreground straight away, or Android stops the service. When Android
+        // refuses — a restart from the background on 14+, without the assistant role — there is
+        // nothing to listen for, so stop cleanly instead of dying with an ANR.
+        if (!promoteToForeground("Listening for \"Hey Jarvis\"")) {
+            // Android will not let a background start hold the microphone. Stopping is the only
+            // honest outcome — but the operator's setting is left alone, so the next time the app
+            // is opened (a foreground start, which is exempt) the wake word comes back by itself.
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         if (!WakeWord.isEnabled(applicationContext)) {
             stopSelf()
@@ -371,7 +379,30 @@ class WakeWordService : Service() {
         stopSelf()
     }
 
-    private fun promoteToForeground(text: String, target: Intent? = null) {
+    /**
+     * Turns the service into a foreground service, and reports whether Android allowed it.
+     *
+     * Since Android 14 a microphone-typed foreground service cannot be *started* from the
+     * background at all: `startForeground` throws `SecurityException`, and if it is not caught the
+     * service dies inside the five-second window and shows an ANR dialog to the operator — for a
+     * wake word they did not just ask for. The one exemption is being the device's assistant, which
+     * this app only is when [com.jarvis.assistant.voice.AssistantRole] is HELD.
+     *
+     * So the answer is a boolean rather than an exception: the caller stops quietly and says why,
+     * and the notification is never left half-built.
+     */
+    private fun promoteToForeground(text: String, target: Intent? = null): Boolean = try {
+        promote(text, target)
+        true
+    } catch (e: SecurityException) {
+        // Started from the background without a role exemption. Not the operator's fault, and not
+        // something a retry can fix: the service has to stop.
+        false
+    } catch (t: Throwable) {
+        false
+    }
+
+    private fun promote(text: String, target: Intent?) {
         ensureChannel()
         val open = PendingIntent.getActivity(
             this,

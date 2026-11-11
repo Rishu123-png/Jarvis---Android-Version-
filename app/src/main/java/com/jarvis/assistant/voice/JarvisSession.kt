@@ -1,8 +1,11 @@
 package com.jarvis.assistant.voice
 
+import android.app.assist.AssistStructure
 import android.content.Context
 import android.os.Bundle
 import android.service.voice.VoiceInteractionSession
+import android.text.InputType
+import com.jarvis.assistant.data.AssistContext
 
 /**
  * What happens when the phone's assistant gesture fires.
@@ -21,6 +24,80 @@ class JarvisSession(context: Context) : VoiceInteractionSession(context) {
 
     /** Guards against handing over twice if both show forms ever arrive. */
     private var handed = false
+
+    /**
+     * The screen, read from the Assist API before a word is spoken.
+     *
+     * This is the one place in the app that gets another app's accessibility tree *without* the
+     * operator having granted the screen reader: the gesture itself brings the structure along. It
+     * is read here, reduced to plain text by [AssistContext], and handed to the app with the
+     * intent — so "what does this say?" and "reply to this" have something to look at.
+     *
+     * Everything is guarded. A structure from a secure window is mostly nulls, some apps return an
+     * empty tree, and a throw here would kill the phone's assist gesture.
+     */
+    override fun onHandleAssist(state: AssistState) {
+        super.onHandleAssist(state)
+        try {
+            assistText = readStructure(state.assistStructure)
+        } catch (t: Throwable) {
+            assistText = ""
+        }
+        handOver()
+    }
+
+    /** Read once, carried by the handover. */
+    private var assistText: String = ""
+
+    private fun readStructure(structure: AssistStructure?): String {
+        if (structure == null) return ""
+        val nodes = ArrayList<AssistContext.Node>(64)
+        for (index in 0 until structure.windowNodeCount) {
+            val window = structure.getWindowNodeAt(index) ?: continue
+            val root = window.rootViewNode ?: continue
+            collect(root, nodes, depth = 0)
+            if (nodes.size >= AssistContext.MAX_NODES) break
+        }
+        return AssistContext.summarise(nodes)
+    }
+
+    private fun collect(node: AssistStructure.ViewNode, into: MutableList<AssistContext.Node>, depth: Int) {
+        if (depth > AssistContext.MAX_DEPTH || into.size >= AssistContext.MAX_NODES) return
+        val secret = isSecret(node)
+        val text = node.text?.toString().orEmpty()
+        val description = node.contentDescription?.toString().orEmpty()
+        val hint = node.hint.orEmpty()
+        if (text.isNotBlank() || description.isNotBlank() || hint.isNotBlank()) {
+            into.add(
+                AssistContext.Node(
+                    text = listOf(text, description, hint).filter { it.isNotBlank() }.joinToString(" "),
+                    password = secret,
+                ),
+            )
+        }
+        for (child in 0 until node.childCount) {
+            node.getChildAt(child)?.let { collect(it, into, depth + 1) }
+        }
+    }
+
+    /**
+     * Whether a field holds something the operator would not want sent anywhere.
+     *
+     * The platform already withholds most password text, but a field can be a visible-password field
+     * or a web password box, and this is a belt as well as braces: the string is dropped before it
+     * is ever assembled, not filtered afterwards.
+     */
+    private fun isSecret(node: AssistStructure.ViewNode): Boolean {
+        val inputType = node.inputType
+        if (inputType and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT) return false
+        return when (inputType and InputType.TYPE_MASK_VARIATION) {
+            InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+            -> true
+            else -> false
+        }
+    }
 
     /** Android 12 and later. */
     override fun onShow(args: Bundle?, showFlags: Int) {
@@ -46,7 +123,7 @@ class JarvisSession(context: Context) : VoiceInteractionSession(context) {
         if (handed) return
         handed = true
         try {
-            AssistantHandoff.open(context)
+            AssistantHandoff.open(context, assistText)
         } catch (t: Throwable) {
             // Never let the gesture end in a stack trace on someone's screen.
         }

@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **1.0.0 (versionCode 24)**.
+Last updated with **1.0.0 (versionCode 38)**.
 
 ---
 
@@ -17,7 +17,7 @@ Last updated with **1.0.0 (versionCode 24)**.
 | Notifications (listener, alerts panel, media) | Live |
 | Controls: torch, volume, media transport, system panels | Live |
 | Do Not Disturb — direct control after one grant | Live |
-| Automation: 37 action types (33 actions + 4 control-flow), 12 conditions, 10 triggers, VERIFY, AI authoring, run history, foreground watcher | Live |
+| Automation: 63 action types (58 actions + 5 control-flow), 11 conditions, 11 triggers, VERIFY, AI authoring, run history, foreground watcher | Live |
 | Intelligence: bring-your-own AI key, three wire formats, model discovery | Live |
 | Terminal: ~22 commands, offline where possible | Live |
 | ~~Instagram creator analytics~~ · ~~Connections (Instagram OAuth, Google Drive + Gmail)~~ | Removed |
@@ -46,13 +46,27 @@ Last updated with **1.0.0 (versionCode 24)**.
 | Phone's own lock, lock-screen line, language-aware replies | Live |
 | Calendar, contacts, voice notes, follow-ups, brief | Live |
 | **The brain**: local memory of people and facts, free conversation, small talk offline | Live |
-| Tests: 17 JVM suites over the pure logic, run in CI before the APKs | Live |
+| Tests: 59 JVM suites and 544 tests over the pure logic, run in CI before the APKs | Live |
 | Quick Settings tiles (open JARVIS, torch) | Live |
 | Reminders, screenshot action, subsystem health panel | Live |
 | Privacy lock (PBKDF2 PIN) + fingerprint/face shortcut, floating bubble, home-screen widget | Live |
 | Downloads, translate, per-app speech engine choice | Live |
 | OCR fallback for the screen agent (bundled, on device) | Live |
 | VERIFY step type, multi-turn voice, 12-hour clock | Live |
+| Native tool calling: the action catalogue sent as a JSON Schema, not asked for in prose | Live |
+| Screen agent reflection: a hash of the screen before/after, and a retry by resource id | Live |
+| Assist API: the screen the gesture fired on, read before a word is spoken | Live |
+| Memory retrieval by relevance (BM25-style, Hindi/Hinglish aware) instead of a fixed tail | Live |
+| Adaptive endpointing: the silence that ends a sentence scales with what was said | Live |
+| Risk-aware retries and automatic rollback of reversible steps on failure | Live |
+| R8, resource shrinking and a baseline startup profile in release builds | Live |
+| Streaming replies: the answer is spoken sentence by sentence while it is still being written | Live |
+| Bundled-only install: the voice model and Shizuku travel in the APK, nothing is fetched at runtime | Live |
+| `:engine` module: every rule that does not need a phone, compiled and guarded without Android | Live |
+| Room for run history: appends, orders and trims in SQLite instead of rewriting a preference string | Live |
+| Dry run: the same walk, reported instead of executed, never written to history | Live |
+| Per-routine export: share as JSON, and `jarvis://run/<id>` answered by the app | Live |
+| Calendar trigger: an event starting within N minutes, firing once per event | Live (verify on device) |
 | Automated tests | **None** |
 
 ---

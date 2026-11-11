@@ -96,14 +96,23 @@ class WakeCaptureTest {
     }
 
     @Test
-    fun aPauseAfterSpeechFinishesTheSentence() {
+    fun aPauseAfterAShortCommandFinishesItSooner() {
         val tracker = WakeCapture.Tracker()
         repeat(4) { tracker.feed(loud(), 100) }
-        // Short gaps inside a sentence are not a stop.
+        // Short gaps inside a sentence are not a stop ...
         assertEquals(WakeCapture.Decision.CAPTURING, tracker.feed(quiet(), 100))
-        assertEquals(WakeCapture.Decision.CAPTURING, tracker.feed(quiet(), 500))
-        // A full second of quiet is.
-        assertEquals(WakeCapture.Decision.FINISH, tracker.feed(quiet(), 500))
+        assertEquals(WakeCapture.Decision.CAPTURING, tracker.feed(quiet(), 400))
+        // ... but two words are finished when they stop, so the gap is shorter than a full second.
+        assertEquals(WakeCapture.Decision.FINISH, tracker.feed(quiet(), 100))
+    }
+
+    @Test
+    fun aLongSentenceGetsTheFullSecondOfPatience() {
+        val tracker = WakeCapture.Tracker()
+        // Two seconds of speech: this may only be a pause in the middle of a thought.
+        repeat(20) { tracker.feed(loud(), 100) }
+        assertEquals(WakeCapture.Decision.CAPTURING, tracker.feed(quiet(), 900))
+        assertEquals(WakeCapture.Decision.FINISH, tracker.feed(quiet(), 200))
     }
 
     @Test

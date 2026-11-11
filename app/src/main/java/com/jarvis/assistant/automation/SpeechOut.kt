@@ -9,6 +9,7 @@ import com.jarvis.assistant.voice.VoiceGender
 import com.jarvis.assistant.voice.VoiceSettings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
@@ -140,6 +141,65 @@ object SpeechOut {
             if (finished) null else "Speech did not finish in time"
         } catch (t: Throwable) {
             "Speech failed: ${t.javaClass.simpleName}"
+        }
+    }
+
+    /**
+     * Adds [text] to the end of the queue and returns immediately.
+     *
+     * [speak] flushes and waits: right for an answer that is one piece. A *streamed* reply is many
+     * pieces arriving while it is being spoken, and flushing each one would cut the previous
+     * sentence off mid-word. So this queues instead, and does not block — the next sentence is
+     * usually already on its way by the time this returns.
+     */
+    suspend fun enqueue(
+        context: Context,
+        text: String,
+        language: String? = null,
+        tone: Feelings.Tone = Feelings.Tone.NEUTRAL,
+    ): String? {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return "Nothing to say"
+
+        val tts = ensureEngine(context) ?: return "No speech engine available on this device"
+        applyLanguage(tts, language)
+        applyVoice(context, tts)
+        applyTone(tts, tone)
+
+        return try {
+            val queued = withContext(Dispatchers.Main) {
+                tts.speak(
+                    trimmed.take(600),
+                    TextToSpeech.QUEUE_ADD,
+                    null,
+                    "jarvis-" + UUID.randomUUID(),
+                )
+            }
+            if (queued == TextToSpeech.SUCCESS) null else "Speech engine rejected the request"
+        } catch (t: Throwable) {
+            "Speech failed: ${t.javaClass.simpleName}"
+        }
+    }
+
+    /**
+     * Waits until the queue has finished speaking, or [timeoutMillis] passes.
+     *
+     * Used after a streamed reply: the microphone must not open while the last sentence is still
+     * being read, or the recogniser transcribes JARVIS instead of the operator. Polling rather than
+     * an utterance listener because the queue can end at any utterance, and the engine reports this
+     * one fact reliably.
+     */
+    suspend fun drain(timeoutMillis: Long = 10_000L) {
+        val tts = engine ?: return
+        val until = System.currentTimeMillis() + timeoutMillis.coerceIn(0L, 60_000L)
+        while (System.currentTimeMillis() < until) {
+            val speaking = try {
+                withContext(Dispatchers.Main) { tts.isSpeaking }
+            } catch (t: Throwable) {
+                false
+            }
+            if (!speaking) return
+            delay(120L)
         }
     }
 

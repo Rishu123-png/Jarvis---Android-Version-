@@ -101,6 +101,15 @@ object AutomationEngine {
     val state: StateFlow<RunState> = _state.asStateFlow()
 
     private var currentJob: Job? = null
+
+    /**
+     * True while the current run is a preview.
+     *
+     * A field rather than a parameter threaded through five private functions: it is set once when
+     * the walk starts, cleared when it ends, and every place that could touch the phone checks it.
+     */
+    @Volatile
+    private var isDry = false
     private var pendingConfirmation: CompletableDeferred<Boolean>? = null
     private val log = mutableListOf<RunLogEntry>()
 
@@ -135,13 +144,23 @@ object AutomationEngine {
         return true
     }
 
+    /**
+     * Runs a routine — or, with [dry], walks it and says what it *would* do.
+     *
+     * A preview is not a simulation with hidden side effects: no step is executed, no confirmation is
+     * asked, nothing is written. Conditions are still *read* (a battery level, the day of the week),
+     * because "would this branch be taken right now" is the question a preview exists to answer. It
+     * is the same walk, with the phone's hands held behind its back.
+     */
     fun run(
         context: Context,
         workflow: Workflow,
         triggerLabel: String = "Manual",
+        dry: Boolean = false,
     ) {
         if (isBusy) return
         val appContext = context.applicationContext
+        isDry = dry
 
         currentJob = scope.launch {
             log.clear()
@@ -194,6 +213,7 @@ object AutomationEngine {
 
             counters.stopped = halted || !isActive
             finish(appContext, workflow, counters, triggerLabel, stopped = counters.stopped)
+            isDry = false
         }
     }
 
@@ -217,7 +237,7 @@ object AutomationEngine {
         _state.value = finished
 
         // Only real routines go into history; a step test is not a run worth remembering.
-        if (workflow.id != "__step_test__") {
+        if (workflow.id != "__step_test__" && !isDry) {
             AutomationStore.recordRun(context, finished)
         }
     }
@@ -346,6 +366,25 @@ object AutomationEngine {
                         counters.failed++
                         continue
                     }
+                    if (isDry) {
+                        // Read the condition, do not sit on it. A preview that blocked for five
+                        // minutes would be a worse answer than "this is false right now".
+                        val now = ConditionEvaluator.evaluate(context, condition)
+                        log.add(
+                            RunLogEntry(
+                                index,
+                                "WAIT UNTIL ${condition.display}",
+                                if (now.passed) {
+                                    "true now — would not wait"
+                                } else {
+                                    "false now — would wait up to ${step.timeoutSec}s"
+                                },
+                                ok = true,
+                            )
+                        )
+                        counters.succeeded++
+                        continue
+                    }
                     val outcome = waitUntil(context, condition, step.timeoutSec)
                     log.add(
                         RunLogEntry(
@@ -369,6 +408,21 @@ object AutomationEngine {
 
             // ---- ordinary step ----
             // Sensitive steps stop the routine until a human says yes.
+            if (isDry) {
+                // Nothing is touched. The line names the value the step would have used, so the
+                // preview is worth reading rather than a row of identical ticks.
+                log.add(
+                    RunLogEntry(
+                        stepIndex = index,
+                        actionLabel = step.action.label,
+                        outcome = "would run: ${step.displayParam}",
+                        ok = true,
+                    )
+                )
+                counters.succeeded++
+                continue
+            }
+
             if (step.action.sensitive) {
                 val approved = awaitConfirmation(workflow, step, index, workflow.totalSteps)
                 if (!approved) {
@@ -385,6 +439,10 @@ object AutomationEngine {
                 }
             }
 
+            RetryPolicy.overruledNote(step)?.let { note ->
+                log.add(RunLogEntry(index, "RETRIES", note, ok = true))
+            }
+
             val result = executeWithRetry(context, step)
 
             when (result) {
@@ -396,7 +454,11 @@ object AutomationEngine {
                 is StepExecutor.Result.Failed -> {
                     counters.failed++
                     log.add(RunLogEntry(index, step.action.label, result.reason, ok = false))
-                    if (step.onFail == FailPolicy.HALT) return true
+                    if (step.onFail == FailPolicy.HALT) {
+                        // The routine is about to stop. Put back what it changed, then stop.
+                        if (depth == 0) compensate(context, steps, index)
+                        return true
+                    }
                 }
 
                 is StepExecutor.Result.Skipped -> {
@@ -438,7 +500,11 @@ object AutomationEngine {
         var attempt = 0
         var last: StepExecutor.Result = StepExecutor.Result.Failed("Not attempted")
 
-        while (attempt <= step.retries) {
+        // Not every step may be tried twice. A step that cannot be taken back is attempted once,
+        // whatever it asks for: a retry on a timeout is how the same message gets sent twice.
+        val allowed = RetryPolicy.retriesFor(step)
+
+        while (attempt <= allowed) {
             val outcome = withTimeoutOrNull(timeoutMs) {
                 withContext(Dispatchers.Default) { StepExecutor.execute(context, step) }
             }
@@ -448,12 +514,47 @@ object AutomationEngine {
             // Only a hard failure is worth retrying; a skip means the prerequisite is missing.
             if (last is StepExecutor.Result.Ok || last is StepExecutor.Result.Skipped) return last
 
-            if (attempt < step.retries) {
-                delay(400L * (attempt + 1))
+            if (attempt < allowed) {
+                delay(RetryPolicy.backoffMs(attempt + 1))
             }
             attempt++
         }
         return last
+    }
+
+    /**
+     * Walks a failed routine backwards.
+     *
+     * Only top-level steps, only the ones before the failure, only reversals that are themselves
+     * reversible — [Compensation] owns those rules. The run log carries every attempt, because a
+     * rollback that half worked is exactly the thing the operator needs to see.
+     */
+    private suspend fun compensate(context: Context, steps: List<WorkflowStep>, failedAt: Int) {
+        val plan = Compensation.planFor(steps, failedAt)
+        if (plan.isEmpty()) return
+
+        log.add(RunLogEntry(failedAt, "ROLLBACK", "${plan.size} step(s) to take back", ok = true))
+        var ran = 0
+        for (undo in plan) {
+            val outcome = withTimeoutOrNull(30_000L) {
+                withContext(Dispatchers.Default) { StepExecutor.execute(context, Compensation.stepFor(undo)) }
+            }
+            when (outcome) {
+                is StepExecutor.Result.Ok -> {
+                    ran++
+                    log.add(RunLogEntry(undo.index, undo.label, outcome.detail, ok = true))
+                }
+
+                is StepExecutor.Result.Failed ->
+                    log.add(RunLogEntry(undo.index, undo.label, outcome.reason, ok = false))
+
+                is StepExecutor.Result.Skipped ->
+                    log.add(RunLogEntry(undo.index, undo.label, outcome.reason, ok = false))
+
+                null -> log.add(RunLogEntry(undo.index, undo.label, "Timed out", ok = false))
+            }
+        }
+        log.add(RunLogEntry(failedAt, "ROLLBACK", Compensation.summary(ran, plan.size), ok = ran == plan.size))
     }
 
     private suspend fun waitUntil(
@@ -506,10 +607,12 @@ object AutomationEngine {
     }
 
     fun stop() {
+        // A stopped run leaves nothing armed — including the preview flag.
         pendingConfirmation?.complete(false)
         pendingConfirmation = null
         currentJob?.cancel()
         currentJob = null
+        isDry = false
 
         val running = state.value
         val name = when (running) {

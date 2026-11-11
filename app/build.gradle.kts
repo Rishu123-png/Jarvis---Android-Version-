@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 /**
@@ -106,6 +107,17 @@ val fetchVoskModel by tasks.registering {
  */
 val shizukuVersion = "13.6.0"
 val shizukuApkBytes = 2_571_773L
+/*
+ * Why the bundled app (13.6.0) and the API artifact (13.1.5, in gradle/libs.versions.toml) are not
+ * the same number, on purpose.
+ *
+ * 13.1.5 is the newest `dev.rikka.shizuku` the author publishes to Maven Central — the library's own
+ * changelog ends there — so asking for 13.6.0 in the dependency block would not resolve and would
+ * fail the build. Shizuku guarantees that a newer manager keeps serving an older client, which is
+ * exactly this pairing: the operator gets the newest Shizuku fixes, and the app talks to it through
+ * the newest API that exists. The two pins are checked against the phone's download URL by
+ * tools/guard.py, so this comment cannot quietly become untrue.
+ */
 val shizukuUrl = "https://github.com/RikkaApps/Shizuku/releases/download/v" + shizukuVersion + "/" +
     "shizuku-v" + shizukuVersion + ".r1086.2650830c-release.apk"
 /*
@@ -191,8 +203,20 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 35
+        versionCode = 38
         versionName = "1.0.0"
+
+        /*
+         * Everything JARVIS needs travels inside the APK, and this flag is what makes that true
+         * rather than aspirational.
+         *
+         * The voice model (~40 MB) and the Shizuku APK are fetched at *build* time — CI passes
+         * -PrequireVoskModel=true -PrequireShizuku=true, so a build without them fails instead of
+         * shipping. With this true, the runtime download fallbacks are closed: an app that quietly
+         * fetches 40 MB on first use is a second download the operator did not agree to, and the
+         * one thing this project promises is that installing the APK is the whole install.
+         */
+        buildConfigField("boolean", "BUNDLED_ONLY", "true")
 
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -221,8 +245,18 @@ android {
             signingConfig = signingConfigs.getByName(if (hasReleaseKeystore) "release" else "debug")
         }
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            /*
+             * R8 on, and resources shrunk with it.
+             *
+             * The app ships a 40 MB voice model and a 2.5 MB Shizuku, so the code is not the bulk of
+             * the download — but the *startup* cost of unshrunk dex is real, and a 300-class app with
+             * a thousand library classes pays for library code it never calls. Minifying also lets
+             * the startup profile in src/main/baseline-prof.txt do anything at all.
+             *
+             * Debug stays unminified, so a crash in development keeps its own names.
+             */
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -241,6 +275,24 @@ android {
         jvmTarget = "17"
     }
 
+    /*
+     * Android lint runs on every build in CI, but it does not stop one -- yet.
+     *
+     * This app has never been through lint, and a linter's first pass over a five-year-old codebase
+     * is a triage exercise, not a verdict: the largest group is always `MissingPermission`, which
+     * fires wherever a permission is checked by hand with a graceful fallback instead of by an
+     * annotation. Turning that into a red build on day one would teach everyone to ignore it.
+     *
+     * So errors are reported, not fatal. When the report is clean (or a baseline is committed),
+     * set `abortOnError = true` here and drop `continue-on-error` from the CI step: the gate then
+     * exists for real.
+     */
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+        warningsAsErrors = false
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -256,10 +308,25 @@ android {
 }
 
 dependencies {
+    // Everything a routine *is* lives here: pure rules, no Android.
+    implementation(project(":engine"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
+    // Applies the bundled baseline profile at install time; without it the profile is inert.
+    implementation(libs.androidx.profileinstaller)
+
+    /*
+     * Room, for the one thing that actually grows without bound: run history.
+     *
+     * Routines are a handful of small documents and stay JSON in SharedPreferences — a database for
+     * eight rows would be ceremony. History is an append-only log that was being rewritten *whole*
+     * into a preference string on every run, which is exactly the shape a table exists for.
+     */
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

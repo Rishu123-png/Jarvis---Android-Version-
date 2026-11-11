@@ -4,6 +4,122 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 38
+
+**The rules are their own module now.** `:engine` holds the action catalogue, the eleven conditions, the
+ten triggers, the risk ladder, the routine fingerprint, the retry and rollback policies, the screen map
+and the two pure rankers (assist-text filtering, memory retrieval). Not one file in it imports
+`android.` or `androidx.`, which is the point: these are the decisions that must be provable without a
+phone, and `tools/guard.py` now fails the build if an `import android.` appears there. `:app` keeps
+everything that touches hardware — the executor, the accessibility service, the store.
+
+**Run history moved into SQLite.** It was a JSON array inside a preference string, rebuilt in full on
+every finished run: quadratic work and a whole-file rewrite to add one row. It is a Room table now — it
+appends, orders and trims in the database, and the boards read the fifty rows they show. A history from
+the preference era is imported once on first launch and then the old key is deleted; if a future schema
+cannot be migrated, the history is dropped rather than the app failing to start
+(`fallbackToDestructiveMigration`). Routines deliberately stay JSON — eight small documents are not a
+dataset.
+
+**Routines can be previewed and handed out.** PREVIEW runs the same walk with the phone's hands behind
+its back: every step reports `would run: <value>`, `WAIT UNTIL` reads its condition instead of waiting
+on it, `IF` names the branch it would take — no app opens, no confirmation is asked, and nothing is
+written to history, because a preview is not a run. SHARE exports a routine as text and JSON, and the
+routine's link `jarvis://run/<id>` is answered by the app: it opens the automation board and starts the
+routine with the trigger `Link`. A deleted or switched-off routine runs nothing and says so.
+
+**A routine can be woken by the calendar.** `BEFORE AN EVENT` fires when the next event starts within
+the number of minutes you set — once per event, not once per poll: the watcher runs every minute, so
+"already ran since this event's window opened" is the rule that keeps it to a single run. All-day
+events are ignored rather than guessed at, and a refused permission is a silent no, not a failed run.
+
+One new suite — `RoutineExportTest` — pins the link shape to the manifest's scheme, round-trips a
+history row through the JSON that used to persist it, and checks the presets are well formed and
+uniquely identified. A second, `CalendarTriggerTest`, pins the calendar arithmetic: the window, the
+once-per-event rule, and the clamps. 59 suites, 544 tests.
+
+## 1.0.0 — versionCode 37
+
+**He starts talking before he has finished thinking.** The reply used to arrive whole and then be
+spoken; now the provider's stream is read frame by frame and each finished sentence goes to the voice
+the moment its full stop lands, queued behind the previous one so nothing is cut off. The first
+sentence normally starts a few hundred milliseconds after the request instead of after the whole
+paragraph.
+
+The interesting part is that he speaks two different things. A conversation is prose and can be read
+out as it is written; a routine is a JSON object that must be *whole* before anything happens to it.
+So the first character decides: a brace means a plan, and nothing is spoken until it has been
+validated. A provider that cannot stream, or that drops the connection mid-sentence, falls back to
+the ordinary whole-reply path with whatever was already said kept — the worst case is the old
+behaviour, never half an answer followed by an error.
+
+**The pause that ends a sentence now depends on the sentence.** Two words end after 0.55 s of quiet, an
+ordinary sentence after 0.7 s, a long description keeps the full second. Measured from the audio, so it
+is decided before any transcription exists.
+
+**Nothing is downloaded from inside the app.** The runtime fallbacks that fetched the 40 MB voice model
+or the Shizuku APK are closed behind `BUNDLED_ONLY`: both travel in the APK, CI already refuses to
+build without them, and a build that is missing one now says so instead of quietly using mobile data.
+
+Three new suites pin the pieces down: `StreamingReplyTest` (what counts as a sentence, decimals,
+abbreviations, Devanagari dandas, and the rule that a routine is never spoken) and `SseTest` (the three
+providers' actual stream frames). 57 suites, 531 tests.
+
+**Still to come, and named rather than implied:** the local core is asked for whole replies, so on a
+PC-based brain the first sentence still waits for the model; Room/DataStore behind the preference
+stores; the Gradle module split; dry runs and per-routine links. Those are next, and each one is a
+change that has to be felt on a phone before it is called done.
+
+## 1.0.0 — versionCode 36
+
+Seven changes, all of them about the same thing: the parts of JARVIS that were *guessing* now have
+something to check against.
+
+**The action catalogue is a tool, not a paragraph.** Every planner used to paste the 63 actions into a
+prompt and ask for "ONE JSON object and nothing else", then scrape an object back out. That works most
+of the time, which is the problem — at four failures in five per hundred steps, a twenty-step routine
+almost never finishes. The catalogue is now generated from `ActionType`, `ConditionType`,
+`TriggerKind` and `FailPolicy` and sent as a real `tools` declaration in the shape each provider
+expects (OpenAI and the local core, Anthropic, Gemini). Tool calls are read back from all three
+envelopes; a model that answers in prose anyway still goes down the old path, and a server that has
+never heard of `tools` is told once and never asked again. Nothing about validation changed: the
+planner still only accepts ids that exist.
+
+**The screen agent looks at what it did.** After each action it compares the visible labels before and
+after. If a press changed nothing, the same control is retried by Android resource id — the retry a
+model cannot make, because a model can only read labels — and if that fails too, the next decision is
+told plainly that this control is not responding. No extra model call, no extra screen read.
+
+**The Assist API is used at last.** When the gesture fires, the session reads the accessibility tree
+the platform hands it, drops password fields, dedupes and caps the text, and attaches it to the
+conversation as *untrusted* content behind a header that says so. "What does this say?" now has
+something to look at, and no page can write a routine.
+
+**Memory is retrieved, not truncated.** Facts and people were sent as a fixed head of the list, so the
+name mentioned last month lost to the fact written on the first day. They are now ranked against what
+the operator just said — exact matches, prefixes, phrase hits, length-normalised — and fall back to
+exactly the old order when there is nothing to rank against. It splits on letters, so Hinglish and
+Devanagari work.
+
+**The pause that ends a sentence depends on the sentence.** A fixed one second was either dead air
+after every short command or a cut-off long one. A two-word command now ends after 0.55 s, an
+ordinary sentence after 0.7 s, and only a long description keeps the full second.
+
+**A retry is not always a second chance.** `SHELL`, messages, calls, uploads and downloads are
+attempted exactly once however many retries the step asks for, and the run log says why. And when a
+routine fails with `halt`, the steps before it are walked backwards: only reversible actions, only
+undone by something that is itself reversible. A sent message is never "undone".
+
+**Release builds are shrunk and profiled.** R8 and resource shrinking are on for release (debug keeps
+its names), with keep rules for JNA/Vosk, Shizuku, the manifest components and the AIDL service, plus
+a hand-written startup profile installed by `profileinstaller`. The profile is honest about being a
+starting point: a device-generated one is better, and the file says so.
+
+**Deliberately not in this build:** streaming replies (SSE, sentence-by-sentence speech), an on-device
+LLM tier, sherpa-onnx for VAD/keyword-spotting/TTS, Room and DataStore behind the five preference
+stores, and the Gradle module split. Each needs a device or an SDK in the loop to land without
+guessing, and a half-migrated store or an unbuildable module is worse than the current shape.
+
 ## 1.0.0 — versionCode 35
 
 Five things land together. The theme is the same in all of them: the phone should not need a second

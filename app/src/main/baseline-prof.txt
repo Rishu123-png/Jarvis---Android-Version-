@@ -1,0 +1,31 @@
+# J.A.R.V.I.S. — a startup profile, by hand.
+#
+# Profile-guided dex layout is worth 15–30% off cold start, and almost all of that is the AOT
+# compiling the code the first screen actually touches. This is a *starting* profile: what is below is
+# the path from the launcher to the first frame — the activity, Compose's runtime, the theme, and the
+# state holders the HUD needs on the way up.
+#
+# Two kinds of line, and the difference is not cosmetic: a class rule is the class alone, a method rule
+# carries the flags. "HSPLcom/…/MainActivity;" is rejected by the profile parser; the class rule is
+# "Lcom/…/MainActivity;".
+#
+# It is deliberately short, and mostly class-level: a hand-written method signature is a guess about a
+# name, and a guess is a warning that teaches everyone to ignore warnings. The honest way to finish it
+# is `./gradlew :app:generateReleaseBaselineProfile` on a device, which replaces this with a measured
+# profile.
+#
+# Installed at first run by androidx.profileinstaller, which is why that dependency exists.
+
+Lcom/jarvis/assistant/MainActivity;
+HSPLcom/jarvis/assistant/MainActivity;-><init>()V
+HSPLcom/jarvis/assistant/MainActivity;->onCreate(Landroid/os/Bundle;)V
+Lcom/jarvis/assistant/ui/JarvisAppKt;
+Lcom/jarvis/assistant/ui/theme/ThemeKt;
+Landroidx/activity/ComponentActivity;
+Landroidx/compose/runtime/ComposerImpl;
+Landroidx/compose/runtime/Recomposer;
+Landroidx/compose/ui/platform/AndroidComposeView;
+Landroidx/compose/material3/MaterialThemeKt;
+Landroidx/core/view/WindowCompat;
+Landroidx/lifecycle/ViewModelStore;
+Lkotlin/coroutines/AbstractCoroutineContextElement;

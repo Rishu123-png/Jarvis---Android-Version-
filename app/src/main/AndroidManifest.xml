@@ -202,6 +202,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!--
+              jarvis://run/<id> — one routine, from a link.
+
+              No custom host means no browser can claim it and no verification is needed: the scheme
+              is ours alone. This is how a routine reaches the phone from a shortcut, a widget, a
+              QR code or an automation app. Unknown ids open the board and say so; nothing runs.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="jarvis" android:host="run" />
+            </intent-filter>
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
@@ -389,13 +403,18 @@
             </intent-filter>
         </receiver>
 
-        <!-- Re-arms alarms and the watcher after a reboot or an app update. -->
+        <!-- Re-arms alarms and the watcher after a reboot or an app update.
+             Not exported: both actions are system broadcasts, and the system is exempt from the
+             exported check. Leaving it `true` would only let any other app poke the re-arm path. -->
         <receiver
             android:name=".automation.AutomationBootReceiver"
-            android:exported="true"
+            android:exported="false"
             android:directBootAware="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- Some OEM builds (Xiaomi, Realme, Oppo) send this instead of BOOT_COMPLETED.
+                     The receiver already answers it; without the filter below it was unreachable. -->
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>

@@ -65,6 +65,8 @@ fun AutomationScreen(
     notificationsAllowed: Boolean,
     history: List<RunRecord>,
     onRun: (Workflow) -> Unit,
+    onPreview: (Workflow) -> Unit,
+    onShare: (Workflow) -> Unit,
     onStop: () -> Unit,
     onDismissFinished: () -> Unit,
     onEdit: (Workflow) -> Unit,
@@ -408,6 +410,8 @@ fun AutomationScreen(
                     busy = busy,
                     lastRun = history.firstOrNull { it.workflowId == workflow.id },
                     onRun = { onRun(workflow) },
+                    onPreview = { onPreview(workflow) },
+                    onShare = { onShare(workflow) },
                     onEdit = { onEdit(workflow) },
                     onDelete = { onDelete(workflow) },
                     onToggleEnabled = { enabled -> onToggleEnabled(workflow, enabled) },
@@ -512,6 +516,8 @@ private fun RoutineCard(
     busy: Boolean,
     lastRun: RunRecord?,
     onRun: () -> Unit,
+    onPreview: () -> Unit,
+    onShare: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
@@ -586,6 +592,15 @@ private fun RoutineCard(
                 onClick = { onToggleEnabled(!workflow.enabled) },
             )
             SmallAction("DELETE", AlertRed, enabled = true, onClick = onDelete)
+        }
+
+        // Preview and share get their own line: six pills in one row would clip at phone widths, and
+        // these two answer different questions ("what would this do?" vs "what *is* this?") than the
+        // four above them.
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            SmallAction("PREVIEW", Amber, enabled = !busy, onClick = onPreview)
+            SmallAction("SHARE", IceBlue, enabled = true, onClick = onShare)
         }
     }
 }

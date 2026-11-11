@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-42%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-59%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -93,6 +93,9 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [The assistant button](#the-assistant-button)
 - [Hey Jarvis](#hey-jarvis)
 - [Staying in the conversation](#staying-in-the-conversation)
+- [Talking sooner](#talking-sooner)
+- [Before it runs, and after it leaves](#before-it-runs-and-after-it-leaves)
+- [Memory and who he is](#memory-and-who-he-is)
 - [The crew](#the-crew)
 - [The dial](#the-dial)
 - [The eyes](#the-eyes)
@@ -104,6 +107,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [Build it yourself](#build-it-yourself)
 - [What he cannot do](#what-he-cannot-do)
 - [Architecture](#architecture)
+- [What is stored, and where](#what-is-stored-and-where)
 - [Privacy](#privacy)
 - [Tests](#tests)
 - [Release checklist](#release-checklist)
@@ -358,6 +362,58 @@ One sentence used to be the whole session: say it, hear the answer, say *"hey ja
   app, and the timing line stays silent because this build has no account connections to read numbers
   from — a guess dressed as data is worse than no advice.
 
+## Talking sooner
+
+The old answer arrived whole: the request finished, then the first word was spoken. On a good day
+that was a second and a half of silence, and silence is what makes an assistant feel like a form.
+
+- **The reply is read as it is written.** The provider's stream is consumed frame by frame, and each
+  finished sentence goes to the voice the moment its full stop arrives, queued so the next one can
+  follow without cutting it off. The first sentence usually starts a few hundred milliseconds after
+  the request instead of after the whole paragraph. It is a *streaming* path and nothing else changes:
+  same model, same key, same fallbacks.
+- **A routine is never spoken while it is being written.** The first character decides: a brace means
+  a plan, and a plan must be whole before anything happens to it, so nothing is spoken until the
+  object has been validated. Conversation is spoken; commands stay quiet until they are understood.
+  If the stream dies mid-sentence, what was already said is kept and the rest is not invented.
+- **The pause that ends a sentence depends on the sentence.** A two-word command ends after 0.55 s of
+  quiet, an ordinary sentence after 0.7 s, and only a long description keeps the full second — timing
+  measured from the audio, before any transcription exists.
+- **What it costs when it fails.** A provider without streaming, or one that drops the connection,
+  falls back to the ordinary whole-reply path on the same turn. The worst case is the old behaviour,
+  never a half-spoken answer followed by an error.
+
+**The honest limit.** Sentence-by-sentence speaking is only as fast as the provider's first sentence.
+On a local core (Ollama, LM Studio) the model itself may take longer to produce the first sentence
+than the network ever did, and the core is still asked for whole replies. That is the next thing to
+fix, not something this build claims.
+
+## Before it runs, and after it leaves
+
+A routine can do irreversible things, so there are two ways to look at one before it does anything.
+
+**PREVIEW** walks the routine exactly as RUN would, and reports instead of acting. Every step comes back
+as `would run: <the value it would have used>`, a `WAIT UNTIL` is *read* rather than waited on
+("false now — would wait up to 90s"), and an `IF` says which branch it would take. Nothing is touched:
+no app is opened, no message is sent, no confirmation is asked, and the preview is deliberately not
+written into history, because a preview is not a run.
+
+**SHARE** hands the routine out as text: its name, its trigger, its step count, its link, and its JSON.
+The JSON is the same shape the store reads, so a routine can be pasted into a message, edited by hand,
+and kept next to the app.
+
+A routine can also be woken by the calendar: **BEFORE AN EVENT** fires when the next event starts
+within the number of minutes you set. It fires *once* per event, not once per minute — the watcher
+polls every minute, so "already ran since this event's window opened" is what keeps it to one run. An
+all-day event has no moment to be fifteen minutes before, so it is ignored rather than guessed at.
+
+The link is `jarvis://run/<id>`. Nothing on the web resolves it — it is a handle for shortcuts, widgets,
+QR codes and automation apps, and the app answers it, opens the automation board and starts that
+routine with the trigger label `Link`. A link to a routine that has been deleted, or switched off, runs
+nothing and says so: enabling a routine is a decision, and a link is not allowed to make it for you.
+
+---
+
 ## Memory and who he is
 
 - **Every conversation is kept.** Each exchange is appended to a file in the app's private storage
@@ -606,8 +662,8 @@ Photos to `Pictures/JARVIS`, notes to `Music/JARVIS`.</td></tr>
 
 <tr><td><b>Routines</b></td><td>
 
-Full automation engine: triggers, conditions, control flow, retries, run history, and **19 action
-types** available to both routines and voice.</td></tr>
+Full automation engine: triggers, conditions, control flow, retries, run history, and **63 action
+types** — 58 actions and 5 control-flow steps — available to both routines and voice.</td></tr>
 
 </table>
 
@@ -654,6 +710,15 @@ That is the file to share. Anyone who opens that link can install it without a G
 | CI copy | `dist/jarvis-1.0.0-b32.apk` |
 | GitHub Release | attach `jarvis-1.0.0-b32.apk` to tag `v1.0.0-build32` |
 
+### Nothing is downloaded from inside the app
+
+The voice model, Shizuku and the OCR engine all travel **inside the APK**. There is no first-run
+fetch, no "download the model" screen, no 40 MB surprise on mobile data: installing the file is the
+whole install, and the app works in flight mode afterwards. This is enforced twice — CI builds with
+`-PrequireVoskModel=true -PrequireShizuku=true` and fails rather than shipping an APK without them,
+and the runtime fallbacks that used to fetch them are closed by `BUNDLED_ONLY`. A build that is
+missing something says so plainly instead of quietly downloading it.
+
 ### First run
 
 1. Set JARVIS as the **home app** when asked.
@@ -674,7 +739,8 @@ That is the file to share. Anyone who opens that link can install it without a G
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 42 JVM suites
+./gradlew :app:testDebugUnitTest    # 59 JVM suites
+python3 tools/guard.py              # docs, pins, cleartext, exported receivers
 ```
 
 Requires JDK 17 and Android SDK 34. Every push runs the same thing in CI.
@@ -700,7 +766,7 @@ no assistant.
 | Keep the bundled Shizuku up to date by itself | The copy inside the APK is pinned to one version. A newer Shizuku comes when a newer JARVIS does. |
 | Undo a destructive shell command | The privileged tier runs as `adb`: a wipe is a wipe. That is why `reboot`, `pm clear`, uninstalling and wiping are asked about before they run. |
 
-**Verified by CI:** compilation, 42 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 59 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -708,19 +774,32 @@ step/heart sensors, the system credential screen, TTS voices.
 
 ## Architecture
 
+Two Gradle modules, split along the one line that matters: what needs a phone, and what does not.
+
 ```
+engine/src/main/java/com/jarvis/assistant/      the rules — not one `import android.`
+├── automation/                   ActionType (58 actions), 11 conditions, 11 triggers, the risk
+│                                 ladder, the fingerprint, retry and rollback policy, screen map
+└── data/                         AssistContext (what the gesture handed us) · MemorySearch (BM25)
+
 app/src/main/java/com/jarvis/assistant/
 ├── MainActivity.kt               single activity, Compose host
 ├── ai/                           your key, any provider, JSON + free conversation
-├── automation/                   the engine: 19 actions, conditions, triggers, screen agent
+├── automation/                   the executor, the store, run history, step reflection, previews
 ├── data/                         PhraseBook (~400 phrasings) · Units · When · command line
 ├── device/                       the phone itself: files, gallery, location, health, calendar,
 │                                 contacts, notifications, voice notes, lock, biometrics
 ├── shell/                        Shizuku user service (optional, adb-level, no root)
 ├── ui/                           Home · Dashboard · Lock · Privacy · Terminal · Voice
 ├── voice/                        Brain (memory) · IntentRouter · Language · Persona · FollowUp
-└── wake/                         "Hey Jarvis": Vosk grammar, one-time model download, service
+└── wake/                         "Hey Jarvis": Vosk grammar, model inside the APK, service
 ```
+
+The split is not tidiness. `:engine` holds the decisions that have to be *reasoned about* — what an
+action is allowed to do, whether a retry is safe, what a routine's fingerprint covers — and it can be
+compiled, read and tested as plain Kotlin. `tools/guard.py` fails the build if an `import android.` or
+`import androidx.` appears anywhere in it, because a module that can reach the phone will eventually
+reach the phone.
 
 **The turn, end to end:**
 
@@ -751,6 +830,21 @@ app/src/main/java/com/jarvis/assistant/
 
 ---
 
+## What is stored, and where
+
+| What | Where | Why there |
+|---|---|---|
+| Routines | JSON in `SharedPreferences` | Eight small documents. A database for eight rows is ceremony. |
+| Run history | SQLite, through Room | The one thing that grows without a ceiling. It used to be a JSON array rewritten in full on every run — now it appends, orders and trims in the table, and the screen reads only the fifty rows it shows. |
+| Conversation log | One JSON line per exchange, appended | Append-only, and read backwards from the tail. Rewriting a file to add a line is the mistake the run history was making. |
+| Memory, settings, keys | `SharedPreferences`; keys in the Keystore | Small, read constantly, and small is the right size. |
+
+`fallbackToDestructiveMigration()` is on. If a future schema change cannot be migrated, the run history
+is dropped rather than the app crashing — and a preference-era history is imported into the table once,
+on first launch, so an update does not lose it.
+
+---
+
 ## Privacy
 
 | | |
@@ -769,7 +863,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-46 JVM suites and 429 tests, run before every APK in CI.
+59 JVM suites and 544 tests, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|
@@ -785,6 +879,19 @@ capability, what it unlocks, and what breaks without it.
 | `HealthMathTest` | step baselines, sleep estimate caps |
 | `NudgesTest` | briefs that should stay silent |
 | `BiometricPolicyTest` | when the sensor may fire on its own |
+| `StepInputTest` | the address a webhook may call, and the gesture a word means |
+| `ToolSchemaTest` | the tool schema covers every action, condition, trigger and fail policy, on all three wires |
+| `ToolCallsTest` | reading a call off OpenAI, Anthropic and Gemini envelopes — and refusing rubbish |
+| `StepReflectionTest` | when a silent screen means a miss, and which id the retry should use |
+| `RetryPolicyTest` | irreversible work is attempted once, whatever it asked for |
+| `CompensationTest` | rollback order, and the two cases it must refuse |
+| `AssistContextTest` | what a screen may never carry: passwords, duplicates, instructions |
+| `MemorySearchTest` | relevance ranking, long-entry damping, Hinglish and Devanagari |
+| `EndpointingTest` | the pause that ends a sentence, from the speech that came before it |
+| `CalendarTriggerTest` | One event, one run · the window clamps · no start means no run |
+| `RoutineExportTest` | The share link carries the store's id · a history row survives its JSON · presets are well formed |
+| `StreamingReplyTest` | prose is spoken as it arrives, a routine is never spoken at all |
+| `SseTest` | reading OpenAI, Anthropic and Gemini streams, frame by frame |
 | `TimeFormatTest` · `VoiceParsingTest` · `JsonReplyTest` · `WavTest` · `WorkflowJsonTest` | the rest of the pure logic |
 
 ---

@@ -370,9 +370,20 @@ object VoiceController {
         )
 
         val previous = lastHeard
+        // The language is decided before the reply exists, from the sentence that caused it: a
+        // streamed sentence has to be handed to the right voice the instant it is complete.
+        val liveLang = try {
+            Language.detect(heard)
+        } catch (t: Throwable) {
+            null
+        }
         val plan = withTimeoutOrNull(PLAN_TIMEOUT_MS) {
             try {
-                IntentRouter.plan(context, heard, previous)
+                IntentRouter.plan(context, heard, previous) { sentence ->
+                    // Queued, not flushed: the next sentence is usually already arriving. Sanitised
+                    // one sentence at a time, because a markdown asterisk read aloud is noise.
+                    SpeechOut.enqueue(context, Persona.sanitize(sentence), liveLang?.tag, tone)
+                }
             } catch (t: Throwable) {
                 null
             }
@@ -438,7 +449,15 @@ object VoiceController {
         val spokenLanguage = spokenLang.tag
 
         if (plan.steps.isEmpty() && !hasScreenTask) {
-            continueOrDismiss(context, id, plan.spoken ?: plan.say, spokenLang, plan.title, tone)
+            continueOrDismiss(
+                context,
+                id,
+                plan.spoken ?: plan.say,
+                spokenLang,
+                plan.title,
+                tone,
+                alreadySpoken = plan.streamed,
+            )
             return
         }
 
@@ -490,7 +509,7 @@ object VoiceController {
             val said = plan.spoken ?: plan.say
             val answer = if (tail.isNullOrBlank()) said else "${said.trim()} $tail"
             _state.value = _state.value.copy(phase = VoicePhase.DONE, reply = answer, error = null)
-            continueOrDismiss(context, id, answer, spokenLang, plan.title, tone)
+            continueOrDismiss(context, id, answer, spokenLang, plan.title, tone, alreadySpoken = plan.streamed)
         } else {
             // A failure ends the session: holding the ear open after something broke would invite
             // a second doomed attempt without explaining the first.
@@ -592,17 +611,29 @@ object VoiceController {
         lang: Lang,
         title: String,
         tone: Feelings.Tone = Feelings.Tone.NEUTRAL,
+        /**
+         * True when [answer] has already been spoken, sentence by sentence, while it was written.
+         *
+         * The tail — a short line added after a command finished — is the only part left to say, and
+         * only the queue holds it. Saying the whole answer again would repeat the entire reply.
+         */
+        alreadySpoken: Boolean = false,
     ) {
         if (!Conversation.isEnabled(context) || conversationTurns >= Conversation.maxTurns(context)) {
             _state.value = _state.value.copy(conversation = false, turn = 0)
-            speak(context, answer, lang.tag, tone)
+            if (!alreadySpoken) speak(context, answer, lang.tag, tone)
             scheduleDismiss(id)
             return
         }
 
         // Speak first, listen after: a microphone opened while the answer is still playing
         // transcribes JARVIS instead of the operator.
-        sayAndWait(context, answer, lang.tag, tone)
+        if (alreadySpoken) {
+            // Only wait for what is still queued, so the microphone does not open over the voice.
+            withTimeoutOrNull(SAY_TIMEOUT_MS) { SpeechOut.drain(6_000L) }
+        } else {
+            sayAndWait(context, answer, lang.tag, tone)
+        }
         if (id != taskId) return
 
         conversationTurns += 1

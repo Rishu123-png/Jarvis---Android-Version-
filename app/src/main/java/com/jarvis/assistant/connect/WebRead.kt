@@ -16,13 +16,16 @@ import java.util.Locale
  *  * **https only.** Plain http is not fetched, because a page that cannot be authenticated is not
  *    worth a plaintext round trip on someone's phone.
  *  * **No local addresses.** Loopback, private ranges, `.local` and link-local hosts are refused, so
- *    a sentence cannot be used to poke at a router or a laptop on the same wifi.
+ *    a sentence cannot be used to poke at a router or a laptop on the same wifi. The same rule is
+ *    applied to **every redirect hop**, not just the address in the sentence: a page that answers
+ *    `302 Location: https://192.168.1.1/` is refused, not followed.
  *  * **Bounded in every direction** — connect timeout, read timeout, a hard byte cap, and a cap on
  *    how much text survives extraction.
  *  * **No JavaScript.** What comes back is the server's HTML; a page that draws its content in the
  *    browser will read as empty, and he says so instead of inventing a summary.
  *
- * [urlIn], [extractText], [titleOf] and [isAllowed] are pure, so the dangerous half has a test.
+ * [urlIn], [extractText], [titleOf], [isAllowed] and [redirectTarget] are pure, so the dangerous
+ * half has a test.
  */
 object WebRead {
 
@@ -30,6 +33,9 @@ object WebRead {
     private const val READ_TIMEOUT_MS = 12_000
     private const val MAX_BYTES = 512 * 1024
     private const val MAX_TEXT_CHARS = 6_000
+
+    /** Hops, not milliseconds: a redirect chain longer than this is a loop or a trap. */
+    private const val MAX_REDIRECTS = 5
 
     /** A page, already reduced to words. */
     data class Page(
@@ -102,67 +108,103 @@ object WebRead {
     // Reading
     // ---------------------------------------------------------------------------------------------
 
-    suspend fun read(url: String): Result = withContext(Dispatchers.IO) {
-        val clean = url.trim()
-        if (!isAllowed(clean)) {
-            return@withContext Result.Refused(
-                "I only read https pages, and I will not open a local address.",
-            )
-        }
+    suspend fun read(url: String): Result = withContext(Dispatchers.IO) { fetch(url.trim()) }
 
+    /**
+     * The hopping, which is not pure but is also not allowed to skip a check.
+     *
+     * Redirects are followed **by hand**, one hop at a time, and every hop is put back through
+     * [isAllowed] before a socket is opened. Letting `HttpURLConnection` follow them (it did, once)
+     * means the whitelist above only ever sees the address in the sentence: a public page that
+     * answers `302 Location: https://192.168.1.1/` would take the phone to the router anyway, which
+     * is precisely the thing the rest of this file exists to prevent.
+     *
+     * A hop that leaves https, or lands on a private address, ends the read with a refusal rather
+     * than a quiet downgrade.
+     */
+    private fun fetch(start: String): Result {
+        var current = start
+        var hops = 0
         var live: HttpURLConnection? = null
         try {
-            val connection = (URL(clean).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
-                instanceFollowRedirects = true
-                setRequestProperty("Accept", "text/html,application/xhtml+xml,text/plain")
-                setRequestProperty(
-                    "User-Agent",
-                    "JARVIS-Android/1.0 (personal assistant; reads one page on request)",
+            while (true) {
+                if (!isAllowed(current)) {
+                    return Result.Refused(
+                        "I only read https pages, and I will not open a local address.",
+                    )
+                }
+
+                val connection = (URL(current).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = CONNECT_TIMEOUT_MS
+                    readTimeout = READ_TIMEOUT_MS
+                    // Not a shortcut: this is what makes redirectTarget() the only way to move.
+                    instanceFollowRedirects = false
+                    setRequestProperty("Accept", "text/html,application/xhtml+xml,text/plain")
+                    setRequestProperty(
+                        "User-Agent",
+                        "JARVIS-Android/1.0 (personal assistant; reads one page on request)",
+                    )
+                }
+                live = connection
+
+                val code = connection.responseCode
+                if (code in 300..399) {
+                    val next = redirectTarget(current, connection.getHeaderField("Location"))
+                    connection.disconnect()
+                    live = null
+                    if (next == null) {
+                        return Result.Refused(
+                            "That page redirected somewhere I will not follow.",
+                        )
+                    }
+                    if (hops >= MAX_REDIRECTS) {
+                        return Result.Refused("That page redirected too many times.")
+                    }
+                    current = next
+                    hops += 1
+                    continue
+                }
+
+                if (code !in 200..299) {
+                    return Result.Refused("That page answered with HTTP $code.")
+                }
+                val type = connection.contentType.orEmpty().lowercase(Locale.US)
+                if (type.isNotBlank() && !type.contains("html") && !type.contains("text/plain")) {
+                    return Result.Refused("That link is not a page I can read.")
+                }
+
+                val bytes = try {
+                    connection.inputStream.use { stream ->
+                        val buffer = ByteArray(16 * 1024)
+                        val out = java.io.ByteArrayOutputStream()
+                        var total = 0
+                        while (total < MAX_BYTES) {
+                            val read = stream.read(buffer)
+                            if (read <= 0) break
+                            out.write(buffer, 0, read)
+                            total += read
+                        }
+                        out.toByteArray()
+                    }
+                } catch (t: Throwable) {
+                    ByteArray(0)
+                }
+
+                if (bytes.isEmpty()) {
+                    return Result.Refused("That page sent nothing back.")
+                }
+                val html = String(bytes, Charsets.UTF_8)
+                return Result.Ok(
+                    Page(
+                        url = current,
+                        title = titleOf(html).ifBlank { URL(current).host },
+                        text = extractText(html),
+                    ),
                 )
             }
-            live = connection
-            val code = connection.responseCode
-            if (code !in 200..299) {
-                return@withContext Result.Refused("That page answered with HTTP $code.")
-            }
-            val type = connection.contentType.orEmpty().lowercase(Locale.US)
-            if (type.isNotBlank() && !type.contains("html") && !type.contains("text/plain")) {
-                return@withContext Result.Refused("That link is not a page I can read.")
-            }
-
-            val bytes = try {
-                connection.inputStream.use { stream ->
-                    val buffer = ByteArray(16 * 1024)
-                    val out = java.io.ByteArrayOutputStream()
-                    var total = 0
-                    while (total < MAX_BYTES) {
-                        val read = stream.read(buffer)
-                        if (read <= 0) break
-                        out.write(buffer, 0, read)
-                        total += read
-                    }
-                    out.toByteArray()
-                }
-            } catch (t: Throwable) {
-                ByteArray(0)
-            }
-
-            if (bytes.isEmpty()) {
-                return@withContext Result.Refused("That page sent nothing back.")
-            }
-            val html = String(bytes, Charsets.UTF_8)
-            Result.Ok(
-                Page(
-                    url = clean,
-                    title = titleOf(html).ifBlank { URL(clean).host },
-                    text = extractText(html),
-                ),
-            )
         } catch (t: Throwable) {
-            Result.Refused("I could not reach that page (${t.javaClass.simpleName}).")
+            return Result.Refused("I could not reach that page (${t.javaClass.simpleName}).")
         } finally {
             try {
                 live?.disconnect()
@@ -170,6 +212,32 @@ object WebRead {
                 // Already gone.
             }
         }
+    }
+
+    /**
+     * Where a redirect points, or null when it points somewhere that must not be opened.
+     *
+     * Pure and separate from [fetch] so the rule has a test. `Location` is allowed to be absolute,
+     * protocol-relative (`//host/path`) or relative (`/next`), and all three resolve to an absolute
+     * address here before [isAllowed] judges it — a relative hop that stays on https is fine, a hop
+     * to `http://` or to `127.0.0.1` is not.
+     */
+    fun redirectTarget(base: String, location: String?): String? {
+        val raw = location?.trim().orEmpty()
+        if (raw.isEmpty()) return null
+
+        val resolved = when {
+            raw.startsWith("https://", ignoreCase = true) -> raw
+            raw.startsWith("http://", ignoreCase = true) -> raw
+            raw.startsWith("//") -> "https:$raw"
+            else -> try {
+                URL(URL(base), raw).toString()
+            } catch (t: Throwable) {
+                return null
+            }
+        }
+        val withoutFragment = resolved.substringBefore('#')
+        return withoutFragment.takeIf { isAllowed(it) }
     }
 
     // ---------------------------------------------------------------------------------------------

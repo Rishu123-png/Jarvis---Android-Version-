@@ -5,11 +5,13 @@ import android.content.Context
 import com.jarvis.assistant.ai.AiClient
 import com.jarvis.assistant.ai.AiMessage
 import com.jarvis.assistant.ai.AiResult
+import com.jarvis.assistant.ai.ToolResult
 import com.jarvis.assistant.automation.AccessibilityStatus
 import com.jarvis.assistant.automation.ActionType
 import com.jarvis.assistant.automation.JarvisAccessibilityService
 import com.jarvis.assistant.automation.ScreenItem
 import com.jarvis.assistant.automation.ScreenMap
+import com.jarvis.assistant.automation.StepReflection
 import com.jarvis.assistant.automation.StepExecutor
 import com.jarvis.assistant.automation.WorkflowStep
 import com.jarvis.assistant.data.CoreLink
@@ -97,6 +99,11 @@ object ScreenAgent {
                 }
             }
 
+            // What the screen looked like before the action, so the next iteration can tell whether
+            // the action did anything at all. Skipped for OCR frames: two readings of the same page
+            // can differ by a character, and a false "changed" is worse than no check.
+            val before = if (viaOcr) null else items.joinToString("|") { it.label }
+
             val decision = decide(context, goal, app, items, history, viaOcr)
                 ?: return "The brain stopped answering partway through."
 
@@ -116,9 +123,16 @@ object ScreenAgent {
                     if (target.isBlank()) return "It tried to press nothing."
                     onEvent(Event("PRESS ${target.uppercase(Locale.US).take(22)}", decision.say.take(48)))
                     if (!JarvisAccessibilityService.pressLoose(target)) {
-                        return "I could not find \"$target\" on screen."
+                        // The label was on screen a moment ago. Try the exact control by id before
+                        // calling it a miss: labels are ambiguous, resource ids are not.
+                        val byId = StepReflection.retryTarget(target, items)
+                        if (byId == null || !JarvisAccessibilityService.pressLoose(byId)) {
+                            return "I could not find \"$target\" on screen."
+                        }
+                        history.add("pressed \"$target\" by id")
+                    } else {
+                        history.add("pressed \"$target\"")
                     }
-                    history.add("pressed \"$target\"")
                 }
 
                 "scroll" -> {
@@ -196,9 +210,51 @@ object ScreenAgent {
             }
 
             delay(SETTLE_MS)
+
+            // Open-loop no longer. If an action that must change something changed nothing, say so
+            // in the history rather than letting the model believe it worked — and give the same
+            // control one more attempt, by resource id, for free.
+            if (before != null && decision.action != "wait") {
+                val afterItems = JarvisAccessibilityService.describeScreen(MAX_LABELS)
+                val after = afterItems.joinToString("|") { it.label }
+                val appAfter = JarvisAccessibilityService.currentPackage() ?: app
+                when (StepReflection.of(decision.action, before, after, app, appAfter)) {
+                    StepReflection.Verdict.NO_EFFECT -> {
+                        val note = reflectAndRetry(decision, items, onEvent)
+                        history.add(note)
+                    }
+
+                    StepReflection.Verdict.BLIND ->
+                        history.add("the screen could not be read after that")
+
+                    else -> Unit
+                }
+            }
         }
 
         return "I ran out of steps before finishing."
+    }
+
+    /**
+     * One more go at a control that did nothing, and a line of history either way.
+     *
+     * The second attempt is by resource id — the retry the model could not make, because a model can
+     * only read labels. If it works the loop carries on as if the first tap had landed; if it does
+     * not, the model is told, in the same list it already reads, that this control is not responding.
+     * That is the cheapest possible feedback loop: no extra model call, no extra screen read.
+     */
+    private suspend fun reflectAndRetry(
+        decision: Decision,
+        items: List<ScreenItem>,
+        onEvent: (Event) -> Unit,
+    ): String {
+        val target = decision.param
+        val byId = if (decision.action == "press") StepReflection.retryTarget(target, items) else null
+        if (byId == null) return "$target did nothing"
+        onEvent(Event("RETRY ${byId.uppercase(Locale.US).take(20)}", "no change, trying by id"))
+        delay(SETTLE_MS)
+        if (!JarvisAccessibilityService.pressLoose(byId)) return "$target did nothing; $byId was gone"
+        return "$target did nothing; $byId worked"
     }
 
     private fun performGlobal(key: String): Boolean {
@@ -285,6 +341,39 @@ object ScreenAgent {
             $visible
         """.trimIndent()
 
+        // The decision is one action from a fixed list, which is exactly what a tool schema is for:
+        // ask for it as a call and there is no object to parse, and no way to answer in prose.
+        val asked = withTimeoutOrNull(DECISION_TIMEOUT_MS) {
+            if (AiClient.toolsWorthTrying()) {
+                val fromCore = if (CoreLink.isEnabled(context)) {
+                    withTimeoutOrNull(CORE_DECISION_TIMEOUT_MS) {
+                        AiClient.coreWithTools(
+                            context,
+                            listOf(AiMessage.user(prompt)),
+                            system,
+                            screen = true,
+                        )
+                    }
+                } else {
+                    null
+                }
+                when (val tool = fromCore ?: AiClient.chatWithTools(
+                    context,
+                    listOf(AiMessage.user(prompt)),
+                    system,
+                    screen = true,
+                )) {
+                    is ToolResult.Called -> tool.call.argumentsObject()?.let { decisionFrom(it) }
+                    is ToolResult.Said -> tool.text.takeIf { it.isNotBlank() }?.let { decisionFromProse(it) }
+                    is ToolResult.Unsupported, is ToolResult.Failed -> null
+                }
+            } else {
+                null
+            }
+        }
+        asked?.let { return it }
+
+        // Prose fallback, unchanged: a provider that refuses tools, or a model that ignores them.
         // Same preference as a spoken command: the operator's own machine first when it is on,
         // the key when it is not. A step gets a shorter core deadline than a whole sentence —
         // this loop runs many times, so waiting a full timeout on every step would crawl.
@@ -304,9 +393,20 @@ object ScreenAgent {
             (answer as? AiResult.Ok)?.text
         } ?: return null
 
+        return decisionFromProse(reply)
+    }
+
+    private fun decisionFromProse(reply: String): Decision? {
         val json = com.jarvis.assistant.ai.JsonReply.extractObject(reply) ?: return null
+        return decisionFrom(json)
+    }
+
+    /** One object, one decision. Shared by the tool path and the prose path so they cannot drift. */
+    private fun decisionFrom(json: JSONObject): Decision? {
+        val action = json.optString("action").trim().lowercase(Locale.US)
+        if (action.isEmpty()) return null
         return Decision(
-            action = json.optString("action").trim().lowercase(Locale.US),
+            action = action,
             param = json.optString("param").trim(),
             say = json.optString("say").trim(),
         )

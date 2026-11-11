@@ -143,44 +143,38 @@ object AutomationStore {
 
     fun recordRun(context: Context, finished: RunState.Finished) {
         if (finished.workflowId.isBlank()) return
-        val record = RunRecord(
-            id = UUID.randomUUID().toString(),
-            workflowId = finished.workflowId,
-            workflowName = finished.workflowName,
-            at = System.currentTimeMillis(),
-            succeeded = finished.succeeded,
-            failed = finished.failed,
-            skipped = finished.skipped,
-            stopped = finished.stopped,
-            triggerLabel = finished.triggerLabel,
+        RunHistory.record(
+            context,
+            RunRecord(
+                id = UUID.randomUUID().toString(),
+                workflowId = finished.workflowId,
+                workflowName = finished.workflowName,
+                at = System.currentTimeMillis(),
+                succeeded = finished.succeeded,
+                failed = finished.failed,
+                skipped = finished.skipped,
+                stopped = finished.stopped,
+                triggerLabel = finished.triggerLabel,
+            ),
         )
-        val updated = (listOf(record) + history(context)).take(MAX_HISTORY)
-        val array = JSONArray()
-        updated.forEach { array.put(it.toJson()) }
-        prefs(context).edit().putString(KEY_HISTORY, array.toString()).apply()
     }
 
-    fun history(context: Context): List<RunRecord> {
-        val raw = prefs(context).getString(KEY_HISTORY, null) ?: return emptyList()
-        return try {
-            val array = JSONArray(raw)
-            buildList {
-                for (i in 0 until array.length()) {
-                    val obj = array.optJSONObject(i) ?: continue
-                    RunRecord.fromJson(obj)?.let { add(it) }
-                }
-            }
-        } catch (t: Throwable) {
-            emptyList()
-        }
-    }
+    /**
+     * The newest runs, newest first.
+     *
+     * The records themselves live in the database now ([RunHistory]); this is the one entry point the
+     * screens call, kept so nothing above this layer had to change.
+     */
+    fun history(context: Context): List<RunRecord> = RunHistory.recent(context, MAX_HISTORY)
 
-    fun clearHistory(context: Context) {
+    fun clearHistory(context: Context) = RunHistory.clear(context)
+
+    /** The pre-Room preference, read once by [RunHistory] when it imports. */
+    internal fun legacyHistory(context: Context): String? = prefs(context).getString(KEY_HISTORY, null)
+
+    internal fun forgetLegacyHistory(context: Context) {
         prefs(context).edit().remove(KEY_HISTORY).apply()
     }
-
-    fun lastRunOf(context: Context, workflowId: String): RunRecord? =
-        history(context).firstOrNull { it.workflowId == workflowId }
 
     // -----------------------------------------------------------------------------------------
     // Presets

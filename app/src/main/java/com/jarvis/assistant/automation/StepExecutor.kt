@@ -185,7 +185,7 @@ object StepExecutor {
             ActionType.OPEN_APP -> openApp(context, step.param)
 
             ActionType.OPEN_URL -> {
-                val url = normaliseUrl(step.param)
+                val url = StepInput.normaliseUrl(step.param)
                 if (url == null) {
                     Result.Failed("Not a valid address")
                 } else {
@@ -709,7 +709,7 @@ object StepExecutor {
         if (trimmed.isEmpty()) return Result.Failed("No URL set")
 
         val isPost = trimmed.startsWith("POST ", ignoreCase = true)
-        val target = normaliseUrl(if (isPost) trimmed.substring(5).trim() else trimmed)
+        val target = StepInput.normaliseUrl(if (isPost) trimmed.substring(5).trim() else trimmed)
             ?: return Result.Failed("Not a valid address")
 
         var connection: HttpURLConnection? = null
@@ -1092,38 +1092,21 @@ object StepExecutor {
         if (!AccessibilityStatus.isServiceEnabled(context)) {
             return Result.Skipped("Accessibility access is off")
         }
-        val action = when (key.trim().lowercase(Locale.US)) {
-            "back", "navigate back" -> AccessibilityService.GLOBAL_ACTION_BACK
-            "home", "go home" -> AccessibilityService.GLOBAL_ACTION_HOME
-            "recents", "recent apps" -> AccessibilityService.GLOBAL_ACTION_RECENTS
-            "notifications", "shade", "notification shade" ->
-                AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
-            "quick", "quick settings" -> AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS
-            "lock", "lock screen" -> AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN
+        val action = when (StepInput.gestureKey(key)) {
+            "back" -> AccessibilityService.GLOBAL_ACTION_BACK
+            "home" -> AccessibilityService.GLOBAL_ACTION_HOME
+            "recents" -> AccessibilityService.GLOBAL_ACTION_RECENTS
+            "notifications" -> AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
+            "quick" -> AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS
+            "lock" -> AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN
             else -> return Result.Failed(
-                "Unknown gesture \"$key\" (try back, home, recents, notifications, quick, lock)"
+                "Unknown gesture \"$key\" (try ${StepInput.GESTURES})"
             )
         }
         return if (JarvisAccessibilityService.perform(action)) {
             Result.Ok("Gesture: ${key.trim().lowercase(Locale.US)}")
         } else {
             Result.Failed("Gesture rejected by the system")
-        }
-    }
-
-    private fun normaliseUrl(raw: String): String? {
-        val trimmed = raw.trim()
-        if (trimmed.isEmpty()) return null
-        val withScheme = when {
-            trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
-            else -> "https://$trimmed"
-        }
-        return try {
-            val uri = Uri.parse(withScheme)
-            // Only web schemes: a webhook must not be able to reach file:// or intent://.
-            if (uri.host.isNullOrBlank()) null else withScheme
-        } catch (t: Throwable) {
-            null
         }
     }
 

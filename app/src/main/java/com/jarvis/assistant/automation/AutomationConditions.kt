@@ -163,10 +163,36 @@ object ConditionEvaluator {
 
             TriggerKind.BOOT -> Evaluation(true, "boot")
 
+            // The calendar is a provider, so its read is a query and belongs to the watcher that can
+            // suspend. Answering "not a state trigger" here is honest: this function looks at the
+            // phone's own state, and an event is not a state.
+            TriggerKind.CALENDAR -> Evaluation(false, "read by the watcher")
+
             else -> Evaluation(false, "not a state trigger")
         }
     } catch (t: Throwable) {
         Evaluation(false, "check failed: ${t.javaClass.simpleName}")
+    }
+
+    /**
+     * Does a calendar event fire its trigger right now?
+     *
+     * An event has a single start, but the service polls once a minute, so "within fifteen minutes of
+     * the start" is a window that would fire fifteen times. The `lastFired` comparison is what makes
+     * it fire *once*: if the routine has already run since this event's window opened, it has already
+     * answered this event. Because that test is pure arithmetic, it can be pinned down by a test
+     * rather than by waiting for a Tuesday.
+     */
+    fun calendarDue(
+        eventStart: Long,
+        windowMinutes: Int,
+        now: Long,
+        lastFired: Long,
+    ): Boolean {
+        if (eventStart <= 0L) return false
+        val window = windowMinutes.coerceIn(1, 240) * 60_000L
+        val windowStart = eventStart - window
+        return now in windowStart..eventStart && lastFired < windowStart
     }
 
     /**

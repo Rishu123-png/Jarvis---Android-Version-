@@ -5,6 +5,7 @@ import com.jarvis.assistant.ai.AiClient
 import com.jarvis.assistant.ai.AiKeyStore
 import com.jarvis.assistant.ai.AiMessage
 import com.jarvis.assistant.ai.AiResult
+import com.jarvis.assistant.ai.StreamingReply
 import com.jarvis.assistant.ai.JsonReply
 import com.jarvis.assistant.automation.AccessibilityStatus
 import com.jarvis.assistant.automation.ActionRisk
@@ -71,6 +72,14 @@ data class VoicePlan(
     val spoken: String? = null,
     /** True when the operator has already said yes to the step that needed asking. */
     val confirmed: Boolean = false,
+    /**
+     * True when the reply was already spoken, sentence by sentence, while it was being written.
+     *
+     * The caller must not speak [say] again — it has been said. It is still on the card, and still
+     * goes into the conversation log, because the operator can read faster than either of them can
+     * talk.
+     */
+    val streamed: Boolean = false,
 )
 
 /**
@@ -139,7 +148,20 @@ object IntentRouter {
     fun aiReady(context: Context): Boolean =
         AiKeyStore.config(context) != null || CoreLink.isEnabled(context)
 
-    suspend fun plan(context: Context, heard: String, previous: String? = null): VoicePlan {
+    /**
+     * One spoken sentence in, one plan out.
+     *
+     * [onSentence] is optional and only used for conversation: when the model answers in prose, each
+     * finished sentence is handed over to be spoken immediately instead of waiting for the whole
+     * reply. A reply that turns out to be a routine never reaches it — nothing is spoken until the
+     * plan exists, which is why a command still behaves exactly as it did.
+     */
+    suspend fun plan(
+        context: Context,
+        heard: String,
+        previous: String? = null,
+        onSentence: (suspend (String) -> Unit)? = null,
+    ): VoicePlan {
         val spoken = heard.trim()
         if (spoken.isEmpty()) {
             return VoicePlan(
@@ -272,7 +294,7 @@ object IntentRouter {
 
         if (aiReady(context)) {
             val viaAi = try {
-                aiPlan(context, completed, previous)
+                aiPlan(context, completed, previous, onSentence)
             } catch (t: Throwable) {
                 null
             }
@@ -312,7 +334,12 @@ object IntentRouter {
     // AI path
     // ---------------------------------------------------------------------------------------------
 
-    private suspend fun aiPlan(context: Context, heard: String, previous: String?): VoicePlan? {
+    private suspend fun aiPlan(
+        context: Context,
+        heard: String,
+        previous: String?,
+        onSentence: (suspend (String) -> Unit)? = null,
+    ): VoicePlan? {
         val lang = Language.detect(heard)
         // How they sound, and how long this has been going on: both are handed to the model so the
         // warmth is part of the answer instead of a fixed sentence bolted on top of it.
@@ -334,6 +361,10 @@ object IntentRouter {
                 affect = affect,
                 mood = mood,
                 bond = bond,
+                asked = heard,
+                // Whatever the screen said when the gesture fired. Taken once, here, so a long
+                // conversation does not keep re-reading a page the operator left minutes ago.
+                screen = AssistantHandoff.takeAssist(),
             )
         } catch (t: Throwable) {
             ""
@@ -371,20 +402,57 @@ object IntentRouter {
         // until the plan exists. So the switch is recorded here and judged below, once the steps
         // have been read.
         var fellBackFromCore = false
-        val result = if (CoreLink.isEnabled(context)) {
-            val viaCore = AiClient.chatOnCore(context, messages, system)
-            if (viaCore is AiResult.Ok) {
-                viaCore
-            } else {
-                fellBackFromCore = true
-                AiClient.chat(context, messages, system)
+        var spokenLive = false
+
+        // Streaming only on the key path: the core is a different wire, and a sentence that starts
+        // 300 ms earlier is not worth a second implementation to maintain.
+        val live: StreamingReply?
+        val streamed: AiResult?
+        val emit = onSentence
+        if (emit != null && !CoreLink.isEnabled(context)) {
+            val reader = StreamingReply()
+            live = reader
+            streamed = AiClient.chatStreaming(context, messages, system) { delta ->
+                for (sentence in reader.feed(delta)) {
+                    spokenLive = true
+                    emit(sentence)
+                }
             }
         } else {
-            AiClient.chat(context, messages, system)
+            live = null
+            streamed = null
+        }
+
+        val result = when {
+            // A partial stream is still a real answer. Re-asking would repeat what has been said.
+            streamed is AiResult.Ok -> streamed
+            streamed is AiResult.Error && live != null && live.text.isNotBlank() -> AiResult.Ok(
+                text = live.text,
+                providerLabel = "STREAM",
+                model = "",
+                note = null,
+            )
+
+            CoreLink.isEnabled(context) -> {
+                val viaCore = AiClient.chatOnCore(context, messages, system)
+                if (viaCore is AiResult.Ok) {
+                    viaCore
+                } else {
+                    fellBackFromCore = true
+                    AiClient.chat(context, messages, system)
+                }
+            }
+
+            else -> AiClient.chat(context, messages, system)
         }
         val reply = when (result) {
             is AiResult.Error -> return null
             is AiResult.Ok -> result.text
+        }
+
+        // Whatever the model wrote but has not been read out yet, before the plan is returned.
+        if (spokenLive && live != null && emit != null) {
+            for (tail in live.finish()) emit(tail)
         }
 
         val json = JsonReply.extractObject(reply)
@@ -399,6 +467,7 @@ object IntentRouter {
                 steps = emptyList(),
                 say = spoken,
                 source = "AI",
+                streamed = spokenLive,
             )
         }
         val title = json.optString("title").trim().uppercase(Locale.US).take(28).ifBlank { "COMMAND" }

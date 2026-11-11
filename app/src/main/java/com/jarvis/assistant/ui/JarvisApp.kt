@@ -50,6 +50,7 @@ import com.jarvis.assistant.automation.AccessibilityStatus
 import com.jarvis.assistant.automation.AutomationEngine
 import com.jarvis.assistant.automation.AutomationStore
 import com.jarvis.assistant.automation.AutomationTriggers
+import com.jarvis.assistant.automation.RoutineLinks
 import com.jarvis.assistant.automation.RunRecord
 import com.jarvis.assistant.automation.RunState
 import com.jarvis.assistant.automation.Workflow
@@ -126,6 +127,15 @@ private const val ROUTE_DRAWER = "drawer"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_DOCK = "dock"
 private const val ROUTE_ROUTINE = "routine"
+
+/**
+ * The automation board's route key, and the one a `jarvis://run/<id>` link opens.
+ *
+ * Public so [com.jarvis.assistant.MainActivity] can answer a link without duplicating the string.
+ * It is the same key the dashboard passes when the operator taps the module, which is why the board
+ * needs no second entry point.
+ */
+const val ROUTE_AUTOMATION = HudModules.AUTOMATION
 private const val ROUTE_AI = "ai"
 private const val ROUTE_COMPOSE = "compose"
 private const val ROUTE_ADVANCED = "advanced"
@@ -134,7 +144,8 @@ private const val ROUTE_KNOWLEDGE = "knowledge"
 private const val ROUTE_VAULT = "vault"
 
 /** Routes a shortcut or an intent extra may ask for. Anything else is ignored. */
-private val KNOWN_ROUTES = setOf(ROUTE_HOME, ROUTE_DASHBOARD, ROUTE_KNOWLEDGE, ROUTE_ACTIVITY)
+private val KNOWN_ROUTES =
+    setOf(ROUTE_HOME, ROUTE_DASHBOARD, ROUTE_KNOWLEDGE, ROUTE_ACTIVITY, ROUTE_AUTOMATION)
 
 /** True when JARVIS may post its own notifications (always true below Android 13). */
 private fun canPostNotifications(context: android.content.Context): Boolean =
@@ -1025,6 +1036,12 @@ fun JarvisApp(
                     screenPressAllowed = screenPressAllowed,
                     notificationAccess = hasNotificationAccess,
                     onRun = { workflow -> AutomationEngine.run(context, workflow) },
+                    onPreview = { workflow ->
+                        // A preview walks the same steps and reports what each would have done. It is
+                        // not recorded in history, because it is not a run.
+                        AutomationEngine.run(context, workflow, triggerLabel = "Preview", dry = true)
+                    },
+                    onShare = { workflow -> RoutineLinks.share(context, workflow) },
                     onStop = { AutomationEngine.stop() },
                     onActivateAll = {
                         // Everything JARVIS may switch on itself, then one system page.

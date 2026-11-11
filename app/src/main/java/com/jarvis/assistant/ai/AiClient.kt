@@ -75,6 +75,15 @@ object AiClient {
 
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 45_000
+
+    /**
+     * How long a *stream* may go quiet before it is treated as dead.
+     *
+     * Shorter than [READ_TIMEOUT_MS] on purpose: a stream that has stopped producing frames has
+     * usually died, and the operator is standing there waiting. Twenty seconds of silence mid-reply
+     * is already far longer than any provider needs between sentences.
+     */
+    private const val STREAM_READ_TIMEOUT_MS = 20_000
     private const val MAX_REPLY_TOKENS = 420
     private const val MAX_REPLY_CHARS = 4_000
     private const val MAX_ERROR_CHARS = 2_000
@@ -100,8 +109,248 @@ object AiClient {
         messages: List<AiMessage>,
         system: String,
     ): AiResult = withContext(Dispatchers.IO) {
+        when (val walked = walk(context, messages, system, tools = null, forceTool = false)) {
+            is Walk.Failed -> walked.error
+            is Walk.Reply -> {
+                val text = extractText(walked.wire, walked.body)
+                if (text != null) {
+                    AiResult.Ok(
+                        text = text.take(MAX_REPLY_CHARS),
+                        providerLabel = walked.providerLabel,
+                        model = walked.model,
+                        note = walked.note,
+                    )
+                } else {
+                    AiResult.Error(
+                        "The provider sent a reply JARVIS could not read.",
+                        "HTTP ${walked.code} · tap FETCH MODELS and pick one explicitly.",
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * The same conversation, with the action catalogue attached as a real tool.
+     *
+     * This is the difference between asking a model to write JSON and letting it call a function.
+     * Prompt-only JSON parses maybe four times in five; a schema enforced by the provider is the
+     * provider's problem, and providers are good at it. Everything else — the model walk, the 404
+     * fallback, the timeouts — is the same code as [chat], which is the point of [walk].
+     *
+     * [screen] picks which tool: the routine writer or the single screen action. A model that
+     * answers in prose anyway comes back as [AiClient.ToolResult.Said] and the caller falls back to
+     * the parser it always had; a provider that does not know the word `tools` comes back as
+     * [AiClient.ToolResult.Unsupported] and is not asked twice.
+     */
+    suspend fun chatWithTools(
+        context: Context,
+        messages: List<AiMessage>,
+        system: String,
+        screen: Boolean = false,
+    ): ToolResult = withContext(Dispatchers.IO) {
+        val credentials = loadCredentials(context)
+            ?: return@withContext ToolResult.Failed(missingKey(context))
+        val provider = credentials.config.provider
+        val tools = when (provider.wire) {
+            AiWire.OPENAI -> ToolSchema.forOpenAi(screen)
+            AiWire.ANTHROPIC -> ToolSchema.forAnthropic(screen)
+            AiWire.GEMINI -> ToolSchema.forGemini(screen)
+        }
+
+        when (val walked = walk(context, messages, system, tools, forceTool = true)) {
+            is Walk.Failed -> {
+                // 400/422 is how a server says "I do not have a tools field". Walking the model list
+                // again would only repeat the failure, so the caller is told once and remembers.
+                if (walked.code in 400..422) {
+                    toolSupport = false
+                    ToolResult.Unsupported(walked.error.message)
+                } else {
+                    ToolResult.Failed(walked.error)
+                }
+            }
+
+            is Walk.Reply -> {
+                toolSupport = true
+                val call = ToolCalls.from(walked.wire, walked.body)
+                if (call != null) {
+                    ToolResult.Called(
+                        call = call,
+                        providerLabel = walked.providerLabel,
+                        model = walked.model,
+                        note = walked.note,
+                    )
+                } else {
+                    ToolResult.Said(extractText(walked.wire, walked.body).orEmpty())
+                }
+            }
+        }
+    }
+
+    /**
+     * The same conversation, read as it is written.
+     *
+     * Nothing about the answer changes — the words, the model, the fallbacks are all the same. What
+     * changes is *when* they arrive: instead of waiting for a whole paragraph, each finished sentence
+     * is handed to [onDelta] while the rest is still being generated. On a normal connection the
+     * first sentence lands in a few hundred milliseconds, which is the difference between an
+     * assistant that answers and one that thinks about it.
+     *
+     * Two deliberate limits:
+     *  - one model, no walk. Streaming holds a socket open; walking a list of dead model ids while a
+     *    microphone is open is worse than failing fast. The caller falls back to [chat], which walks.
+     *  - any failure is an ordinary error, never a partial answer. A half-spoken sentence is worse
+     *    than a short wait, so the caller may only speak what [onDelta] has been given.
+     *
+     * The core is not streamed: it is a separate wire, and the first-sentence win is worth less than
+     * the complexity of a second implementation. [chatWithTools] and this are independent paths.
+     */
+    suspend fun chatStreaming(
+        context: Context,
+        messages: List<AiMessage>,
+        system: String,
+        onDelta: suspend (String) -> Unit,
+    ): AiResult = withContext(Dispatchers.IO) {
         val credentials = loadCredentials(context) ?: return@withContext missingKey(context)
         if (messages.isEmpty()) return@withContext AiResult.Error("Nothing to send.")
+
+        val provider = credentials.config.provider
+        val model = credentials.config.resolvedModel
+        if (model.isBlank()) {
+            return@withContext AiResult.Error("No model configured.", "Set one in Settings → INTELLIGENCE.")
+        }
+
+        val request = try {
+            buildRequest(credentials, model, messages, system, tools = null, forceTool = false, stream = true)
+        } catch (t: Throwable) {
+            return@withContext AiResult.Error("Could not build the request.", t.message)
+        }
+
+        val text = StringBuilder()
+        try {
+            val (code, errorBody) = stream(request) { data ->
+                Sse.delta(provider.wire, data)?.let { piece ->
+                    text.append(piece)
+                    onDelta(piece)
+                }
+            }
+            if (code !in 200..299) {
+                // The error body is read by the same reader but never handed to the caller as words:
+                // a rejected request must not be spoken aloud.
+                return@withContext errorFor(code, errorBody, provider)
+            }
+        } catch (e: SocketTimeoutException) {
+            return@withContext AiResult.Error(
+                "The provider stopped sending partway through.",
+                "Check your connection; the answer will be fetched whole next time.",
+            )
+        } catch (e: IOException) {
+            return@withContext AiResult.Error("Network error while streaming.", e.message)
+        } catch (t: Throwable) {
+            return@withContext AiResult.Error("The stream failed.", t.message)
+        }
+
+        if (text.isEmpty()) {
+            return@withContext AiResult.Error(
+                "The provider sent nothing.",
+                "It may not support streaming; it will be asked without it next time.",
+            )
+        }
+        AiResult.Ok(text.toString().take(MAX_REPLY_CHARS), provider.label, model, null)
+    }
+
+    /**
+     * Opens a streaming request and calls [onData] for every `data:` frame.
+     *
+     * Returns the HTTP status and, for a failure, the body so the caller can quote the reason. The
+     * body is *returned* rather than passed to [onData] so that a rejection is never mistaken for
+     * words to speak.
+     *
+     * Reads line by line rather than by buffer, because SSE is line-delimited: a chunk boundary in
+     * the middle of a JSON object is normal, and assembling by hand is how partial objects get
+     * parsed and rejected.
+     */
+    private suspend fun stream(request: Request, onData: suspend (String) -> Unit): Pair<Int, String> {
+        val connection = (URL(request.url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = STREAM_READ_TIMEOUT_MS
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            setRequestProperty("Accept", "text/event-stream")
+            request.headers.forEach { (key, value) -> setRequestProperty(key, value) }
+        }
+        try {
+            connection.outputStream.use { out ->
+                out.write((request.body ?: "").toByteArray(Charsets.UTF_8))
+                out.flush()
+            }
+            val status = connection.responseCode
+            if (status !in 200..299) {
+                val error = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                return status to error.take(MAX_ERROR_CHARS)
+            }
+            connection.inputStream.bufferedReader().use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    val data = Sse.payload(line) ?: continue
+                    if (Sse.isEnd(data)) break
+                    onData(data)
+                }
+            }
+            return status to "" 
+        } finally {
+            try {
+                connection.disconnect()
+            } catch (t: Throwable) {
+                // Already gone.
+            }
+        }
+    }
+
+    /**
+     * Whether tool calling is worth trying on this provider.
+     *
+     * Null until something has been tried. Once a server has refused `tools` there is no point
+     * paying a round trip to be refused again on every step of every routine.
+     */
+    @Volatile
+    private var toolSupport: Boolean? = null
+
+    fun toolsWorthTrying(): Boolean = toolSupport != false
+
+    /** Lets a caller that already knows (the core, say) skip the probe entirely. */
+    fun rememberToolSupport(supported: Boolean) {
+        toolSupport = supported
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The walk shared by both entry points
+    // -----------------------------------------------------------------------------------------
+
+    private sealed interface Walk {
+        class Reply(
+            val wire: AiWire,
+            val providerLabel: String,
+            val model: String,
+            val code: Int,
+            val body: String,
+            val note: String?,
+        ) : Walk
+
+        class Failed(val error: AiResult.Error, val code: Int = 0) : Walk
+    }
+
+    /** Send to each candidate model until one answers. Callers run this on IO. */
+    private suspend fun walk(
+        context: Context,
+        messages: List<AiMessage>,
+        system: String,
+        tools: JSONArray?,
+        forceTool: Boolean,
+    ): Walk {
+        val credentials = loadCredentials(context) ?: return Walk.Failed(missingKey(context))
+        if (messages.isEmpty()) return Walk.Failed(AiResult.Error("Nothing to send."))
 
         val configured = credentials.config.resolvedModel
         val models = credentials.config.provider.candidates(configured)
@@ -111,27 +360,28 @@ object AiClient {
 
         for (model in models) {
             val request = try {
-                buildRequest(credentials, model, messages, system)
+                buildRequest(credentials, model, messages, system, tools, forceTool)
             } catch (t: Throwable) {
-                return@withContext AiResult.Error("Could not build the request.", t.message)
+                return Walk.Failed(AiResult.Error("Could not build the request.", t.message))
             }
 
             val response = try {
                 post(request)
             } catch (e: SocketTimeoutException) {
-                return@withContext AiResult.Error(
-                    "The provider did not answer in time.",
-                    "Check your connection, or try a smaller model.",
+                return Walk.Failed(
+                    AiResult.Error(
+                        "The provider did not answer in time.",
+                        "Check your connection, or try a smaller model.",
+                    ),
                 )
             } catch (e: UnknownHostException) {
-                return@withContext AiResult.Error(
-                    "No network route.",
-                    "Check your connection and try again.",
+                return Walk.Failed(
+                    AiResult.Error("No network route.", "Check your connection and try again."),
                 )
             } catch (e: IOException) {
-                return@withContext AiResult.Error("Network error.", e.message)
+                return Walk.Failed(AiResult.Error("Network error.", e.message))
             } catch (t: Throwable) {
-                return@withContext AiResult.Error("Request failed.", t.message)
+                return Walk.Failed(AiResult.Error("Request failed.", t.message))
             }
 
             val (code, body) = response
@@ -144,14 +394,8 @@ object AiClient {
             }
 
             if (code !in 200..299) {
-                return@withContext errorFor(code, body, credentials.config.provider)
+                return Walk.Failed(errorFor(code, body, credentials.config.provider), code)
             }
-
-            val text = extractText(credentials.config.provider.wire, body)
-                ?: return@withContext AiResult.Error(
-                    "The provider sent a reply JARVIS could not read.",
-                    "HTTP $code · tap FETCH MODELS and pick one explicitly.",
-                )
 
             // Remember the winner so the next request skips the failed candidates.
             if (model != configured) {
@@ -163,22 +407,27 @@ object AiClient {
                 )
             }
 
-            return@withContext AiResult.Ok(
-                text = text.take(MAX_REPLY_CHARS),
+            return Walk.Reply(
+                wire = credentials.config.provider.wire,
                 providerLabel = credentials.config.provider.label,
                 model = model,
+                code = code,
+                body = body,
                 note = if (model != configured) "auto-selected" else null,
             )
         }
 
-        if (modelMissing) {
-            AiResult.Error(
-                "No usable model on ${credentials.config.provider.label}.",
-                lastMessage
-                    ?: "Tap FETCH MODELS in Settings → INTELLIGENCE to list what your key can use.",
+        return if (modelMissing) {
+            Walk.Failed(
+                AiResult.Error(
+                    "No usable model on ${credentials.config.provider.label}.",
+                    lastMessage
+                        ?: "Tap FETCH MODELS in Settings → INTELLIGENCE to list what your key can use.",
+                ),
+                404,
             )
         } else {
-            AiResult.Error("No model configured.", "Set one in Settings → INTELLIGENCE.")
+            Walk.Failed(AiResult.Error("No model configured.", "Set one in Settings → INTELLIGENCE."))
         }
     }
 
@@ -198,15 +447,78 @@ object AiClient {
         messages: List<AiMessage>,
         system: String,
     ): AiResult = withContext(Dispatchers.IO) {
-        if (messages.isEmpty()) return@withContext AiResult.Error("Nothing to send.")
+        when (val reply = core(context, messages, system, tools = null)) {
+            is Core.Failed -> reply.error
+            is Core.Body -> {
+                val text = extractText(AiWire.OPENAI, reply.text)
+                if (text != null) {
+                    AiResult.Ok(text.take(MAX_REPLY_CHARS), "CORE", reply.model, null)
+                } else {
+                    AiResult.Error(
+                        "The core sent a reply JARVIS could not read.",
+                        "Only OpenAI-compatible servers work here, e.g. Ollama at /v1.",
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Tool calling against the operator's own machine.
+     *
+     * The core gets a tool definition too, and for the same reason the cloud does: a 7B model on a
+     * laptop is *more* likely than a frontier model to lose the shape of a JSON object, so it is the
+     * one that benefits most from the provider enforcing it. Ollama and LM Studio both support
+     * `tools`; a runtime that does not will answer 400, which comes back as
+     * [ToolResult.Unsupported] and sends the caller down the prose path it has always had.
+     */
+    suspend fun coreWithTools(
+        context: Context,
+        messages: List<AiMessage>,
+        system: String,
+        screen: Boolean = false,
+    ): ToolResult = withContext(Dispatchers.IO) {
+        val tools = ToolSchema.forOpenAi(screen)
+        when (val reply = core(context, messages, system, tools)) {
+            is Core.Failed ->
+                if (reply.code in 400..422) {
+                    ToolResult.Unsupported(reply.error.message)
+                } else {
+                    ToolResult.Failed(reply.error)
+                }
+
+            is Core.Body -> {
+                val call = ToolCalls.from(AiWire.OPENAI, reply.text)
+                if (call != null) {
+                    ToolResult.Called(call, "CORE", reply.model, null)
+                } else {
+                    ToolResult.Said(extractText(AiWire.OPENAI, reply.text).orEmpty())
+                }
+            }
+        }
+    }
+
+    private sealed interface Core {
+        class Body(val text: String, val model: String) : Core
+        class Failed(val error: AiResult.Error, val code: Int = 0) : Core
+    }
+
+    /** One request to the local core. Callers run this on IO. */
+    private suspend fun core(
+        context: Context,
+        messages: List<AiMessage>,
+        system: String,
+        tools: JSONArray?,
+    ): Core {
+        if (messages.isEmpty()) return Core.Failed(AiResult.Error("Nothing to send."))
         if (messages.any { it.images.isNotEmpty() }) {
-            return@withContext AiResult.Error("The core does not look at pictures.")
+            return Core.Failed(AiResult.Error("The core does not look at pictures."))
         }
 
         val base = CoreLink.base(context)
         val model = CoreLink.model(context)
         if (!CoreLink.isAllowed(base)) {
-            return@withContext AiResult.Error("That core address is not allowed.", CoreLink.refusalFor(base))
+            return Core.Failed(AiResult.Error("That core address is not allowed.", CoreLink.refusalFor(base)))
         }
 
         val body = try {
@@ -219,9 +531,13 @@ object AiClient {
                         put(JSONObject().put("role", message.role).put("content", message.content))
                     }
                 })
+                if (tools != null) {
+                    put("tools", tools)
+                    put("tool_choice", "required")
+                }
             }.toString()
         } catch (t: Throwable) {
-            return@withContext AiResult.Error("Could not build the core request.", t.message)
+            return Core.Failed(AiResult.Error("Could not build the core request.", t.message))
         }
 
         val response = try {
@@ -233,39 +549,28 @@ object AiClient {
                 ),
             )
         } catch (e: SocketTimeoutException) {
-            return@withContext AiResult.Error(
-                "The core did not answer in time.",
-                "Is the model still loaded on the PC?",
+            return Core.Failed(
+                AiResult.Error("The core did not answer in time.", "Is the model still loaded on the PC?"),
             )
         } catch (e: IOException) {
-            return@withContext AiResult.Error(
-                "Could not reach the core.",
-                "Check that it is running and the USB link is up.",
+            return Core.Failed(
+                AiResult.Error("Could not reach the core.", "Check that it is running and the USB link is up."),
             )
         } catch (t: Throwable) {
-            return@withContext AiResult.Error("The core request failed.", t.message)
+            return Core.Failed(AiResult.Error("The core request failed.", t.message))
         }
 
         val (code, text) = response
         if (code !in 200..299) {
-            return@withContext AiResult.Error(
-                "The core answered HTTP $code.",
-                providerMessage(text) ?: "Is \"$model\" pulled on the PC?",
+            return Core.Failed(
+                AiResult.Error(
+                    "The core answered HTTP $code.",
+                    providerMessage(text) ?: "Is \"$model\" pulled on the PC?",
+                ),
+                code,
             )
         }
-
-        val reply = extractText(AiWire.OPENAI, text)
-            ?: return@withContext AiResult.Error(
-                "The core sent a reply JARVIS could not read.",
-                "Only OpenAI-compatible servers work here, e.g. Ollama at /v1.",
-            )
-
-        AiResult.Ok(
-            text = reply.take(MAX_REPLY_CHARS),
-            providerLabel = "CORE",
-            model = model,
-            note = null,
-        )
+        return Core.Body(text, model)
     }
 
     /** Round-trips a fixed prompt so the operator can prove the key works. */
@@ -426,11 +731,22 @@ object AiClient {
             config.baseUrl.trim().trimEnd('/').ifBlank { DEFAULT_OPENAI_BASE }
     }
 
+    /**
+     * One request, three dialects, and optionally the tool catalogue.
+     *
+     * [tools] arrives already shaped for the wire it is going to ([ToolSchema]); this function only
+     * has to put it where that provider expects it. Three different places, three different names
+     * for the same idea — and none of them optional, because a request with `tools` and no
+     * `tool_choice` lets a chatty model answer in prose and ignore the schema entirely.
+     */
     private fun buildRequest(
         credentials: Credentials,
         model: String,
         messages: List<AiMessage>,
         system: String,
+        tools: JSONArray? = null,
+        forceTool: Boolean = false,
+        stream: Boolean = false,
     ): Request {
         val provider = credentials.config.provider
         val apiKey = credentials.apiKey
@@ -450,13 +766,19 @@ object AiClient {
                             .put("content", openAiContent(message)),
                     )
                 }
-                val body = JSONObject()
+                val payload = JSONObject()
                     .put("model", model)
                     .put("messages", array)
                     .put("max_tokens", MAX_REPLY_TOKENS)
                     .put("temperature", 0.4)
-                    .toString()
-                Request(url, mapOf("Authorization" to "Bearer $apiKey"), body)
+                if (tools != null) {
+                    payload.put("tools", tools)
+                    // "required" is the portable spelling. Older servers ignore it and answer in
+                    // prose, which the caller already knows how to read.
+                    if (forceTool) payload.put("tool_choice", "required")
+                }
+                if (stream) payload.put("stream", true)
+                Request(url, mapOf("Authorization" to "Bearer $apiKey"), payload.toString())
             }
 
             AiWire.ANTHROPIC -> {
@@ -468,20 +790,24 @@ object AiClient {
                             .put("content", anthropicContent(message)),
                     )
                 }
-                val body = JSONObject()
+                val payload = JSONObject()
                     .put("model", model)
                     .put("max_tokens", MAX_REPLY_TOKENS)
                     .put("system", system)
                     .put("temperature", 0.4)
                     .put("messages", array)
-                    .toString()
+                if (tools != null) {
+                    payload.put("tools", tools)
+                    if (forceTool) payload.put("tool_choice", JSONObject().put("type", "any"))
+                }
+                if (stream) payload.put("stream", true)
                 Request(
                     url = "${baseUrl(credentials.config)}/messages",
                     headers = mapOf(
                         "x-api-key" to apiKey,
                         "anthropic-version" to "2023-06-01",
                     ),
-                    body = body,
+                    body = payload.toString(),
                 )
             }
 
@@ -511,9 +837,23 @@ object AiClient {
                         ),
                     )
                 }
+                if (tools != null) {
+                    root.put("tools", tools)
+                    if (forceTool) {
+                        root.put(
+                            "toolConfig",
+                            JSONObject().put(
+                                "functionCallingConfig",
+                                JSONObject().put("mode", "ANY"),
+                            ),
+                        )
+                    }
+                }
                 val encodedKey = URLEncoder.encode(apiKey, "UTF-8")
+                // Gemini streams from a different method name, and only answers in SSE if told to.
+                val method = if (stream) ":streamGenerateContent?alt=sse&key=" else ":generateContent?key="
                 Request(
-                    url = "${baseUrl(credentials.config)}/models/$model:generateContent?key=$encodedKey",
+                    url = "${baseUrl(credentials.config)}/models/$model$method$encodedKey",
                     headers = emptyMap(),
                     body = root.toString(),
                 )
