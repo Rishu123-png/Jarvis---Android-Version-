@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-58%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-59%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -402,6 +402,11 @@ written into history, because a preview is not a run.
 The JSON is the same shape the store reads, so a routine can be pasted into a message, edited by hand,
 and kept next to the app.
 
+A routine can also be woken by the calendar: **BEFORE AN EVENT** fires when the next event starts
+within the number of minutes you set. It fires *once* per event, not once per minute — the watcher
+polls every minute, so "already ran since this event's window opened" is what keeps it to one run. An
+all-day event has no moment to be fifteen minutes before, so it is ignored rather than guessed at.
+
 The link is `jarvis://run/<id>`. Nothing on the web resolves it — it is a handle for shortcuts, widgets,
 QR codes and automation apps, and the app answers it, opens the automation board and starts that
 routine with the trigger label `Link`. A link to a routine that has been deleted, or switched off, runs
@@ -734,7 +739,7 @@ missing something says so plainly instead of quietly downloading it.
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 58 JVM suites
+./gradlew :app:testDebugUnitTest    # 59 JVM suites
 python3 tools/guard.py              # docs, pins, cleartext, exported receivers
 ```
 
@@ -761,7 +766,7 @@ no assistant.
 | Keep the bundled Shizuku up to date by itself | The copy inside the APK is pinned to one version. A newer Shizuku comes when a newer JARVIS does. |
 | Undo a destructive shell command | The privileged tier runs as `adb`: a wipe is a wipe. That is why `reboot`, `pm clear`, uninstalling and wiping are asked about before they run. |
 
-**Verified by CI:** compilation, 58 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 59 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -773,7 +778,7 @@ Two Gradle modules, split along the one line that matters: what needs a phone, a
 
 ```
 engine/src/main/java/com/jarvis/assistant/      the rules — not one `import android.`
-├── automation/                   ActionType (58 actions), 11 conditions, 10 triggers, the risk
+├── automation/                   ActionType (58 actions), 11 conditions, 11 triggers, the risk
 │                                 ladder, the fingerprint, retry and rollback policy, screen map
 └── data/                         AssistContext (what the gesture handed us) · MemorySearch (BM25)
 
@@ -858,7 +863,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-58 JVM suites and 537 tests, run before every APK in CI.
+59 JVM suites and 544 tests, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|
@@ -883,6 +888,7 @@ capability, what it unlocks, and what breaks without it.
 | `AssistContextTest` | what a screen may never carry: passwords, duplicates, instructions |
 | `MemorySearchTest` | relevance ranking, long-entry damping, Hinglish and Devanagari |
 | `EndpointingTest` | the pause that ends a sentence, from the speech that came before it |
+| `CalendarTriggerTest` | One event, one run · the window clamps · no start means no run |
 | `RoutineExportTest` | The share link carries the store's id · a history row survives its JSON · presets are well formed |
 | `StreamingReplyTest` | prose is spoken as it arrives, a routine is never spoken at all |
 | `SseTest` | reading OpenAI, Anthropic and Gemini streams, frame by frame |

@@ -326,6 +326,7 @@ enum class TriggerKind(
     BOOT("boot", "AFTER REBOOT", "Once the device finishes booting"),
     NOTIFICATION("notification", "ON NOTIFICATION", "When an app posts an alert", "package name"),
     UNLOCK("unlock", "ON UNLOCK", "When the screen unlocks while JARVIS runs"),
+    CALENDAR("calendar_event", "BEFORE AN EVENT", "When a calendar event starts within N minutes", "minutes before"),
     ;
 
     val needsParam: Boolean get() = paramLabel != null

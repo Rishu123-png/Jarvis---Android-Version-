@@ -17,7 +17,7 @@ Last updated with **1.0.0 (versionCode 38)**.
 | Notifications (listener, alerts panel, media) | Live |
 | Controls: torch, volume, media transport, system panels | Live |
 | Do Not Disturb — direct control after one grant | Live |
-| Automation: 63 action types (58 actions + 5 control-flow), 11 conditions, 10 triggers, VERIFY, AI authoring, run history, foreground watcher | Live |
+| Automation: 63 action types (58 actions + 5 control-flow), 11 conditions, 11 triggers, VERIFY, AI authoring, run history, foreground watcher | Live |
 | Intelligence: bring-your-own AI key, three wire formats, model discovery | Live |
 | Terminal: ~22 commands, offline where possible | Live |
 | ~~Instagram creator analytics~~ · ~~Connections (Instagram OAuth, Google Drive + Gmail)~~ | Removed |
@@ -46,7 +46,7 @@ Last updated with **1.0.0 (versionCode 38)**.
 | Phone's own lock, lock-screen line, language-aware replies | Live |
 | Calendar, contacts, voice notes, follow-ups, brief | Live |
 | **The brain**: local memory of people and facts, free conversation, small talk offline | Live |
-| Tests: 58 JVM suites and 537 tests over the pure logic, run in CI before the APKs | Live |
+| Tests: 59 JVM suites and 544 tests over the pure logic, run in CI before the APKs | Live |
 | Quick Settings tiles (open JARVIS, torch) | Live |
 | Reminders, screenshot action, subsystem health panel | Live |
 | Privacy lock (PBKDF2 PIN) + fingerprint/face shortcut, floating bubble, home-screen widget | Live |
@@ -66,6 +66,7 @@ Last updated with **1.0.0 (versionCode 38)**.
 | Room for run history: appends, orders and trims in SQLite instead of rewriting a preference string | Live |
 | Dry run: the same walk, reported instead of executed, never written to history | Live |
 | Per-routine export: share as JSON, and `jarvis://run/<id>` answered by the app | Live |
+| Calendar trigger: an event starting within N minutes, firing once per event | Live (verify on device) |
 | Automated tests | **None** |
 
 ---

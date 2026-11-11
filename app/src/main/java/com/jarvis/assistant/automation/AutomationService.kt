@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.jarvis.assistant.MainActivity
 import com.jarvis.assistant.R
+import com.jarvis.assistant.device.CalendarBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -43,7 +44,7 @@ class AutomationService : Service() {
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             // Any of these can flip a state trigger; evaluate now instead of waiting a full tick.
-            evaluateNow("state change")
+            scope.launch { evaluateNow("state change") }
         }
     }
 
@@ -104,7 +105,7 @@ class AutomationService : Service() {
         }
     }
 
-    private fun evaluateNow(reason: String) {
+    private suspend fun evaluateNow(reason: String) {
         // The engine allows one run at a time; a busy engine simply means this tick is skipped.
         if (AutomationEngine.isBusy) return
         val routines = AutomationTriggers.armedRoutines(this)
@@ -118,6 +119,8 @@ class AutomationService : Service() {
                 false
             } else if (AutomationTriggers.withinCooldown(this, routine.id)) {
                 false
+            } else if (routine.trigger.kind == TriggerKind.CALENDAR) {
+                calendarDueNow(routine)
             } else {
                 ConditionEvaluator.stateMatches(this, routine.trigger).passed
             }
@@ -131,6 +134,30 @@ class AutomationService : Service() {
         )
         logDispatch(candidate, reason)
         updateNotification()
+    }
+
+    /**
+     * The one trigger that has to ask something outside the app.
+     *
+     * The calendar is a provider, so the read is a query and can fail (no permission, a provider that
+     * is busy, an event with no start). Anything other than a definite yes is a no — a routine that
+     * fired because the calendar hiccuped would be worse than one that waited a minute.
+     */
+    private suspend fun calendarDueNow(routine: Workflow): Boolean {
+        if (!CalendarBridge.canRead(this)) return false
+        val event = try {
+            CalendarBridge.next(this)
+        } catch (t: Throwable) {
+            null
+        } ?: return false
+        // An all-day event has no moment to be "fifteen minutes before".
+        if (event.allDay) return false
+        return ConditionEvaluator.calendarDue(
+            eventStart = event.startMillis,
+            windowMinutes = routine.trigger.param.toIntOrNull() ?: 15,
+            now = System.currentTimeMillis(),
+            lastFired = AutomationTriggers.lastFired(this, routine.id),
+        )
     }
 
     private fun runRoutine(workflowId: String, triggerLabel: String) {

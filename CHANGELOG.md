@@ -28,9 +28,15 @@ written to history, because a preview is not a run. SHARE exports a routine as t
 routine's link `jarvis://run/<id>` is answered by the app: it opens the automation board and starts the
 routine with the trigger `Link`. A deleted or switched-off routine runs nothing and says so.
 
+**A routine can be woken by the calendar.** `BEFORE AN EVENT` fires when the next event starts within
+the number of minutes you set — once per event, not once per poll: the watcher runs every minute, so
+"already ran since this event's window opened" is the rule that keeps it to a single run. All-day
+events are ignored rather than guessed at, and a refused permission is a silent no, not a failed run.
+
 One new suite — `RoutineExportTest` — pins the link shape to the manifest's scheme, round-trips a
 history row through the JSON that used to persist it, and checks the presets are well formed and
-uniquely identified. 58 suites, 537 tests.
+uniquely identified. A second, `CalendarTriggerTest`, pins the calendar arithmetic: the window, the
+once-per-event rule, and the clamps. 59 suites, 544 tests.
 
 ## 1.0.0 — versionCode 37
 
