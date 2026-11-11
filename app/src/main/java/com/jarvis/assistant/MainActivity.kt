@@ -2,6 +2,7 @@ package com.jarvis.assistant
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,7 +12,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import com.jarvis.assistant.automation.RoutineLinks
 import com.jarvis.assistant.ui.JarvisApp
+import com.jarvis.assistant.ui.ROUTE_AUTOMATION
 import com.jarvis.assistant.device.LegacyAccounts
 import com.jarvis.assistant.voice.AssistantHandoff
 import com.jarvis.assistant.wake.WakeWord
@@ -67,8 +70,25 @@ class MainActivity : ComponentActivity() {
         routeOf(intent)?.let { startRoute = it }
     }
 
-    private fun routeOf(intent: Intent?): String? =
+    /**
+     * Where an intent wants the app to land.
+     *
+     * Two doors: the extra a shortcut sets, and a `jarvis://run/<id>` link. The link is handled here
+     * rather than in a separate activity so it inherits exactly this activity's launch mode — a link
+     * tapped while the app is open reuses the window instead of stacking a second one.
+     */
+    private fun routeOf(intent: Intent?): String? {
         intent?.getStringExtra("com.jarvis.assistant.extra.ROUTE")?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+        val uri = intent?.data
+        if (!RoutineLinks.handles(uri)) return null
+        val ran = RoutineLinks.run(this, RoutineLinks.idFrom(uri))
+        if (!ran) {
+            Toast.makeText(this, "That routine is gone, or switched off.", Toast.LENGTH_LONG).show()
+        }
+        // The board, either way: if it ran, the operator should be able to watch it.
+        return ROUTE_AUTOMATION
+    }
 
     /**
      * The voice extra covers the bubble, the widget and our own assistant session. `ACTION_ASSIST`

@@ -27,6 +27,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MAIN = ROOT / "app/src/main/java/com/jarvis/assistant"
+# The rules half of the app, split out of :app so nothing in it can touch a phone. Enums live here
+# now, and so does the no-`import android.` promise.
+ENGINE = ROOT / "engine/src/main/java/com/jarvis/assistant"
 TEST = ROOT / "app/src/test/java/com/jarvis/assistant"
 GRADLE = ROOT / "app/build.gradle.kts"
 README = ROOT / "README.md"
@@ -71,9 +74,9 @@ def fail(message: str) -> None:
 # -------------------------------------------------------------------------------------------------
 
 
-def enum_entries(relative_path: str, enum_name: str) -> list[str]:
+def enum_entries(relative_path: str, enum_name: str, base: Path = ENGINE) -> list[str]:
     """The entry names of a Kotlin enum, read without a Kotlin parser."""
-    source = (MAIN / relative_path).read_text(encoding="utf-8")
+    source = (base / relative_path).read_text(encoding="utf-8")
     match = re.search(r"enum class " + enum_name + r"\(", source, re.S)
     if not match:
         fail(f"{relative_path}: enum {enum_name} not found")
@@ -204,6 +207,31 @@ def check_pins() -> None:
 
 
 # -------------------------------------------------------------------------------------------------
+# 2b. The engine stays pure
+# -------------------------------------------------------------------------------------------------
+
+
+def check_engine_is_pure() -> None:
+    """`:engine` is the part of this app that is supposed to be provable without a phone.
+
+    It holds the action catalogue, the risk ladder, the fingerprint and the planners — the decisions
+    that must not depend on a device to be reasoned about. One `import android.` and the module has
+    quietly become an Android module with a nicer folder name, so the import is refused here.
+    """
+    files = sorted(ENGINE.rglob("*.kt"))
+    if not files:
+        fail("engine/: no sources found; the guard is looking in the wrong place")
+        return
+    for path in files:
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if line.strip().startswith(("import android.", "import androidx.")):
+                fail(
+                    f"{path.relative_to(ROOT)}:{number} imports a platform class; "
+                    "the engine must be pure Kotlin and org.json only"
+                )
+
+
+# -------------------------------------------------------------------------------------------------
 # 3. Cleartext, and components that never needed to be exported
 # -------------------------------------------------------------------------------------------------
 
@@ -217,7 +245,7 @@ def is_comment(line: str) -> bool:
 
 
 def check_cleartext() -> None:
-    for path in sorted(MAIN.rglob("*.kt")):
+    for path in sorted(list(MAIN.rglob("*.kt")) + list(ENGINE.rglob("*.kt"))):
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if is_comment(line):
                 continue
@@ -262,6 +290,7 @@ def main() -> int:
     check_doc(README, README_CLAIMS, truth, "README.md")
     check_doc(ROADMAP, ROADMAP_CLAIMS, truth, "ROADMAP.md")
     check_pins()
+    check_engine_is_pure()
     check_cleartext()
     check_exported_receivers()
 

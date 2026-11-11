@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 /**
@@ -202,7 +203,7 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 37
+        versionCode = 38
         versionName = "1.0.0"
 
         /*
@@ -307,12 +308,25 @@ android {
 }
 
 dependencies {
+    // Everything a routine *is* lives here: pure rules, no Android.
+    implementation(project(":engine"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     // Applies the bundled baseline profile at install time; without it the profile is inert.
     implementation(libs.androidx.profileinstaller)
+
+    /*
+     * Room, for the one thing that actually grows without bound: run history.
+     *
+     * Routines are a handful of small documents and stay JSON in SharedPreferences — a database for
+     * eight rows would be ceremony. History is an append-only log that was being rewritten *whole*
+     * into a preference string on every run, which is exactly the shape a table exists for.
+     */
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

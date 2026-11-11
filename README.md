@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-57%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-58%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -93,6 +93,9 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [The assistant button](#the-assistant-button)
 - [Hey Jarvis](#hey-jarvis)
 - [Staying in the conversation](#staying-in-the-conversation)
+- [Talking sooner](#talking-sooner)
+- [Before it runs, and after it leaves](#before-it-runs-and-after-it-leaves)
+- [Memory and who he is](#memory-and-who-he-is)
 - [The crew](#the-crew)
 - [The dial](#the-dial)
 - [The eyes](#the-eyes)
@@ -104,6 +107,7 @@ And when he cannot do something, he says so — precisely, and with the reason.
 - [Build it yourself](#build-it-yourself)
 - [What he cannot do](#what-he-cannot-do)
 - [Architecture](#architecture)
+- [What is stored, and where](#what-is-stored-and-where)
 - [Privacy](#privacy)
 - [Tests](#tests)
 - [Release checklist](#release-checklist)
@@ -383,6 +387,27 @@ that was a second and a half of silence, and silence is what makes an assistant 
 On a local core (Ollama, LM Studio) the model itself may take longer to produce the first sentence
 than the network ever did, and the core is still asked for whole replies. That is the next thing to
 fix, not something this build claims.
+
+## Before it runs, and after it leaves
+
+A routine can do irreversible things, so there are two ways to look at one before it does anything.
+
+**PREVIEW** walks the routine exactly as RUN would, and reports instead of acting. Every step comes back
+as `would run: <the value it would have used>`, a `WAIT UNTIL` is *read* rather than waited on
+("false now — would wait up to 90s"), and an `IF` says which branch it would take. Nothing is touched:
+no app is opened, no message is sent, no confirmation is asked, and the preview is deliberately not
+written into history, because a preview is not a run.
+
+**SHARE** hands the routine out as text: its name, its trigger, its step count, its link, and its JSON.
+The JSON is the same shape the store reads, so a routine can be pasted into a message, edited by hand,
+and kept next to the app.
+
+The link is `jarvis://run/<id>`. Nothing on the web resolves it — it is a handle for shortcuts, widgets,
+QR codes and automation apps, and the app answers it, opens the automation board and starts that
+routine with the trigger label `Link`. A link to a routine that has been deleted, or switched off, runs
+nothing and says so: enabling a routine is a decision, and a link is not allowed to make it for you.
+
+---
 
 ## Memory and who he is
 
@@ -709,7 +734,7 @@ missing something says so plainly instead of quietly downloading it.
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 57 JVM suites
+./gradlew :app:testDebugUnitTest    # 58 JVM suites
 python3 tools/guard.py              # docs, pins, cleartext, exported receivers
 ```
 
@@ -736,7 +761,7 @@ no assistant.
 | Keep the bundled Shizuku up to date by itself | The copy inside the APK is pinned to one version. A newer Shizuku comes when a newer JARVIS does. |
 | Undo a destructive shell command | The privileged tier runs as `adb`: a wipe is a wipe. That is why `reboot`, `pm clear`, uninstalling and wiping are asked about before they run. |
 
-**Verified by CI:** compilation, 57 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 58 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -744,11 +769,18 @@ step/heart sensors, the system credential screen, TTS voices.
 
 ## Architecture
 
+Two Gradle modules, split along the one line that matters: what needs a phone, and what does not.
+
 ```
+engine/src/main/java/com/jarvis/assistant/      the rules — not one `import android.`
+├── automation/                   ActionType (58 actions), 11 conditions, 10 triggers, the risk
+│                                 ladder, the fingerprint, retry and rollback policy, screen map
+└── data/                         AssistContext (what the gesture handed us) · MemorySearch (BM25)
+
 app/src/main/java/com/jarvis/assistant/
 ├── MainActivity.kt               single activity, Compose host
 ├── ai/                           your key, any provider, JSON + free conversation
-├── automation/                   the engine: 58 actions, 11 conditions, 10 triggers, screen agent
+├── automation/                   the executor, the store, run history, step reflection, previews
 ├── data/                         PhraseBook (~400 phrasings) · Units · When · command line
 ├── device/                       the phone itself: files, gallery, location, health, calendar,
 │                                 contacts, notifications, voice notes, lock, biometrics
@@ -757,6 +789,12 @@ app/src/main/java/com/jarvis/assistant/
 ├── voice/                        Brain (memory) · IntentRouter · Language · Persona · FollowUp
 └── wake/                         "Hey Jarvis": Vosk grammar, one-time model download, service
 ```
+
+The split is not tidiness. `:engine` holds the decisions that have to be *reasoned about* — what an
+action is allowed to do, whether a retry is safe, what a routine's fingerprint covers — and it can be
+compiled, read and tested as plain Kotlin. `tools/guard.py` fails the build if an `import android.` or
+`import androidx.` appears anywhere in it, because a module that can reach the phone will eventually
+reach the phone.
 
 **The turn, end to end:**
 
@@ -787,6 +825,21 @@ app/src/main/java/com/jarvis/assistant/
 
 ---
 
+## What is stored, and where
+
+| What | Where | Why there |
+|---|---|---|
+| Routines | JSON in `SharedPreferences` | Eight small documents. A database for eight rows is ceremony. |
+| Run history | SQLite, through Room | The one thing that grows without a ceiling. It used to be a JSON array rewritten in full on every run — now it appends, orders and trims in the table, and the screen reads only the fifty rows it shows. |
+| Conversation log | One JSON line per exchange, appended | Append-only, and read backwards from the tail. Rewriting a file to add a line is the mistake the run history was making. |
+| Memory, settings, keys | `SharedPreferences`; keys in the Keystore | Small, read constantly, and small is the right size. |
+
+`fallbackToDestructiveMigration()` is on. If a future schema change cannot be migrated, the run history
+is dropped rather than the app crashing — and a preference-era history is imported into the table once,
+on first launch, so an update does not lose it.
+
+---
+
 ## Privacy
 
 | | |
@@ -805,7 +858,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-57 JVM suites and 531 tests, run before every APK in CI.
+58 JVM suites and 537 tests, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|
@@ -830,6 +883,7 @@ capability, what it unlocks, and what breaks without it.
 | `AssistContextTest` | what a screen may never carry: passwords, duplicates, instructions |
 | `MemorySearchTest` | relevance ranking, long-entry damping, Hinglish and Devanagari |
 | `EndpointingTest` | the pause that ends a sentence, from the speech that came before it |
+| `RoutineExportTest` | The share link carries the store's id · a history row survives its JSON · presets are well formed |
 | `StreamingReplyTest` | prose is spoken as it arrives, a routine is never spoken at all |
 | `SseTest` | reading OpenAI, Anthropic and Gemini streams, frame by frame |
 | `TimeFormatTest` · `VoiceParsingTest` · `JsonReplyTest` · `WavTest` · `WorkflowJsonTest` | the rest of the pure logic |

@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **1.0.0 (versionCode 37)**.
+Last updated with **1.0.0 (versionCode 38)**.
 
 ---
 
@@ -46,7 +46,7 @@ Last updated with **1.0.0 (versionCode 37)**.
 | Phone's own lock, lock-screen line, language-aware replies | Live |
 | Calendar, contacts, voice notes, follow-ups, brief | Live |
 | **The brain**: local memory of people and facts, free conversation, small talk offline | Live |
-| Tests: 57 JVM suites and 531 tests over the pure logic, run in CI before the APKs | Live |
+| Tests: 58 JVM suites and 537 tests over the pure logic, run in CI before the APKs | Live |
 | Quick Settings tiles (open JARVIS, torch) | Live |
 | Reminders, screenshot action, subsystem health panel | Live |
 | Privacy lock (PBKDF2 PIN) + fingerprint/face shortcut, floating bubble, home-screen widget | Live |
@@ -62,6 +62,10 @@ Last updated with **1.0.0 (versionCode 37)**.
 | R8, resource shrinking and a baseline startup profile in release builds | Live |
 | Streaming replies: the answer is spoken sentence by sentence while it is still being written | Live |
 | Bundled-only install: the voice model and Shizuku travel in the APK, nothing is fetched at runtime | Live |
+| `:engine` module: every rule that does not need a phone, compiled and guarded without Android | Live |
+| Room for run history: appends, orders and trims in SQLite instead of rewriting a preference string | Live |
+| Dry run: the same walk, reported instead of executed, never written to history | Live |
+| Per-routine export: share as JSON, and `jarvis://run/<id>` answered by the app | Live |
 | Automated tests | **None** |
 
 ---

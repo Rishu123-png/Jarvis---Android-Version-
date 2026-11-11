@@ -4,6 +4,34 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 38
+
+**The rules are their own module now.** `:engine` holds the action catalogue, the eleven conditions, the
+ten triggers, the risk ladder, the routine fingerprint, the retry and rollback policies, the screen map
+and the two pure rankers (assist-text filtering, memory retrieval). Not one file in it imports
+`android.` or `androidx.`, which is the point: these are the decisions that must be provable without a
+phone, and `tools/guard.py` now fails the build if an `import android.` appears there. `:app` keeps
+everything that touches hardware — the executor, the accessibility service, the store.
+
+**Run history moved into SQLite.** It was a JSON array inside a preference string, rebuilt in full on
+every finished run: quadratic work and a whole-file rewrite to add one row. It is a Room table now — it
+appends, orders and trims in the database, and the boards read the fifty rows they show. A history from
+the preference era is imported once on first launch and then the old key is deleted; if a future schema
+cannot be migrated, the history is dropped rather than the app failing to start
+(`fallbackToDestructiveMigration`). Routines deliberately stay JSON — eight small documents are not a
+dataset.
+
+**Routines can be previewed and handed out.** PREVIEW runs the same walk with the phone's hands behind
+its back: every step reports `would run: <value>`, `WAIT UNTIL` reads its condition instead of waiting
+on it, `IF` names the branch it would take — no app opens, no confirmation is asked, and nothing is
+written to history, because a preview is not a run. SHARE exports a routine as text and JSON, and the
+routine's link `jarvis://run/<id>` is answered by the app: it opens the automation board and starts the
+routine with the trigger `Link`. A deleted or switched-off routine runs nothing and says so.
+
+One new suite — `RoutineExportTest` — pins the link shape to the manifest's scheme, round-trips a
+history row through the JSON that used to persist it, and checks the presets are well formed and
+uniquely identified. 58 suites, 537 tests.
+
 ## 1.0.0 — versionCode 37
 
 **He starts talking before he has finished thinking.** The reply used to arrive whole and then be
