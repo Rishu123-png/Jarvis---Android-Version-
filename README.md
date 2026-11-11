@@ -792,7 +792,7 @@ app/src/main/java/com/jarvis/assistant/
 ├── shell/                        Shizuku user service (optional, adb-level, no root)
 ├── ui/                           Home · Dashboard · Lock · Privacy · Terminal · Voice
 ├── voice/                        Brain (memory) · IntentRouter · Language · Persona · FollowUp
-└── wake/                         "Hey Jarvis": Vosk grammar, one-time model download, service
+└── wake/                         "Hey Jarvis": Vosk grammar, model inside the APK, service
 ```
 
 The split is not tidiness. `:engine` holds the decisions that have to be *reasoned about* — what an
