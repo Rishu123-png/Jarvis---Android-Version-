@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import com.jarvis.assistant.MainActivity
 import com.jarvis.assistant.R
 import com.jarvis.assistant.device.CalendarBridge
+import com.jarvis.assistant.device.Whereabouts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -114,15 +115,22 @@ class AutomationService : Service() {
             return
         }
 
+        // One location read per tick, and only when something actually needs it: an armed fence
+        // routine. Every other routine in the app costs this nothing.
+        val fix = if (routines.any { it.trigger.kind.isPlace }) Whereabouts.lastKnown(this) else null
+
         val candidate = routines.firstOrNull { routine ->
-            if (routine.trigger.kind.isTimeBased || routine.trigger.kind.isSilent) {
-                false
-            } else if (AutomationTriggers.withinCooldown(this, routine.id)) {
-                false
-            } else if (routine.trigger.kind == TriggerKind.CALENDAR) {
-                calendarDueNow(routine)
-            } else {
-                ConditionEvaluator.stateMatches(this, routine.trigger).passed
+            when {
+                routine.trigger.kind.isTimeBased || routine.trigger.kind.isSilent -> false
+                routine.trigger.kind.isPlace -> {
+                    // State is recorded even inside the cooldown, so a crossing that happens while the
+                    // routine is still cooling down is not lost — it simply waits its turn.
+                    val crossed = placeDueNow(routine, fix)
+                    crossed && !AutomationTriggers.withinCooldown(this, routine.id)
+                }
+                AutomationTriggers.withinCooldown(this, routine.id) -> false
+                routine.trigger.kind == TriggerKind.CALENDAR -> calendarDueNow(routine)
+                else -> ConditionEvaluator.stateMatches(this, routine.trigger).passed
             }
         } ?: return
 
@@ -134,6 +142,32 @@ class AutomationService : Service() {
         )
         logDispatch(candidate, reason)
         updateNotification()
+    }
+
+    /**
+     * A fence, compared with the freshest location the phone already has.
+     *
+     * Nothing here asks for a fresh fix: the watcher reads what the system last recorded, which costs
+     * no radio time. The consequence is honest — the crossing is noticed within a poll or two of the
+     * phone noticing it, not instantly. A place that cannot be parsed, a missing permission, or a
+     * stale fix that is nowhere near the fence all mean "nothing happened".
+     */
+    private fun placeDueNow(routine: Workflow, fix: Whereabouts.Fix?): Boolean {
+        val place = Place.parse(routine.trigger.param) ?: return false
+        if (fix == null) return false
+        val metres = PlaceTrigger.metresBetween(
+            fix.latitude,
+            fix.longitude,
+            place.latitude,
+            place.longitude,
+        )
+        val observation = PlaceTrigger.observe(
+            metres = metres,
+            radiusM = place.radiusM,
+            wasInside = AutomationTriggers.placeState(this, routine.id),
+        )
+        AutomationTriggers.setPlaceState(this, routine.id, observation.inside)
+        return PlaceTrigger.fires(routine.trigger.kind, observation)
     }
 
     /**

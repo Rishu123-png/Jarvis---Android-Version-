@@ -60,6 +60,7 @@ fun AutomationScreen(
     accessibilityEnabled: Boolean,
     screenPressAllowed: Boolean,
     notificationAccess: Boolean,
+    locationAllowed: Boolean,
     armed: Boolean,
     exactAlarmsAllowed: Boolean,
     notificationsAllowed: Boolean,
@@ -212,6 +213,22 @@ fun AutomationScreen(
                 ok = notificationAccess,
                 caption = "Needed by media and clear-alert steps",
             )
+
+            // A fence routine that cannot see where it is will never fire, and silence is the worst
+            // way to learn that. The row appears only when such a routine is actually armed.
+            if (workflows.any { it.isArmed && it.trigger.kind.isPlace }) {
+                Spacer(Modifier.height(8.dp))
+                AccessRow(
+                    title = "LOCATION",
+                    value = if (locationAllowed) "ALLOWED" else "NOT GRANTED",
+                    ok = locationAllowed,
+                    caption = if (locationAllowed) {
+                        "Place routines read the last known position, once a minute"
+                    } else {
+                        "A place routine cannot fire until location is allowed"
+                    },
+                )
+            }
 
             Spacer(Modifier.height(12.dp))
 

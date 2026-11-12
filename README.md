@@ -55,7 +55,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-59%20suites-48E5A2?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-60%20suites-48E5A2?style=flat-square)
 ![No backend](https://img.shields.io/badge/backend-none-FF465C?style=flat-square)
 
 **Built by [Rishu Jaswar](https://github.com/Rishu123-png).**
@@ -407,6 +407,18 @@ within the number of minutes you set. It fires *once* per event, not once per mi
 polls every minute, so "already ran since this event's window opened" is what keeps it to one run. An
 all-day event has no moment to be fifteen minutes before, so it is ignored rather than guessed at.
 
+**ON ARRIVAL** and **ON DEPARTURE** are the same idea with a circle instead of a clock: save a place as
+`lat,lon|metres|name` — honestly, tap **USE CURRENT LOCATION** while standing there — and the routine
+fires when you cross the fence. Two thresholds, not one, because a phone on a desk near the edge
+reports 195 m, 205 m, 190 m: you are inside at or under the radius and gone only once you are a quarter
+past it, so the routine fires on a crossing rather than on GPS jitter. A first look is never a
+crossing, which is why a phone that has just booted does not announce an arrival wherever it is.
+
+The price is one location read a minute, and only while a fence routine is armed — every other routine
+costs this nothing. It uses the freshest position the system already has, so it never turns the radio
+on. The automation board grows a **LOCATION** row when a fence routine is armed and the permission is
+missing, because a trigger that can never fire should say so instead of staying silent.
+
 The link is `jarvis://run/<id>`. Nothing on the web resolves it — it is a handle for shortcuts, widgets,
 QR codes and automation apps, and the app answers it, opens the automation board and starts that
 routine with the trigger label `Link`. A link to a routine that has been deleted, or switched off, runs
@@ -739,7 +751,7 @@ missing something says so plainly instead of quietly downloading it.
 git clone https://github.com/Rishu123-png/Jarvis---Android-Version-.git
 cd Jarvis---Android-Version-
 ./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:testDebugUnitTest    # 59 JVM suites
+./gradlew :app:testDebugUnitTest    # 60 JVM suites
 python3 tools/guard.py              # docs, pins, cleartext, exported receivers
 ```
 
@@ -764,9 +776,10 @@ no assistant.
 | Wi-Fi, Bluetooth, data, airplane mode or hotspot without Shizuku | Android reserves those switches for `adb`'s identity. With Shizuku connected he flips them himself; without it he opens the panel and one tap finishes it. |
 | Install Shizuku without a tap | Android requires the system's own confirmation for any app install. JARVIS opens that screen; your tap finishes it. |
 | Keep the bundled Shizuku up to date by itself | The copy inside the APK is pinned to one version. A newer Shizuku comes when a newer JARVIS does. |
+| Fire a place routine without the location permission | A fence needs to know where the phone is. Without the permission nothing fires, and the automation board says `LOCATION · NOT GRANTED` rather than pretending. |
 | Undo a destructive shell command | The privileged tier runs as `adb`: a wipe is a wipe. That is why `reboot`, `pm clear`, uninstalling and wiping are asked about before they run. |
 
-**Verified by CI:** compilation, 59 test suites, both APKs, manifest integrity.
+**Verified by CI:** compilation, 60 test suites, both APKs, manifest integrity.
 **Needs your phone:** WhatsApp sending on your build, notification replies, the ColorOS gallery name,
 step/heart sensors, the system credential screen, TTS voices.
 
@@ -778,7 +791,7 @@ Two Gradle modules, split along the one line that matters: what needs a phone, a
 
 ```
 engine/src/main/java/com/jarvis/assistant/      the rules — not one `import android.`
-├── automation/                   ActionType (58 actions), 11 conditions, 11 triggers, the risk
+├── automation/                   ActionType (58 actions), 11 conditions, 13 triggers, the risk
 │                                 ladder, the fingerprint, retry and rollback policy, screen map
 └── data/                         AssistContext (what the gesture handed us) · MemorySearch (BM25)
 
@@ -855,6 +868,7 @@ on first launch, so an update does not lose it.
 | **Keys** | Android Keystore (`AES/GCM`). Never in this repository. |
 | **Notifications** | Held in memory only, dropped when the listener disconnects. |
 | **Photo, microphone, screen** | Only while you are using the feature that needs them. |
+| **Location** | Only if you use a place routine, or ask for a distance. The watcher reads the position the system already has, once a minute, while a fence routine is armed. The coordinates live in the routine on this phone. |
 
 Permissions are not hidden in a settings page nobody opens — *Advanced → ACCESS* lists every
 capability, what it unlocks, and what breaks without it.
@@ -863,7 +877,7 @@ capability, what it unlocks, and what breaks without it.
 
 ## Tests
 
-59 JVM suites and 544 tests, run before every APK in CI.
+60 JVM suites and 553 tests, run before every APK in CI.
 
 | Suite | Pins down |
 |---|---|
@@ -888,6 +902,7 @@ capability, what it unlocks, and what breaks without it.
 | `AssistContextTest` | what a screen may never carry: passwords, duplicates, instructions |
 | `MemorySearchTest` | relevance ranking, long-entry damping, Hinglish and Devanagari |
 | `EndpointingTest` | the pause that ends a sentence, from the speech that came before it |
+| `PlaceTriggerTest` | The parameter string round-trips · the band holds its answer · a first look is never an arrival |
 | `CalendarTriggerTest` | One event, one run · the window clamps · no start means no run |
 | `RoutineExportTest` | The share link carries the store's id · a history row survives its JSON · presets are well formed |
 | `StreamingReplyTest` | prose is spoken as it arrives, a routine is never spoken at all |

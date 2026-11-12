@@ -327,11 +327,21 @@ enum class TriggerKind(
     NOTIFICATION("notification", "ON NOTIFICATION", "When an app posts an alert", "package name"),
     UNLOCK("unlock", "ON UNLOCK", "When the screen unlocks while JARVIS runs"),
     CALENDAR("calendar_event", "BEFORE AN EVENT", "When a calendar event starts within N minutes", "minutes before"),
+    ARRIVE("arrive", "ON ARRIVAL", "When you come within range of a place", "lat,lon|metres|name"),
+    LEAVE_PLACE(
+        "leave_place",
+        "ON DEPARTURE",
+        "When you leave a place",
+        "lat,lon|metres|name",
+    ),
     ;
 
     val needsParam: Boolean get() = paramLabel != null
     val isTimeBased: Boolean get() = this == DAILY || this == WEEKDAYS
     val isSilent: Boolean get() = this == MANUAL
+
+    /** Fence triggers: the watcher compares a location with a circle, see [PlaceTrigger]. */
+    val isPlace: Boolean get() = this == ARRIVE || this == LEAVE_PLACE
 
     companion object {
         fun fromId(id: String?): TriggerKind =

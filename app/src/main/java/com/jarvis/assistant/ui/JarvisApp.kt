@@ -385,6 +385,7 @@ fun JarvisApp(
     var workflows by remember { mutableStateOf<List<Workflow>>(emptyList()) }
     var editingWorkflow by remember { mutableStateOf<Workflow?>(null) }
     var accessibilityEnabled by remember { mutableStateOf(false) }
+    var locationAllowed by remember { mutableStateOf(false) }
     var screenPressAllowed by remember { mutableStateOf(false) }
     var armed by remember { mutableStateOf(AutomationTriggers.isArmed(context)) }
     var exactAlarmsAllowed by remember { mutableStateOf(AutomationTriggers.canScheduleExact(context)) }
@@ -533,6 +534,7 @@ fun JarvisApp(
         workflows = AutomationStore.load(context)
         accessibilityEnabled = AccessibilityStatus.isServiceEnabled(context)
         screenPressAllowed = AccessibilityStatus.isScreenPressAllowed(context)
+        locationAllowed = Whereabouts.hasPermission(context)
         aiConfig = withContext(Dispatchers.IO) { AiKeyStore.config(context) }
         history = AutomationStore.history(context)
         notificationsAllowed = canPostNotifications(context)
@@ -550,6 +552,7 @@ fun JarvisApp(
                 isHomeApp = LauncherStatus.isDefaultLauncher(context)
                 accessibilityEnabled = AccessibilityStatus.isServiceEnabled(context)
                 screenPressAllowed = AccessibilityStatus.isScreenPressAllowed(context)
+                locationAllowed = Whereabouts.hasPermission(context)
                 aiConfig = AiKeyStore.config(context)
                 workflows = AutomationStore.load(context)
                 history = AutomationStore.history(context)
@@ -1035,6 +1038,7 @@ fun JarvisApp(
                     accessibilityEnabled = accessibilityEnabled,
                     screenPressAllowed = screenPressAllowed,
                     notificationAccess = hasNotificationAccess,
+                    locationAllowed = locationAllowed,
                     onRun = { workflow -> AutomationEngine.run(context, workflow) },
                     onPreview = { workflow ->
                         // A preview walks the same steps and reports what each would have done. It is

@@ -24,6 +24,7 @@ object AutomationTriggers {
     private const val PREFS = "jarvis_triggers"
     private const val KEY_ARMED = "armed"
     private const val KEY_LAST_FIRED = "last_fired_"
+    private const val KEY_PLACE = "place_inside_"
 
     /** Minimum gap between two fires of the same routine, so a flapping state cannot spam it. */
     const val COOLDOWN_MS = 5 * 60 * 1000L
@@ -169,6 +170,22 @@ object AutomationTriggers {
 
     fun markFired(context: Context, workflowId: String, at: Long = System.currentTimeMillis()) {
         prefs(context).edit().putLong(KEY_LAST_FIRED + workflowId, at).apply()
+    }
+
+    /**
+     * Which side of its fence a routine was on at the last look.
+     *
+     * Null means "never looked", which is deliberately different from "outside": a phone that has just
+     * booted must not announce an arrival at wherever it happens to be.
+     */
+    fun placeState(context: Context, workflowId: String): Boolean? {
+        val store = prefs(context)
+        val key = KEY_PLACE + workflowId
+        return if (store.contains(key)) store.getBoolean(key, false) else null
+    }
+
+    fun setPlaceState(context: Context, workflowId: String, inside: Boolean) {
+        prefs(context).edit().putBoolean(KEY_PLACE + workflowId, inside).apply()
     }
 
     fun withinCooldown(context: Context, workflowId: String): Boolean =
