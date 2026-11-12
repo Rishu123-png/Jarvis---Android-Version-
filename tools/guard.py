@@ -35,6 +35,7 @@ GRADLE = ROOT / "app/build.gradle.kts"
 README = ROOT / "README.md"
 ROADMAP = ROOT / "ROADMAP.md"
 MANIFEST = ROOT / "app/src/main/AndroidManifest.xml"
+CHANGELOG = ROOT / "CHANGELOG.md"
 
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 
@@ -207,6 +208,57 @@ def check_pins() -> None:
 
 
 # -------------------------------------------------------------------------------------------------
+# 1b. The version the release claims
+# -------------------------------------------------------------------------------------------------
+
+
+def check_versions() -> None:
+    """`versionName` and `versionCode` appear in four places, and the release is named from them.
+
+    A tag published with a stale README badge is how "is this the new build?" becomes a guess, so the
+    three documents are checked against the Gradle file rather than against each other.
+    """
+    gradle = GRADLE.read_text(encoding="utf-8")
+    name = re.search(r'versionName\s*=\s*"([^"]+)"', gradle)
+    code = re.search(r"versionCode\s*=\s*(\d+)", gradle)
+    if not name or not code:
+        fail("app/build.gradle.kts: versionName or versionCode could not be read")
+        return
+    version_name, version_code = name.group(1), code.group(1)
+
+    badge = re.search(r"badge/version-([0-9][0-9.]*)-", README.read_text(encoding="utf-8"))
+    if not badge:
+        fail("README.md: the version badge could not be read")
+    elif badge.group(1) != version_name:
+        fail(f"README.md badge says {badge.group(1)} but app/build.gradle.kts says {version_name}")
+
+    roadmap = re.search(
+        r"Last updated with \*\*([0-9][0-9.]*) \(versionCode (\d+)\)\*\*",
+        ROADMAP.read_text(encoding="utf-8"),
+    )
+    if not roadmap:
+        fail("ROADMAP.md: the last-updated line could not be read")
+    elif roadmap.group(1) != version_name or roadmap.group(2) != version_code:
+        fail(
+            f"ROADMAP.md says {roadmap.group(1)} (versionCode {roadmap.group(2)}) but the build is "
+            f"{version_name} (versionCode {version_code})"
+        )
+
+    changelog = re.search(
+        r"^## ([0-9][0-9.]*) — versionCode (\d+)$",
+        CHANGELOG.read_text(encoding="utf-8"),
+        re.M,
+    )
+    if not changelog:
+        fail("CHANGELOG.md: the newest entry could not be read")
+    elif changelog.group(1) != version_name or changelog.group(2) != version_code:
+        fail(
+            f"CHANGELOG.md's newest entry is {changelog.group(1)} (versionCode {changelog.group(2)}) "
+            f"but the build is {version_name} (versionCode {version_code})"
+        )
+
+
+# -------------------------------------------------------------------------------------------------
 # 2b. The engine stays pure
 # -------------------------------------------------------------------------------------------------
 
@@ -313,6 +365,7 @@ def main() -> int:
     check_doc(README, README_CLAIMS, truth, "README.md")
     check_doc(ROADMAP, ROADMAP_CLAIMS, truth, "ROADMAP.md")
     check_pins()
+    check_versions()
     check_engine_is_pure()
     check_escaped_templates()
     check_cleartext()

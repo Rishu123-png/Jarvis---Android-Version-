@@ -4,6 +4,29 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.1 — versionCode 40
+
+**The version number moves, and the file is tagged this time.** Everything below shipped between build
+33 and build 39 under the 1.0.0 name and installed fine — but the only tagged 1.0.0 was build 32, so
+"the newest 1.0.0" was a thing you had to work out from a file name. 1.0.1 is the release that says
+which build it is.
+
+Since build 32:
+
+- **He talks sooner.** The provider's stream is read frame by frame and each finished sentence is
+  spoken as its fullstop lands; a routine is JSON and is never spoken half-written.
+- **Nothing is fetched at runtime.** The voice model, Shizuku and the OCR engine travel inside the APK.
+- **The rules became their own module.** `:engine` holds the catalogue, the ladder, the fingerprint and
+  the policies with no `import android.` anywhere — and a guard that fails the build if one appears.
+- **Run history moved into SQLite**, from a preference string that was rewritten whole on every run.
+- **Routines can be previewed, shared and woken by other things**: `PREVIEW`, `SHARE`, the
+  `jarvis://run/<id>` link, the calendar trigger, and place triggers that fire on a crossing rather than
+  on GPS jitter.
+- **The sky panel draws its numbers** — a user-reported bug where `\${...}` had been compiled into a
+  literal dollar sign on screen, plus the guard rule that stops that class of bug coming back.
+
+Today: 60 suites and 553 tests, all run in CI before either APK is built. `versionCode` is 40.
+
 ## 1.0.0 — versionCode 39
 
 **A reported bug, and the class of bug it belonged to.** The sky panel was drawing

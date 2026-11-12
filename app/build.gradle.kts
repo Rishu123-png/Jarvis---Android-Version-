@@ -203,8 +203,8 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 29
         targetSdk = 34
-        versionCode = 39
-        versionName = "1.0.0"
+        versionCode = 40
+        versionName = "1.0.1"
 
         /*
          * Everything JARVIS needs travels inside the APK, and this flag is what makes that true
