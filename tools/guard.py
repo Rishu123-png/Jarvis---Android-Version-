@@ -232,6 +232,29 @@ def check_engine_is_pure() -> None:
 
 
 # -------------------------------------------------------------------------------------------------
+# 2c. A `$` that a backslash stopped interpolating
+# -------------------------------------------------------------------------------------------------
+
+# A user reported the sky panel showing `HUM ${sky.humidity}%` on screen: three interpolations had
+# been written `\${...}`, which Kotlin happily compiles into a literal dollar sign. The compiler cannot
+# see the difference between a template and a string that merely looks like one, so this is checked
+# here. A genuine `$` before a brace is vanishingly rare in this codebase, and a comment is exempt.
+ESCAPED_TEMPLATE = re.compile("\\\\[$][{]")
+
+
+def check_escaped_templates() -> None:
+    for path in sorted(list(MAIN.rglob("*.kt")) + list(ENGINE.rglob("*.kt"))):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if is_comment(line):
+                continue
+            if ESCAPED_TEMPLATE.search(line.split("//")[0]):
+                fail(
+                    f"{path.relative_to(ROOT)}:{number} escapes a Kotlin template (\\${{...}}); "
+                    "it will be drawn literally on screen instead of interpolated"
+                )
+
+
+# -------------------------------------------------------------------------------------------------
 # 3. Cleartext, and components that never needed to be exported
 # -------------------------------------------------------------------------------------------------
 
@@ -291,6 +314,7 @@ def main() -> int:
     check_doc(ROADMAP, ROADMAP_CLAIMS, truth, "ROADMAP.md")
     check_pins()
     check_engine_is_pure()
+    check_escaped_templates()
     check_cleartext()
     check_exported_receivers()
 

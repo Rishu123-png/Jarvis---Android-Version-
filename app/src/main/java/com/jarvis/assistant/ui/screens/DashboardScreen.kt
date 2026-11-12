@@ -269,7 +269,7 @@ fun DashboardScreen(
                             if (sky.aqi >= 0) {
                                 Spacer(Modifier.height(2.dp))
                                 Text(
-                                    text = "AIR ${sky.aqi} · \${sky.air.label.uppercase(Locale.US)}",
+                                    text = "AIR ${sky.aqi} · ${sky.air.label.uppercase(Locale.US)}",
                                     style = HudType.label.copy(fontSize = 8.sp, letterSpacing = 1.sp),
                                     color = when (sky.air) {
                                         com.jarvis.assistant.data.WeatherRules.Air.GOOD -> StatusGreen
@@ -284,9 +284,9 @@ fun DashboardScreen(
                     Spacer(Modifier.height(8.dp))
                     MicroStrip(
                         readings = buildList {
-                            if (sky.humidity >= 0) add(MicroReading("HUM", "\${sky.humidity}%"))
+                            if (sky.humidity >= 0) add(MicroReading("HUM", "${sky.humidity}%"))
                             if (sky.windKph > 0) {
-                                add(MicroReading("WIND", "\${Math.round(sky.windKph)} km/h"))
+                                add(MicroReading("WIND", "${Math.round(sky.windKph)} km/h"))
                             }
                             if (sky.isWet) add(MicroReading("TAKE", "UMBRELLA", Amber))
                         },

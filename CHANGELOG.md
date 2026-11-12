@@ -4,6 +4,31 @@ All notable changes to JARVIS, newest first. Versions match `versionName` in `ap
 
 ---
 
+## 1.0.0 — versionCode 39
+
+**A reported bug, and the class of bug it belonged to.** The sky panel was drawing
+`HUM ${sky.humidity}%` on screen instead of `HUM 62%` — three interpolations had been written with an
+escaped dollar (`\${...}`), which Kotlin compiles without complaint into a literal dollar sign. The
+compiler cannot tell a template from a string that merely looks like one, so `tools/guard.py` now
+refuses any `\${` in code, and the failure names the file and line. The rule was tested by putting the
+bug back: it fails the build.
+
+**A routine can now be woken by a place.** `ON ARRIVAL` and `ON DEPARTURE` take a fence —
+`lat,lon|metres|name`, or one tap on **USE CURRENT LOCATION** while standing there — and fire when you
+cross it. The interesting part is not the distance, it is the flapping: a phone near the edge of its
+fence reports 195 m, 205 m, 190 m, so there are two thresholds and not one. Inside at or under the
+radius; gone only a quarter past it; in between, the answer stays whatever it was. The state is
+remembered per routine, so a routine fires on the crossing and not on every poll, and a first look is
+never a crossing — a phone that has just booted must not announce an arrival at the office.
+
+It reads the freshest position the system already has, once a minute, and only while a fence routine is
+armed; every other routine costs it nothing. Without the location permission the automation board shows
+`LOCATION · NOT GRANTED` instead of failing silently, and a routine the model tried to author with
+invented coordinates becomes manual with a note rather than arming around a point in the sea.
+
+One new suite, `PlaceTriggerTest`, pins the parameter parsing, the clamps, the band and the first-look
+rule. 60 suites, 553 tests.
+
 ## 1.0.0 — versionCode 38
 
 **The rules are their own module now.** `:engine` holds the action catalogue, the eleven conditions, the

@@ -1,5 +1,7 @@
 package com.jarvis.assistant.ui.screens
 
+import android.Manifest
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,7 +9,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -47,10 +52,12 @@ import com.jarvis.assistant.automation.FailPolicy
 import com.jarvis.assistant.automation.ParamKind
 import com.jarvis.assistant.automation.RoutineTrigger
 import com.jarvis.assistant.automation.RunState
+import com.jarvis.assistant.automation.Place
 import com.jarvis.assistant.automation.TriggerKind
 import com.jarvis.assistant.automation.Workflow
 import com.jarvis.assistant.automation.WorkflowStep
 import com.jarvis.assistant.data.InstalledApp
+import com.jarvis.assistant.device.Whereabouts
 import com.jarvis.assistant.ui.components.AppIcon
 import com.jarvis.assistant.ui.components.HudChip
 import com.jarvis.assistant.ui.components.HudDivider
@@ -68,6 +75,7 @@ import com.jarvis.assistant.ui.theme.StatusGreen
 import com.jarvis.assistant.ui.theme.TextMuted
 import com.jarvis.assistant.ui.theme.TextPrimary
 import com.jarvis.assistant.ui.theme.TextSecondary
+import java.util.Locale
 import com.jarvis.assistant.ui.theme.TileShape
 
 // ---------------------------------------------------------------------------------------------
@@ -341,7 +349,9 @@ fun AutomationEditorScreen(
                     Spacer(Modifier.height(6.dp))
                     ParamField(
                         value = workflow.trigger.param,
-                        keyboardType = if (workflow.trigger.kind.isTimeBased) {
+                        keyboardType = if (
+                            workflow.trigger.kind.isTimeBased || workflow.trigger.kind.isPlace
+                        ) {
                             KeyboardType.Text
                         } else {
                             KeyboardType.Number
@@ -350,12 +360,64 @@ fun AutomationEditorScreen(
                             TriggerKind.DAILY, TriggerKind.WEEKDAYS -> "HH:mm"
                             TriggerKind.BATTERY_LOW -> "percent"
                             TriggerKind.NOTIFICATION -> "com.example.app"
+                            // Coordinates are not something anyone should have to type. The button
+                            // below fills them from where the phone is standing.
+                            TriggerKind.ARRIVE, TriggerKind.LEAVE_PLACE -> "lat,lon|metres|name"
                             else -> "value"
                         },
                         onChange = { text ->
-                            onChange(workflow.copy(trigger = workflow.trigger.copy(param = text.take(60))))
+                            val limit = if (workflow.trigger.kind.isPlace) 80 else 60
+                            onChange(workflow.copy(trigger = workflow.trigger.copy(param = text.take(limit))))
                         },
                     )
+
+                    if (workflow.trigger.kind.isPlace) {
+                        Spacer(Modifier.height(8.dp))
+                        val context = LocalContext.current
+
+                        // Fills the field from the freshest position the phone already has. Called
+                        // from the button, and again if the permission dialog was just accepted.
+                        fun fillFromWhereWeAre() {
+                            val fix = Whereabouts.lastKnown(context) ?: return
+                            val current = Place.parse(workflow.trigger.param)
+                            val radius = current?.radiusM ?: 200
+                            val keepName = current?.label
+                                ?.takeIf { it != Place.FALLBACK_LABEL }
+                                .orEmpty()
+                            val filled = buildString {
+                                append(String.format(Locale.US, "%.5f", fix.latitude))
+                                append(',')
+                                append(String.format(Locale.US, "%.5f", fix.longitude))
+                                append('|')
+                                append(radius)
+                                if (keepName.isNotBlank()) {
+                                    append('|')
+                                    append(keepName)
+                                }
+                            }
+                            onChange(
+                                workflow.copy(trigger = workflow.trigger.copy(param = filled))
+                            )
+                        }
+
+                        // Asking here, rather than sending the operator to a settings page, is the
+                        // difference between a feature that works and one that is a puzzle.
+                        val askLocation = rememberLauncherForActivityResult(
+                            ActivityResultContracts.RequestPermission()
+                        ) { granted -> if (granted) fillFromWhereWeAre() }
+
+                        val canLook = Whereabouts.hasPermission(context)
+                        SolidPill(
+                            label = if (canLook) "USE CURRENT LOCATION" else "ALLOW LOCATION AND FILL",
+                            accent = if (canLook) IceBlue else Amber,
+                        ) {
+                            if (canLook) {
+                                fillFromWhereWeAre()
+                            } else {
+                                askLocation.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                            }
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(6.dp))

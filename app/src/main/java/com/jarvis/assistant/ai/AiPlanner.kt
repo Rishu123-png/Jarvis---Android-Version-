@@ -8,6 +8,7 @@ import com.jarvis.assistant.automation.Condition
 import com.jarvis.assistant.automation.ConditionType
 import com.jarvis.assistant.automation.FailPolicy
 import com.jarvis.assistant.automation.RoutineTrigger
+import com.jarvis.assistant.automation.Place
 import com.jarvis.assistant.automation.TriggerKind
 import com.jarvis.assistant.automation.Workflow
 import com.jarvis.assistant.automation.WorkflowStep
@@ -382,6 +383,13 @@ object AiPlanner {
         }
         if (kind == TriggerKind.BATTERY_LOW) {
             param = (param.toIntOrNull() ?: 20).coerceIn(5, 100).toString()
+        }
+        // A fence needs coordinates the model does not have. If it invented some, the routine would
+        // quietly arm around a point in the sea and never fire, so the trigger is refused outright
+        // and the routine becomes manual until the operator fills the place in by hand.
+        if (kind.isPlace && Place.parse(param) == null) {
+            notes.add("A place trigger needs real coordinates; this routine is manual until you set one.")
+            return RoutineTrigger()
         }
         return RoutineTrigger(kind, param)
     }
