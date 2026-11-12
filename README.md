@@ -52,7 +52,7 @@
 **A family member who lives on your phone — not an assistant that waits for commands.**
 
 [![Build](https://github.com/Rishu123-png/Jarvis---Android-Version-/actions/workflows/build.yml/badge.svg)](https://github.com/Rishu123-png/Jarvis---Android-Version-/actions/workflows/build.yml)
-![Version](https://img.shields.io/badge/version-1.0.0-16C8FF?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.1-16C8FF?style=flat-square)
 ![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-60%20suites-48E5A2?style=flat-square)
@@ -717,10 +717,10 @@ That is the file to share. Anyone who opens that link can install it without a G
 
 | Location | Path |
 |---|---|
-| GitHub Actions run | **Artifacts** → `jarvis-release-apk` → `jarvis-1.0.0-b32.apk` |
+| GitHub Actions run | **Artifacts** → `jarvis-release-apk` → `jarvis-1.0.1-b40.apk` |
 | Build machine | `app/build/outputs/apk/release/app-release.apk` |
-| CI copy | `dist/jarvis-1.0.0-b32.apk` |
-| GitHub Release | attach `jarvis-1.0.0-b32.apk` to tag `v1.0.0-build32` |
+| CI copy | `dist/jarvis-1.0.1-b40.apk` |
+| GitHub Release | attach `jarvis-1.0.1-b40.apk` to tag `v1.0.1-build40` |
 
 ### Nothing is downloaded from inside the app
 
@@ -914,15 +914,15 @@ capability, what it unlocks, and what breaks without it.
 ## Release checklist
 
 ```bash
-# 1. version stays 1.0.0; only versionCode moves
-#    app/build.gradle.kts  →  versionCode = 20
+# 1. versionCode moves on every build; versionName moves only for a release.
+#    app/build.gradle.kts  →  versionCode = 40, versionName = "1.0.1"
 
 # 2. green CI on main
 gh run list --limit 1
 
-# 3. tag it — CI attaches the APK to the release automatically.
-#    The tag carries the build number, because versionName is always 1.0.0.
-git tag v1.0.0-build32 && git push origin v1.0.0-build32
+# 3. tag it — CI attaches the APKs to the release automatically.
+#    The tag carries both, so a tag on its own says exactly which file it built.
+git tag v1.0.1-build40 && git push origin v1.0.1-build40
 ```
 
 CI writes the release title and the APK file names from `versionName` and `versionCode`, so they can

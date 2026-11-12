@@ -4,7 +4,7 @@ Living plan for J.A.R.V.I.S. — what is shipped, what is left, and what was bor
 [FRIDAY OS](https://github.com/Rishu123-png/friday-os) but **rebuilt natively** (JARVIS does not
 depend on that project, its backend, or its web layer).
 
-Last updated with **1.0.0 (versionCode 39)**.
+Last updated with **1.0.1 (versionCode 40)**.
 
 ---
 

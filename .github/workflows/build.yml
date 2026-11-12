@@ -184,9 +184,8 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "CODE=$CODE" >> "$GITHUB_ENV"
           mkdir -p dist
-          # versionName stays 1.0.0 for every build, so the version code is the only thing that
-          # tells two APKs apart. Without it every release would offer a file called
-          # jarvis-1.0.0.apk and nobody could say which one was newer.
+          # The version name moves only when a version is released; the code moves on every build.
+          # Both are in the file name, so two APKs can never disagree about which is newer.
           cp app/build/outputs/apk/release/app-release.apk "dist/jarvis-$VERSION-b$CODE.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "dist/jarvis-$VERSION-b$CODE-debug.apk"
           ls -lh dist
