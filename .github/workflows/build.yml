@@ -218,31 +218,28 @@ jobs:
         with:
           name: "JARVIS ${{ env.VERSION }} · build ${{ env.CODE }}"
           body: |
-            **JARVIS 1.0.0 · versionCode ${{ env.CODE }}.**
+            **JARVIS ${{ env.VERSION }} · versionCode ${{ env.CODE }}.**
 
-            The version number stays 1.0.0 for every build; the build number is what moves. Install
-            this over an older JARVIS — the signing key is the same, so it upgrades in place.
+            Install this over an older JARVIS — the signing key is the same, so it upgrades in place,
+            and your routines, memory and settings survive.
 
-            `jarvis-${{ env.VERSION }}-b${{ env.CODE }}.apk` is the release build.
-            `...-debug.apk` is the same app with debugging enabled.
+            | File | What it is |
+            |---|---|
+            | `jarvis-${{ env.VERSION }}-b${{ env.CODE }}.apk` | **The release build.** Install this one. |
+            | `jarvis-${{ env.VERSION }}-b${{ env.CODE }}-debug.apk` | The same app with debugging enabled. |
 
-            What this build adds, honestly:
+            Requires Android 10 or newer. Nothing is downloaded at runtime: the offline voice model,
+            Shizuku and the OCR engine are inside the APK.
 
-            - **"Hey Jarvis" hears the whole sentence.** Say *"hey Jarvis, open WhatsApp"* in one
-              breath and he does it, with no tap and no repeating yourself. Say just the wake word
-              and he listens for the command as before. He stops listening by himself when you stop
-              speaking.
-            - **The full phone:** the same actions the app has — apps, taps and typing on screen,
-              Wi-Fi, Bluetooth, mobile data, airplane mode, hotspot, brightness, rotation, messages,
-              calls, shell through Shizuku — all reachable by voice.
-            - **Shizuku ships inside this APK.** *Install Shizuku* in Launcher settings opens
-              Android's own install screen.
-            - **Memory, presence, the sideways wheel and the Vault** are all included.
+            What changed in this version is in `CHANGELOG.md`, under
+            **${{ env.VERSION }} — versionCode ${{ env.CODE }}** — the same text the app's own
+            release history uses, so the notes here and the notes there cannot drift apart. The
+            details are written by hand and checked by `tools/guard.py`, which refuses a release
+            whose version, badge, roadmap line and changelog entry disagree.
 
-            Not verified on a device: whether the switches flip on your ROM, how the orb feels, and
-            whether the wake word catches a fast sentence. Please report what happens.
-
-            This build is cut from the feature branch, **before** it was merged into `main`.
+            Worth checking on your phone, because only a phone can settle it: whether the Wi-Fi,
+            Bluetooth and data switches flip on your ROM, how the orb feels, whether the wake word
+            catches a fast sentence, and whether your provider streams or falls back.
           files: |
             dist/jarvis-*.apk
 
